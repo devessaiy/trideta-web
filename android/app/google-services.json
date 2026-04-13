@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "774050799627",
+    "project_id": "trideta-school-app-2026",
+    "storage_bucket": "trideta-school-app-2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:774050799627:android:5e5673fe917ccde75d270e",
+        "android_client_info": {
+          "package_name": "com.example.trideta_v2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDBXji-OUwsdLiGYiBAnupZ1CDnaGw2hV0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

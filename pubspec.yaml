@@ -1,0 +1,55 @@
+name: trideta_v2
+description: "A new Flutter project."
+publish_to: 'none' 
+
+version: 1.0.8+9
+
+environment:
+  sdk: ^3.10.8
+
+dependencies:
+  flutter:
+    sdk: flutter    
+  
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.2.0
+  screenshot: ^3.0.0
+  permission_handler: ^12.0.1
+  printing: ^5.12.0   # To preview and print the PDF natively
+  firebase_core: ^4.5.0
+  firebase_messaging: ^16.1.2
+  flutter_local_notifications: ^21.0.0
+  
+  # SUPABASE (Use the newer version)
+  supabase_flutter: ^2.12.0
+  
+  # BIOMETRICS & SECURITY
+  local_auth: ^3.0.1
+  flutter_secure_storage: ^10.0.0
+  
+  # UTILS
+  cupertino_icons: ^1.0.8
+  image_picker: ^1.2.1
+  blue_thermal_printer: ^1.2.3
+  gal: ^2.3.2
+  url_launcher: ^6.3.2
+  path_provider: ^2.1.5
+  share_plus: ^12.0.1
+  pdf: ^3.11.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons: ^0.14.4
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"

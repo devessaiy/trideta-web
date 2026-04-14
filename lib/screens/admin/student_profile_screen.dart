@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
 
 // 🚨 PDF PACKAGES FOR DOSSIER GENERATION
-import 'package:pdf/pdf.dart';
+import 'package:pdf/pdf.dart' show PdfColor, PdfColors, PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
@@ -1210,12 +1210,13 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     );
   }
 
+  // 🚨 ADDED BOTTOM PADDING HERE (bottom: 100) 🚨
   Widget _buildAcademicTab(bool isDark, Color primaryColor) {
     if (_isFetchingAcademics)
       return Center(child: CircularProgressIndicator(color: primaryColor));
 
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
       children: [
         _buildStatCard(
           "Attendance",
@@ -1271,9 +1272,10 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     );
   }
 
+  // 🚨 WRAPPED IN SingleChildScrollView & ADDED BOTTOM PADDING HERE 🚨
   Widget _buildRecordsTab(bool isDark, Color primaryColor) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [

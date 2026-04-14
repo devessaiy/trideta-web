@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb; // 🚨 IMPORTED WEB CHECKER
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -55,6 +56,9 @@ Future<void> main() async {
 
   final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
 
+  // 🚨 WEB CHECK: If it is Web, NEVER show onboarding!
+  final bool shouldShowOnboarding = kIsWeb ? false : !hasSeenOnboarding;
+
   if (savedTheme == 'light') {
     themeNotifier.value = ThemeMode.light;
   } else if (savedTheme == 'dark') {
@@ -63,7 +67,7 @@ Future<void> main() async {
     themeNotifier.value = ThemeMode.system;
   }
 
-  runApp(MyApp(showOnboarding: !hasSeenOnboarding));
+  runApp(MyApp(showOnboarding: shouldShowOnboarding));
 }
 
 class MyApp extends StatefulWidget {
@@ -169,7 +173,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   foregroundColor: Colors.white,
                 ),
               ),
-              // 🚨 CHANGED TO LANDING PAGE SCREEN
+              // 🚨 ROUTING DECISION APPLIED HERE
               home: widget.showOnboarding
                   ? const OnboardingScreen()
                   : const LandingPageScreen(),

@@ -8,7 +8,6 @@ import 'package:trideta_v2/screens/teacher/teacher_dashboard_screen.dart';
 import 'package:trideta_v2/screens/admin/finance_dashboard_screen.dart';
 import 'package:trideta_v2/services/auth_service.dart';
 import 'package:trideta_v2/services/biometric_service.dart';
-import 'package:trideta_v2/screens/auth/school_registration_screen.dart';
 import 'package:trideta_v2/screens/shared/setup_wizard.dart';
 
 // 🚨 MODULAR IMPORTS

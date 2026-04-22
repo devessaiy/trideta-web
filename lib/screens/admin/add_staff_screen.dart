@@ -1,5 +1,4 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';

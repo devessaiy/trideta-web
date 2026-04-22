@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 // 🚨 UPDATED: Using bulletproof absolute imports
 import 'package:trideta_v2/screens/auth/login_screen.dart';
-import 'package:trideta_v2/screens/auth/onboarding_screen.dart';
-import 'package:trideta_v2/screens/public/landing_page_screen.dart';
 import 'package:trideta_v2/screens/boot_splash_screen.dart'; // 🚨 Imports your new loader!
 
 // 🚨 FIREBASE IMPORTS

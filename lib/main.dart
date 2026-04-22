@@ -29,21 +29,15 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 void main() {
-  // We don't initialize Supabase or Firebase here anymore!
-  // We start the app IMMEDIATELY to show the animated loader.
   WidgetsFlutterBinding.ensureInitialized();
 
-  runApp(
-    const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: BootSplashScreen(),
-    ),
-  );
+  // 🚨 FIXED: Run MyApp directly so the ThemeBuilders wrap the ENTIRE app!
+  runApp(const MyApp());
 }
 
 class MyApp extends StatefulWidget {
-  final bool showOnboarding;
-  const MyApp({super.key, required this.showOnboarding});
+  // 🚨 REMOVED showOnboarding: The routing logic is now safely handled inside BootSplashScreen
+  const MyApp({super.key});
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -141,10 +135,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   foregroundColor: Colors.white,
                 ),
               ),
-              // 🚨 THE PERFECT TRAFFIC COP LOGIC
-              home: widget.showOnboarding
-                  ? const OnboardingScreen()
-                  : (kIsWeb ? const LandingPageScreen() : const LoginScreen()),
+              // 🚨 FIXED: The Splash Screen is now the true Home, which will handle the final routing!
+              home: const BootSplashScreen(),
             );
           },
         );

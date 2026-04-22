@@ -7,7 +7,12 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'package:trideta_v2/services/notification_service.dart';
 import 'package:trideta_v2/firebase_options.dart';
-import 'package:trideta_v2/main.dart'; // 🚨 Imports MyApp and your notifiers
+import 'package:trideta_v2/main.dart'; // 🚨 Imports your notifiers
+
+// 🚨 ADDED ROUTING IMPORTS
+import 'package:trideta_v2/screens/auth/onboarding_screen.dart';
+import 'package:trideta_v2/screens/public/landing_page_screen.dart';
+import 'package:trideta_v2/screens/auth/login_screen.dart';
 
 class BootSplashScreen extends StatefulWidget {
   const BootSplashScreen({super.key});
@@ -73,10 +78,16 @@ class _BootSplashScreenState extends State<BootSplashScreen> {
 
         // If they are an Admin/Teacher, try to use their school's color
         if (role != 'parent' && userData['schools'] != null) {
-          final dbColorStr = userData['schools']['brand_color'];
-          if (dbColorStr != null && dbColorStr.toString().isNotEmpty) {
+          String? dbColorStr = userData['schools']['brand_color'];
+
+          if (dbColorStr != null && dbColorStr.isNotEmpty) {
             try {
-              finalColor = Color(int.parse(dbColorStr.toString()));
+              // 🚨 TRANSLATOR: Convert "#HEX" from DB to Flutter Color
+              dbColorStr = dbColorStr.replaceAll('#', '');
+              if (dbColorStr.length == 6) {
+                dbColorStr = 'FF$dbColorStr'; // Add 100% opacity prefix
+              }
+              finalColor = Color(int.parse(dbColorStr, radix: 16));
             } catch (e) {
               debugPrint("Failed to parse DB color: $e");
             }
@@ -103,13 +114,16 @@ class _BootSplashScreenState extends State<BootSplashScreen> {
     // If Web -> Force false (skip onboarding). If Mobile -> check if they've seen it.
     final bool shouldShowOnboarding = kIsWeb ? false : !hasSeenOnboarding;
 
-    // 5. NAVIGATE TO MAIN APP ONCE LOADED
+    // 🚨 5. NAVIGATE TO THE CORRECT SCREEN (No more nested MyApps!)
     if (mounted) {
+      Widget nextScreen = shouldShowOnboarding
+          ? const OnboardingScreen()
+          : (kIsWeb ? const LandingPageScreen() : const LoginScreen());
+
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
           transitionDuration: const Duration(milliseconds: 500),
-          pageBuilder: (_, __, ___) =>
-              MyApp(showOnboarding: shouldShowOnboarding),
+          pageBuilder: (_, __, ___) => nextScreen,
           transitionsBuilder: (_, animation, __, child) =>
               FadeTransition(opacity: animation, child: child),
         ),

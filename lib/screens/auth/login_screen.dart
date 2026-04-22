@@ -16,8 +16,6 @@ import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/screens/auth/password_recovery_screens.dart';
 import 'package:trideta_v2/main.dart'; // 🚨 Added to access appColorNotifier
 
-final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
-
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -369,17 +367,25 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
           0xFF007ACC,
         ); // Lock to Trideta Blue
       } else if (profile['schools'] != null) {
-        final dbColorStr = profile['schools']['brand_color'];
-        if (dbColorStr != null && dbColorStr.toString().isNotEmpty) {
+        String? dbColorStr = profile['schools']['brand_color'];
+
+        if (dbColorStr != null && dbColorStr.isNotEmpty) {
           try {
-            final Color fetchedColor = Color(int.parse(dbColorStr.toString()));
+            // 🚨 TRANSLATOR: Convert "#HEX" from DB to Flutter Color
+            dbColorStr = dbColorStr.replaceAll('#', '');
+            if (dbColorStr.length == 6) {
+              dbColorStr = 'FF$dbColorStr'; // Add 100% opacity prefix
+            }
+
+            // Parse using radix 16!
+            final Color fetchedColor = Color(int.parse(dbColorStr, radix: 16));
             appColorNotifier.value = fetchedColor;
 
-            // Backup the color to memory so the BootSplashScreen catches it later
+            // Backup to memory
             final prefs = await SharedPreferences.getInstance();
             await prefs.setInt('app_primary_color', fetchedColor.value);
           } catch (e) {
-            debugPrint("Failed to parse color: $e");
+            debugPrint("Failed to parse DB color: $e");
           }
         }
       }

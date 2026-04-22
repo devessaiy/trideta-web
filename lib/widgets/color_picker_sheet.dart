@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; // 🚨 Added for Database Sync
 import 'package:shared_preferences/shared_preferences.dart'; // 🚨 Added for Local Backup
+import 'package:trideta_v2/main.dart'; // 🚨 IMPORTED TO SYNC THE GLOBAL THEME
 
 class ColorPickerSheet extends StatelessWidget {
   final Color currentColor;
@@ -71,14 +72,16 @@ class ColorPickerSheet extends StatelessWidget {
             children: themeColors.map((theme) {
               bool isSelected = currentColor.value == theme['color'].value;
               return GestureDetector(
-                // 🚨 INJECTED DB SYNC LOGIC HERE
+                // 🚨 INJECTED GLOBAL SYNC & DB TRANSLATOR HERE
                 onTap: () async {
-                  // 1. Update UI Instantly
+                  // 1. Update BOTH local UI and GLOBAL Notifier instantly
                   onColorSelected(theme['color']);
+                  appColorNotifier.value =
+                      theme['color']; // 👈 THIS CHANGES THE WHOLE APP
 
-                  // 2. Prepare the string (e.g. "0xFF10B981")
-                  String colorString =
-                      "0x${theme['color'].value.toRadixString(16).toUpperCase()}";
+                  // 2. TRANSLATOR: Convert Flutter Color to standard "#HEX" (e.g. "#10B981")
+                  String hexColor =
+                      '#${theme['color'].value.toRadixString(16).substring(2, 8).toUpperCase()}';
 
                   // 3. Save to Supabase
                   try {
@@ -98,7 +101,9 @@ class ColorPickerSheet extends StatelessWidget {
                     if (schoolId != null) {
                       await Supabase.instance.client
                           .from('schools')
-                          .update({'brand_color': colorString})
+                          .update({
+                            'brand_color': hexColor,
+                          }) // 👈 Saves the #HEX format
                           .eq('id', schoolId);
 
                       // Save to local memory too

@@ -93,8 +93,9 @@ class ParentFinancialService {
       cleanStudentData = 'regular';
     }
 
-    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound')
+    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound') {
       return false;
+    }
     if (columnData == null) return true;
 
     String colStr = isCategory
@@ -105,8 +106,9 @@ class ParentFinancialService {
     if (colStr.isEmpty ||
         colStr == 'all' ||
         colStr == '[]' ||
-        colStr == '["all"]')
+        colStr == '["all"]') {
       return true;
+    }
 
     if (columnData is List) {
       if (columnData.isEmpty) return true;

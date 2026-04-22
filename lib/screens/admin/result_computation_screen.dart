@@ -384,7 +384,7 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
         setState(() => _isSaving = false);
         showSuccessDialog(
           "Scores Saved!",
-          "Successfully recorded scores for ${_selectedSubject} - ${_selectedClass}.",
+          "Successfully recorded scores for $_selectedSubject - $_selectedClass.",
         );
       }
     } catch (e) {

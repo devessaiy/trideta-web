@@ -172,8 +172,9 @@ class _AdminReceiptDetailViewState extends State<AdminReceiptDetailView>
     if (colStr.isEmpty ||
         colStr == 'all' ||
         colStr == '[]' ||
-        colStr == '["all"]')
+        colStr == '["all"]') {
       return true;
+    }
 
     if (columnData is List) {
       if (columnData.isEmpty) return true;

@@ -1,19 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb; // 🚨 IMPORTED WEB CHECKER
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 // 🚨 UPDATED: Using bulletproof absolute imports
 import 'package:trideta_v2/screens/auth/login_screen.dart';
 import 'package:trideta_v2/screens/auth/onboarding_screen.dart';
-import 'package:trideta_v2/screens/admin/profile_menu_screen.dart';
 import 'package:trideta_v2/screens/public/landing_page_screen.dart';
+import 'package:trideta_v2/screens/boot_splash_screen.dart'; // 🚨 Imports your new loader!
 
-// 🚨 FIREBASE & NOTIFICATIONS IMPORTS
-import 'package:firebase_core/firebase_core.dart';
+// 🚨 FIREBASE IMPORTS
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:trideta_v2/services/notification_service.dart';
-import 'firebase_options.dart';
 
 // 1. GLOBAL KEY
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -21,57 +16,29 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 // 2. THE "HALL PASS" (Security Bypass Flag)
 bool isInteractingWithSystem = false;
 
+// 3. THEMING NOTIFIERS (Moved up here so the splash screen can update them)
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
+final ValueNotifier<Color> appColorNotifier = ValueNotifier(
+  const Color(0xFF007ACC),
+);
+
 // 🚨 BACKGROUND NOTIFICATION HANDLER
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint("Handling a background message: ${message.messageId}");
 }
 
-Future<void> main() async {
+void main() {
+  // We don't initialize Supabase or Firebase here anymore!
+  // We start the app IMMEDIATELY to show the animated loader.
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 🚨 INITIALIZE FIREBASE
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-
-  // INITIALIZE SUPABASE
-  await Supabase.initialize(
-    url: 'https://tkuupmyrodazfrrembsc.supabase.co',
-    anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRrdXVwbXlyb2RhemZycmVtYnNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2MzE2MTAsImV4cCI6MjA4NjIwNzYxMH0.D46NbF3tu7Eaq2HreH4auh0flNNggubZZdKs9xgZQ4k',
+  runApp(
+    const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: BootSplashScreen(),
+    ),
   );
-
-  // 🚨 SMART NOTIFICATION WAKE-UP
-  // On mobile: Ask immediately.
-  // On Web: ONLY ask if they are actively logged in to avoid scaring public visitors!
-  final session = Supabase.instance.client.auth.currentSession;
-  if (!kIsWeb || session != null) {
-    await NotificationService().initialize();
-  }
-
-  // 🚨 LOAD SAVED PREFERENCES
-  final prefs = await SharedPreferences.getInstance();
-  final savedTheme = prefs.getString('saved_theme');
-  int? colorValue = prefs.getInt('app_primary_color');
-
-  if (colorValue != null) {
-    appColorNotifier.value = Color(colorValue);
-  }
-
-  final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
-
-  // 🚨 WEB CHECK: If it is Web, NEVER show onboarding!
-  final bool shouldShowOnboarding = kIsWeb ? false : !hasSeenOnboarding;
-
-  if (savedTheme == 'light') {
-    themeNotifier.value = ThemeMode.light;
-  } else if (savedTheme == 'dark') {
-    themeNotifier.value = ThemeMode.dark;
-  } else {
-    themeNotifier.value = ThemeMode.system;
-  }
-
-  runApp(MyApp(showOnboarding: shouldShowOnboarding));
 }
 
 class MyApp extends StatefulWidget {
@@ -174,9 +141,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   foregroundColor: Colors.white,
                 ),
               ),
+              // 🚨 THE PERFECT TRAFFIC COP LOGIC
               home: widget.showOnboarding
                   ? const OnboardingScreen()
-                  : const LandingPageScreen(),
+                  : (kIsWeb ? const LandingPageScreen() : const LoginScreen()),
             );
           },
         );

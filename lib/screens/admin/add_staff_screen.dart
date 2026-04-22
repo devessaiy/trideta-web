@@ -699,7 +699,7 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
     Color fieldBgColor,
   ) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       items: items
           .map((e) => DropdownMenuItem(value: e, child: Text(e)))
           .toList(),

@@ -36,7 +36,7 @@ class _ReportCardScreenState extends State<ReportCardScreen>
   List<String> _activeClasses = [];
 
   List<Map<String, dynamic>> _students = [];
-  Map<String, bool> _hasResultMap = {};
+  final Map<String, bool> _hasResultMap = {};
 
   @override
   void initState() {

@@ -26,7 +26,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
   List<String> _activeClasses = [];
 
   List<Map<String, dynamic>> _students = [];
-  Map<String, Map<String, dynamic>> _affectiveData = {};
+  final Map<String, Map<String, dynamic>> _affectiveData = {};
 
   @override
   void initState() {

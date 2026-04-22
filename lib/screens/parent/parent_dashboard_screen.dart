@@ -104,10 +104,11 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
     if (await canLaunchUrl(url)) {
       await launchUrl(url);
     } else {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Could not open contact app.")),
         );
+      }
     }
   }
 
@@ -1016,13 +1017,14 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
               );
               if (confirm == true) {
                 await _supabase.auth.signOut();
-                if (mounted)
+                if (mounted) {
                   Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
                     MaterialPageRoute(
                       builder: (context) => const LoginScreen(),
                     ),
                     (route) => false,
                   );
+                }
               }
             },
           ),

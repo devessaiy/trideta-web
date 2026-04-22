@@ -1303,8 +1303,9 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
   }
 
   Widget _buildAcademicTab(bool isDark, Color primaryColor) {
-    if (_isFetchingAcademics)
+    if (_isFetchingAcademics) {
       return Center(child: CircularProgressIndicator(color: primaryColor));
+    }
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
       children: [
@@ -1355,7 +1356,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
               "${gradeData['score']} (${gradeData['grade']})",
               gColor,
             );
-          }).toList(),
+          }),
       ],
     );
   }

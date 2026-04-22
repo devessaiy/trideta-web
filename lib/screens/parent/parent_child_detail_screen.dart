@@ -729,7 +729,7 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
                 style: TextStyle(fontWeight: FontWeight.bold, color: gColor),
               ),
             );
-          }).toList(),
+          }),
 
         const SizedBox(height: 30),
 
@@ -972,7 +972,7 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
                 ),
               ),
             );
-          }).toList(),
+          }),
       ],
     );
   }

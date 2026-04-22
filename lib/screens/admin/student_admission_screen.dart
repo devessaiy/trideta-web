@@ -821,8 +821,9 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
                     style: TextStyle(color: textColor),
                     validator: (v) {
                       if (v!.isEmpty) return "Required";
-                      if (v != _parentPasswordController.text)
+                      if (v != _parentPasswordController.text) {
                         return "Passwords do not match";
+                      }
                       return null;
                     },
                     decoration: InputDecoration(

@@ -303,7 +303,7 @@ class _AlertsScreenState extends State<AlertsScreen>
                 const SizedBox(height: 20),
 
                 DropdownButtonFormField<String>(
-                  value: selectedAudience,
+                  initialValue: selectedAudience,
                   decoration: const InputDecoration(
                     labelText: "Target Audience",
                     border: OutlineInputBorder(),

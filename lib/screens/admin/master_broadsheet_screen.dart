@@ -32,7 +32,7 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
   List<Map<String, dynamic>> _students = []; // Grid Rows
 
   // Map of Student ID -> Their Computed Data
-  Map<String, Map<String, dynamic>> _broadsheetData = {};
+  final Map<String, Map<String, dynamic>> _broadsheetData = {};
 
   @override
   void initState() {

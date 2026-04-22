@@ -270,7 +270,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
                         ),
                         child: DropdownButtonFormField<String>(
                           dropdownColor: cardColor,
-                          value: selectedClass,
+                          initialValue: selectedClass,
                           hint: const Text("Select Class"),
                           isExpanded: true,
                           items: _activeClasses
@@ -365,7 +365,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
                         ),
                         child: DropdownButtonFormField<String>(
                           dropdownColor: cardColor,
-                          value: selectedSubject,
+                          initialValue: selectedSubject,
                           hint: const Text("Choose Subject"),
                           isExpanded: true,
                           items: _activeSubjects

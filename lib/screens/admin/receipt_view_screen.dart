@@ -200,10 +200,12 @@ class _ReceiptViewScreenState extends State<ReceiptViewScreen>
         ? studentData.replaceAll(' ', '').toLowerCase()
         : _standardizeClass(studentData);
     if (isCategory &&
-        (cleanStudentData.isEmpty || cleanStudentData == 'notfound'))
+        (cleanStudentData.isEmpty || cleanStudentData == 'notfound')) {
       cleanStudentData = 'regular';
-    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound')
+    }
+    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound') {
       return false;
+    }
     if (columnData == null) return true;
 
     String colStr = isCategory
@@ -212,8 +214,9 @@ class _ReceiptViewScreenState extends State<ReceiptViewScreen>
     if (colStr.isEmpty ||
         colStr == 'all' ||
         colStr == '[]' ||
-        colStr == '["all"]')
+        colStr == '["all"]') {
       return true;
+    }
 
     if (columnData is List) {
       if (columnData.isEmpty) return true;
@@ -399,10 +402,11 @@ class _ReceiptViewScreenState extends State<ReceiptViewScreen>
         ], text: 'Payment Receipt from $_schoolName');
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         showAuthErrorDialog(
           "Failed to generate the file. Please ensure your app has file storage permissions.",
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -414,11 +418,12 @@ class _ReceiptViewScreenState extends State<ReceiptViewScreen>
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF1F4F8);
     Color primaryColor = Theme.of(context).primaryColor;
 
-    if (_isLoadingData)
+    if (_isLoadingData) {
       return Scaffold(
         backgroundColor: bgColor,
         body: Center(child: CircularProgressIndicator(color: primaryColor)),
       );
+    }
 
     final amountFormatted = NumberFormat.currency(
       symbol: '₦',

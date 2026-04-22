@@ -23,8 +23,8 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   List<Map<String, dynamic>> _classes = [];
   List<Map<String, dynamic>> _classSubjects = [];
 
-  List<String> _deletedClassIds = [];
-  List<String> _deletedSubjectIds = [];
+  final List<String> _deletedClassIds = [];
+  final List<String> _deletedSubjectIds = [];
 
   // 🚨 DEEP CASCADE TRACKER
   final Map<String, String> _renamedClasses = {};
@@ -714,11 +714,12 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
     bool isDark,
     Color primaryColor,
   ) {
-    if (_classes.isEmpty)
+    if (_classes.isEmpty) {
       return const Text(
         "Add a class first.",
         style: TextStyle(color: Colors.grey),
       );
+    }
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -732,7 +733,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           DropdownButtonFormField<String>(
-            value: _selectedClassName,
+            initialValue: _selectedClassName,
             decoration: _inputStyle(
               "Target Class",
               Icons.class_,

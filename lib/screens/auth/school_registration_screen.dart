@@ -285,10 +285,12 @@ class _SchoolRegistrationScreenState extends State<SchoolRegistrationScreen>
               primaryColor,
             ).copyWith(counterText: ""),
             validator: (value) {
-              if (value == null || value.isEmpty)
+              if (value == null || value.isEmpty) {
                 return "Please enter phone number";
-              if (value.length < 11)
+              }
+              if (value.length < 11) {
                 return "Phone number must be exactly 11 digits";
+              }
               return null;
             },
           ),

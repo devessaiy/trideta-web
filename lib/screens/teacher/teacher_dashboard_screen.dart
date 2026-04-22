@@ -161,8 +161,9 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
                     ? null
                     : () async {
                         if (newPasswordCtrl.text.isEmpty ||
-                            newPasswordCtrl.text.length < 6)
+                            newPasswordCtrl.text.length < 6) {
                           return;
+                        }
                         if (newPasswordCtrl.text != confirmPasswordCtrl.text) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -242,22 +243,24 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
         _newAvatarBytes = null;
         _isUploadingAvatar = false;
       });
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Profile picture updated!"),
             backgroundColor: Colors.green,
           ),
         );
+      }
     } catch (e) {
       setState(() => _isUploadingAvatar = false);
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Upload failed: $e"),
             backgroundColor: Colors.red,
           ),
         );
+      }
     }
   }
 
@@ -553,13 +556,14 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
               );
               if (confirm == true) {
                 await Supabase.instance.client.auth.signOut();
-                if (mounted)
+                if (mounted) {
                   Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
                     MaterialPageRoute(
                       builder: (context) => const LoginScreen(),
                     ),
                     (route) => false,
                   );
+                }
               }
             },
           ),

@@ -272,8 +272,9 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
                     ? null
                     : () async {
                         if (newPasswordCtrl.text.isEmpty ||
-                            newPasswordCtrl.text.length < 6)
+                            newPasswordCtrl.text.length < 6) {
                           return;
+                        }
                         if (newPasswordCtrl.text != confirmPasswordCtrl.text) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -344,11 +345,12 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
         _newAvatarBytes = null;
         _isUploadingAvatar = false;
       });
-      if (mounted)
+      if (mounted) {
         showSuccessDialog(
           "Profile Updated",
           "Your profile picture has been saved.",
         );
+      }
     } catch (e) {
       setState(() => _isUploadingAvatar = false);
       if (mounted) showAuthErrorDialog("Upload failed. Try again.");
@@ -985,13 +987,14 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
               );
               if (confirm == true) {
                 await _supabase.auth.signOut();
-                if (mounted)
+                if (mounted) {
                   Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
                     MaterialPageRoute(
                       builder: (context) => const LoginScreen(),
                     ),
                     (route) => false,
                   );
+                }
               }
             },
           ),

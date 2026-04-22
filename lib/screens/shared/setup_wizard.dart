@@ -609,7 +609,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         DropdownButtonFormField<String>(
-          value: _selectedClassForSubject,
+          initialValue: _selectedClassForSubject,
           decoration: _wizardInput(
             "Target Class",
             Icons.class_,

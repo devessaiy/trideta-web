@@ -272,7 +272,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                       () => _attendanceState[student['id'].toString()] =
                           selectedStatus,
                     );
-                    if (mounted)
+                    if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
@@ -281,14 +281,16 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                           backgroundColor: Colors.green,
                         ),
                       );
+                    }
                   } catch (e) {
-                    if (mounted)
+                    if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text("Failed to save"),
                           backgroundColor: Colors.red,
                         ),
                       );
+                    }
                   }
                 },
                 child: const Text("SAVE"),
@@ -379,20 +381,22 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
   }
 
   Widget _buildManualTab(Color cardColor, bool isDark, Color primaryColor) {
-    if (_myClasses.isEmpty)
+    if (_myClasses.isEmpty) {
       return _buildEmptyState(
         "No classes assigned.",
         "You have not been assigned to teach any classes yet.",
         Icons.class_outlined,
         isDark,
       );
-    if (_allMyStudents.isEmpty)
+    }
+    if (_allMyStudents.isEmpty) {
       return _buildEmptyState(
         "No students found.",
         "There are currently no students in this class.",
         Icons.people_outline,
         isDark,
       );
+    }
 
     return Column(
       children: [
@@ -549,10 +553,11 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                                         ),
                                       ),
                                       onSelected: (selected) {
-                                        if (selected)
+                                        if (selected) {
                                           setState(
                                             () => _attendanceState[sId] = s,
                                           );
+                                        }
                                       },
                                     );
                                   })
@@ -619,8 +624,9 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
   }
 
   Widget _buildScannerTab(Color primaryColor) {
-    if (_selectedClass == null)
+    if (_selectedClass == null) {
       return const Center(child: Text("Please select a class first."));
+    }
 
     return Stack(
       children: [
@@ -861,7 +867,7 @@ void showStudentQrCode(
                       );
                     }
                   } catch (e) {
-                    if (ctx.mounted)
+                    if (ctx.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text(
@@ -870,6 +876,7 @@ void showStudentQrCode(
                           backgroundColor: Colors.red,
                         ),
                       );
+                    }
                   }
                 }
               },

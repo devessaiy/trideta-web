@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // 🚨 Added for Database Sync
+import 'package:shared_preferences/shared_preferences.dart'; // 🚨 Added for Local Backup
 
 class ColorPickerSheet extends StatelessWidget {
   final Color currentColor;
@@ -69,9 +71,48 @@ class ColorPickerSheet extends StatelessWidget {
             children: themeColors.map((theme) {
               bool isSelected = currentColor.value == theme['color'].value;
               return GestureDetector(
-                onTap: () {
+                // 🚨 INJECTED DB SYNC LOGIC HERE
+                onTap: () async {
+                  // 1. Update UI Instantly
                   onColorSelected(theme['color']);
-                  Navigator.pop(context);
+
+                  // 2. Prepare the string (e.g. "0xFF10B981")
+                  String colorString =
+                      "0x${theme['color'].value.toRadixString(16).toUpperCase()}";
+
+                  // 3. Save to Supabase
+                  try {
+                    final userId =
+                        Supabase.instance.client.auth.currentUser!.id;
+
+                    // First get their school_id
+                    final userData = await Supabase.instance.client
+                        .from('profiles')
+                        .select('school_id')
+                        .eq('id', userId)
+                        .single();
+
+                    final schoolId = userData['school_id'];
+
+                    // Then update the schools table
+                    if (schoolId != null) {
+                      await Supabase.instance.client
+                          .from('schools')
+                          .update({'brand_color': colorString})
+                          .eq('id', schoolId);
+
+                      // Save to local memory too
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setInt(
+                        'app_primary_color',
+                        theme['color'].value,
+                      );
+                    }
+                  } catch (e) {
+                    debugPrint("Failed to save brand color: $e");
+                  }
+
+                  if (context.mounted) Navigator.pop(context);
                 },
                 child: Column(
                   children: [

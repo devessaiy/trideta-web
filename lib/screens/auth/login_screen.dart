@@ -14,6 +14,7 @@ import 'package:trideta_v2/screens/shared/setup_wizard.dart';
 // 🚨 MODULAR IMPORTS
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/screens/auth/password_recovery_screens.dart';
+import 'package:trideta_v2/main.dart'; // 🚨 Added to access appColorNotifier
 
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
 
@@ -332,14 +333,16 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
     }
   }
 
+  // 🚨 THE MAGIC INJECTION: Fetching Color before Routing!
   Future<void> _checkAndNavigate() async {
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) throw "Session error. Please try logging again.";
 
+      // 🚨 Added schools(brand_color) to your Supabase query
       final profile = await _supabase
           .from('profiles')
-          .select('role')
+          .select('role, schools(brand_color)')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -357,6 +360,30 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
       final String role = (profile['role'] ?? 'parent')
           .toString()
           .toLowerCase();
+
+      // ==========================================
+      // 🚨 BRAND COLOR SPLIT LOGIC
+      // ==========================================
+      if (role == 'parent') {
+        appColorNotifier.value = const Color(
+          0xFF007ACC,
+        ); // Lock to Trideta Blue
+      } else if (profile['schools'] != null) {
+        final dbColorStr = profile['schools']['brand_color'];
+        if (dbColorStr != null && dbColorStr.toString().isNotEmpty) {
+          try {
+            final Color fetchedColor = Color(int.parse(dbColorStr.toString()));
+            appColorNotifier.value = fetchedColor;
+
+            // Backup the color to memory so the BootSplashScreen catches it later
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setInt('app_primary_color', fetchedColor.value);
+          } catch (e) {
+            debugPrint("Failed to parse color: $e");
+          }
+        }
+      }
+      // ==========================================
 
       if (role == 'admin') {
         bool isConfigured = await _authService.isSchoolConfigured();
@@ -754,43 +781,20 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
                     color: primaryColor.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.fingerprint, size: 35, color: primaryColor),
+                  child: Icon(Icons.fingerprint, size: 40, color: primaryColor),
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  "Tap to use Biometrics",
+                const SizedBox(height: 10),
+                Text(
+                  "Login with Biometrics",
                   style: TextStyle(
-                    color: Colors.grey,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                    color: primaryColor,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
             ),
           ),
         ],
-        const SizedBox(height: 30),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text("Don't have an account?", style: TextStyle(color: hintColor)),
-            TextButton(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const SchoolRegistrationScreen(),
-                ),
-              ),
-              child: Text(
-                "Register School",
-                style: TextStyle(
-                  color: primaryColor,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }

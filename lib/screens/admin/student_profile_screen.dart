@@ -44,6 +44,9 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
   String? _admissionNo;
   String? _schoolId;
 
+  String? _dbParentEmail;
+  String? _dbParentPhone;
+
   // --- ACADEMIC STATE VARIABLES ---
   bool _isFetchingAcademics = true;
   String _attendancePercentage = "N/A";
@@ -65,7 +68,9 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     try {
       final data = await _supabase
           .from('students')
-          .select('school_id, parent_account_created, admission_no')
+          .select(
+            'school_id, parent_account_created, admission_no, parent_email, parent_phone',
+          )
           .eq('id', widget.id)
           .single();
 
@@ -74,6 +79,8 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
           _schoolId = data['school_id'];
           _accountExists = data['parent_account_created'] == true;
           _admissionNo = data['admission_no']?.toString();
+          _dbParentEmail = data['parent_email']?.toString();
+          _dbParentPhone = data['parent_phone']?.toString();
           _isCheckingStatus = false;
         });
       }
@@ -84,7 +91,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
 
   Future<void> _fetchAcademicData() async {
     try {
-      // 1. Calculate TRUE Attendance based on Total School Days for that class
       final classAttRes = await _supabase
           .from('attendance')
           .select('date')
@@ -110,7 +116,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
         _attendancePercentage = "No Class Records";
       }
 
-      // 2. Fetch Exam Scores
       final scoresRes = await _supabase
           .from('exam_scores')
           .select('subject_name, total_score, grade')
@@ -138,17 +143,10 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
       }
 
       if (mounted) {
-        setState(() {
-          _isFetchingAcademics = false;
-        });
+        setState(() => _isFetchingAcademics = false);
       }
     } catch (e) {
-      debugPrint("Error fetching academics: $e");
-      if (mounted) {
-        setState(() {
-          _isFetchingAcademics = false;
-        });
-      }
+      if (mounted) setState(() => _isFetchingAcademics = false);
     }
   }
 
@@ -178,9 +176,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
             .select()
             .eq('student_id', widget.id)
             .order('payment_date', ascending: false);
-      } catch (_) {
-        debugPrint("No fee payments table found or accessible.");
-      }
+      } catch (_) {}
 
       int punctual = attendanceData
           .where((r) => r['status'] == 'Punctual')
@@ -210,7 +206,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(32),
           build: (pw.Context context) => [
-            // HEADER
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
@@ -268,8 +263,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
               ),
             ),
             pw.SizedBox(height: 20),
-
-            // PROFILE INFO
             pw.Container(
               padding: const pw.EdgeInsets.all(12),
               decoration: pw.BoxDecoration(
@@ -321,28 +314,10 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                       ],
                     ),
                   ),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
-                      pw.Text(
-                        "Date Printed:",
-                        style: pw.TextStyle(fontSize: 9, color: PdfColors.grey),
-                      ),
-                      pw.Text(
-                        DateTime.now().toString().split(' ')[0],
-                        style: pw.TextStyle(
-                          fontSize: 10,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),
             pw.SizedBox(height: 25),
-
-            // ACADEMIC HISTORY
             pw.Text(
               "ACADEMIC HISTORY",
               style: pw.TextStyle(
@@ -387,82 +362,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                 ),
                 cellStyle: const pw.TextStyle(fontSize: 10),
               ),
-            pw.SizedBox(height: 25),
-
-            // ATTENDANCE SUMMARY
-            pw.Text(
-              "ATTENDANCE SUMMARY",
-              style: pw.TextStyle(
-                fontSize: 12,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.blue800,
-              ),
-            ),
-            pw.SizedBox(height: 8),
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                _buildPdfStatBox(
-                  "Punctual",
-                  punctual.toString(),
-                  PdfColors.green700,
-                ),
-                _buildPdfStatBox("Late", late.toString(), PdfColors.orange700),
-                _buildPdfStatBox("Absent", absent.toString(), PdfColors.red700),
-                _buildPdfStatBox(
-                  "Sick/Excused",
-                  sick.toString(),
-                  PdfColors.purple700,
-                ),
-              ],
-            ),
-            pw.SizedBox(height: 25),
-
-            // FINANCIAL RECORDS
-            pw.Text(
-              "FINANCIAL RECORDS",
-              style: pw.TextStyle(
-                fontSize: 12,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.blue800,
-              ),
-            ),
-            pw.SizedBox(height: 8),
-            if (financeData.isEmpty)
-              pw.Text(
-                "No financial records found.",
-                style: pw.TextStyle(fontSize: 10, color: PdfColors.grey),
-              )
-            else
-              pw.TableHelper.fromTextArray(
-                headers: [
-                  'Date',
-                  'Session/Term',
-                  'Description',
-                  'Amount Paid',
-                  'Status',
-                ],
-                data: financeData
-                    .map(
-                      (f) => [
-                        f['payment_date']?.toString().split(' ')[0] ?? '',
-                        "${f['academic_session'] ?? ''} - ${f['term'] ?? ''}",
-                        f['fee_category'] ?? 'School Fees',
-                        "NGN ${f['amount_paid'] ?? 0}",
-                        f['payment_status'] ?? 'Completed',
-                      ],
-                    )
-                    .toList(),
-                headerStyle: pw.TextStyle(
-                  color: PdfColors.white,
-                  fontWeight: pw.FontWeight.bold,
-                  fontSize: 10,
-                ),
-                headerDecoration: const pw.BoxDecoration(
-                  color: PdfColors.blueGrey600,
-                ),
-                cellStyle: const pw.TextStyle(fontSize: 10),
-              ),
           ],
         ),
       );
@@ -492,40 +391,88 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     }
   }
 
-  pw.Widget _buildPdfStatBox(String title, String val, PdfColor color) {
-    return pw.Container(
-      width: 100,
-      padding: const pw.EdgeInsets.all(10),
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: color, width: 1.5),
-        borderRadius: pw.BorderRadius.circular(8),
-      ),
-      child: pw.Column(
-        children: [
-          pw.Text(
-            title,
-            style: pw.TextStyle(
-              fontSize: 9,
-              color: color,
-              fontWeight: pw.FontWeight.bold,
-            ),
-          ),
-          pw.SizedBox(height: 5),
-          pw.Text(
-            val,
-            style: pw.TextStyle(
-              fontSize: 16,
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColors.black,
-            ),
+  // ============================================================================
+  // 🚨 STREAMLINED ACCOUNT VIEW & RESET LOGIC
+  // ============================================================================
+
+  void _handleActiveAccountTap(Color primaryColor) {
+    // Because the actual Login ID is ALWAYS saved in _dbParentEmail
+    // (whether it's a real email or a phantom phone email), we no longer
+    // need to ask the Admin to choose. We just pop the credentials straight up!
+
+    if (_dbParentEmail == null || _dbParentEmail!.isEmpty) {
+      showAuthErrorDialog("Error: Missing login credentials in database.");
+      return;
+    }
+
+    _showCredentialPopup(primaryColor, "******** (Hidden for security)");
+  }
+
+  // Dialog for ACTIVATING OLD legacy accounts (Orange Card)
+  void _showLoginMethodDialog() {
+    Color primaryColor = Theme.of(context).primaryColor;
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          "Select Login Method",
+          textAlign: TextAlign.center,
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          "How should this parent log into the app?",
+          textAlign: TextAlign.center,
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                icon: const Icon(Icons.phone),
+                label: Text("Use Phone: ${_dbParentPhone ?? 'N/A'}"),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _showActivationPasswordDialog(true);
+                },
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: primaryColor,
+                  side: BorderSide(color: primaryColor),
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                icon: const Icon(Icons.email),
+                label: Text("Use Email: ${_dbParentEmail ?? 'N/A'}"),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _showActivationPasswordDialog(false);
+                },
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  // 🚨 NEW: LIVE PASSWORD TRACKER DIALOG LOGIC
-  void _showActivationPasswordDialog() {
+  void _showActivationPasswordDialog(bool usePhoneChoice) {
     final pwdController = TextEditingController();
     final confirmController = TextEditingController();
     bool isObscure1 = true;
@@ -553,31 +500,16 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
             }
             bool hasLetters = RegExp(r'[a-zA-Z]').hasMatch(val);
             bool hasNumbers = RegExp(r'[0-9]').hasMatch(val);
-            bool hasSpecial = RegExp(r'[!@#\$&*~%]').hasMatch(val);
-
             if (val.length < 6) {
-              pwdStrength = "Too short (Min 6 chars)";
+              pwdStrength = "Too short";
               strengthColor = Colors.red;
             } else if (!hasLetters || !hasNumbers) {
-              pwdStrength = "Weak (Add letters & numbers)";
+              pwdStrength = "Weak";
               strengthColor = Colors.orange;
-            } else if (hasLetters &&
-                hasNumbers &&
-                !hasSpecial &&
-                val.length >= 6) {
-              pwdStrength = "Good Password";
-              strengthColor = primaryColor;
-            } else if (hasLetters &&
-                hasNumbers &&
-                hasSpecial &&
-                val.length >= 8) {
-              pwdStrength = "Strong Password";
-              strengthColor = Colors.green;
             } else {
               pwdStrength = "Good Password";
               strengthColor = primaryColor;
             }
-
             if (confirmController.text.isNotEmpty) {
               if (confirmController.text == val) {
                 matchStatus = "Passwords match";
@@ -734,11 +666,8 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                     showAuthErrorDialog("Passwords do not match.");
                     return;
                   }
-
                   Navigator.pop(ctx);
-                  _processActivation(
-                    pwdController.text,
-                  ); // Proceed with the Edge Function
+                  _processActivation(pwdController.text, usePhoneChoice);
                 },
                 child: const Text(
                   "ACTIVATE",
@@ -755,48 +684,78 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     );
   }
 
-  // --- ACTIVATE PARENT ACCOUNT LOGIC ---
   Future<void> _activateParentAccount() async {
-    if (widget.parentEmail == null || widget.parentEmail!.isEmpty) {
+    if ((_dbParentEmail == null || _dbParentEmail!.isEmpty) &&
+        (_dbParentPhone == null || _dbParentPhone!.isEmpty)) {
       showAuthErrorDialog(
-        "We can't activate this account because the parent's email is missing.",
+        "We can't activate this account because both the email and phone number are missing in the database.",
       );
       return;
     }
-    // Step 1: Open the password creator
-    _showActivationPasswordDialog();
+    bool hasEmail = _dbParentEmail != null && _dbParentEmail!.isNotEmpty;
+    bool hasPhone = _dbParentPhone != null && _dbParentPhone!.isNotEmpty;
+
+    // For older students who might have both fields but aren't activated yet
+    if (hasEmail && hasPhone) {
+      _showLoginMethodDialog();
+    } else if (hasPhone) {
+      _showActivationPasswordDialog(true);
+    } else {
+      _showActivationPasswordDialog(false);
+    }
   }
 
-  // 🚨 FIXED: Passes the created password to the Edge Function!
-  Future<void> _processActivation(String generatedPassword) async {
+  Future<void> _processActivation(
+    String generatedPassword,
+    bool usePhoneChoice,
+  ) async {
     setState(() => _isCreatingAccount = true);
 
     try {
+      // 1. Calculate the exact Login ID string that will be sent to Auth
+      String exactLoginId = _dbParentEmail ?? '';
+
+      if (usePhoneChoice && _dbParentPhone != null) {
+        String phonePart = _dbParentPhone!.replaceAll(' ', '');
+        if (phonePart.startsWith('0')) {
+          phonePart = '+234${phonePart.substring(1)}';
+        } else if (!phonePart.startsWith('+')) {
+          phonePart = '+234$phonePart';
+        }
+        exactLoginId = '$phonePart@trideta.com';
+      }
+
+      // 2. Tell Edge Function to create the account
       await _supabase.functions.invoke(
         'create-parent-account',
         body: {
-          'email': widget.parentEmail,
-          'password': generatedPassword, // 🚨 Securely passed
-          'phone': widget.parentPhone,
+          'email': _dbParentEmail ?? '',
+          'password': generatedPassword,
+          'phone': _dbParentPhone ?? '',
           'studentName': widget.name,
+          'usePhoneForLogin': usePhoneChoice,
         },
       );
 
+      // 3. Update the database to permanently store the EXACT Login ID in the email column
       await _supabase
           .from('students')
-          .update({'parent_account_created': true})
+          .update({
+            'parent_account_created': true,
+            'parent_email': exactLoginId, // Overwrites the old wrong email!
+          })
           .eq('id', widget.id);
 
       if (mounted) {
-        setState(() => _accountExists = true);
+        setState(() {
+          _accountExists = true;
+          _dbParentEmail = exactLoginId; // Instantly updates the UI's memory
+        });
         _showCredentialPopup(Theme.of(context).primaryColor, generatedPassword);
       }
     } catch (e) {
       if (mounted) {
-        showAuthErrorDialog(
-          "We couldn't reach the account activation server. "
-          "Please check your internet or ensure the cloud function is active.",
-        );
+        showAuthErrorDialog("Activation Error: ${e.toString()}");
       }
     } finally {
       if (mounted) setState(() => _isCreatingAccount = false);
@@ -806,6 +765,16 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
   // --- LOGIN CREDENTIALS POPUP ---
   void _showCredentialPopup(Color primaryColor, String createdPassword) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Because we updated the DB rules, the Email column IS ALWAYS the exact target ID!
+    String targetLoginId = _dbParentEmail ?? "N/A";
+
+    // Clean up the display for the Admin so they don't see @trideta.com if it's a phone
+    String displayedId = targetLoginId;
+    if (displayedId.contains('@trideta.com')) {
+      displayedId = displayedId.replaceAll('@trideta.com', '');
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -839,43 +808,179 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
             ),
             const SizedBox(height: 20),
             _credentialCard(
-              "User ID",
-              widget.parentEmail ?? "N/A",
+              "User ID / Login",
+              displayedId,
               isDark,
               primaryColor,
             ),
-            _credentialCard(
-              "Password",
-              createdPassword, // 🚨 Displays the newly created password!
-              isDark,
-              primaryColor,
-            ),
+            _credentialCard("Password", createdPassword, isDark, primaryColor),
           ],
         ),
         actions: [
-          Center(
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryColor,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 30,
-                  vertical: 12,
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text(
+                  "GOT IT",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text(
-                "GOT IT",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
+              const SizedBox(height: 10),
+              // 🚨 The Reset Password Button
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                icon: const Icon(Icons.lock_reset, size: 18),
+                label: const Text(
+                  "Force Password Reset",
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _showAdminResetPasswordDialog(
+                    targetLoginId,
+                  ); // Sends the exact phantom email directly!
+                },
               ),
-            ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  // 🚨 The dialog where the Admin types the new temporary password
+  void _showAdminResetPasswordDialog(String targetLoginId) {
+    final pwdController = TextEditingController();
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: const Text(
+              "Reset Parent Password",
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  "Enter a new temporary password for this parent. They can change it later in their app settings.",
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: pwdController,
+                  decoration: InputDecoration(
+                    labelText: "New Temporary Password",
+                    prefixIcon: const Icon(Icons.lock_reset, color: Colors.red),
+                    filled: true,
+                    fillColor: isDark ? Colors.white10 : Colors.grey[50],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text(
+                  "CANCEL",
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                        if (pwdController.text.length < 6) {
+                          showAuthErrorDialog(
+                            "Password must be at least 6 characters.",
+                          );
+                          return;
+                        }
+
+                        setDialogState(() => isLoading = true);
+                        try {
+                          // Call the Edge Function with the EXACT target ID
+                          final response = await _supabase.functions.invoke(
+                            'reset-parent-password',
+                            body: {
+                              'email': targetLoginId,
+                              'newPassword': pwdController.text,
+                            },
+                          );
+
+                          // 🚨 NEW: Check if the Edge Function sent back an error inside the 200 OK response
+                          if (response.data != null &&
+                              response.data['error'] != null) {
+                            setDialogState(() => isLoading = false);
+                            showAuthErrorDialog(
+                              "Reset Failed: ${response.data['error']}",
+                            );
+                            return;
+                          }
+
+                          if (mounted) {
+                            Navigator.pop(ctx);
+                            showSuccessDialog(
+                              "Password Reset",
+                              "The parent's password has been successfully changed to: \n\n${pwdController.text}",
+                            );
+                          }
+                        } catch (e) {
+                          setDialogState(() => isLoading = false);
+                          showAuthErrorDialog("App Error: ${e.toString()}");
+                        }
+                      },
+                child: isLoading
+                    ? const SizedBox(
+                        width: 15,
+                        height: 15,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text(
+                        "RESET",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -916,20 +1021,17 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     );
   }
 
-  // --- DELETE STUDENT LOGIC ---
   Future<void> _deleteStudent(bool deleteAuth) async {
     try {
       await _supabase.from('students').delete().eq('id', widget.id);
-
-      if (deleteAuth && widget.parentEmail != null) {
+      if (deleteAuth && _dbParentEmail != null) {
         try {
           await _supabase.functions.invoke(
             'manage-user-auth',
-            body: {'action': 'delete', 'email': widget.parentEmail},
+            body: {'action': 'delete', 'email': _dbParentEmail},
           );
         } catch (_) {}
       }
-
       if (mounted) {
         Navigator.pop(context);
         showSuccessDialog(
@@ -952,7 +1054,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color primaryColor = Theme.of(context).primaryColor;
 
-    // 🚨 MAIN CONTENT EXTRACTED FOR LAYOUT BUILDER
     Widget mainContent = Column(
       children: [
         _buildHeroHeader(cardColor, isDark, primaryColor),
@@ -1000,11 +1101,9 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
           ),
         ],
       ),
-      // 🚨 SHAPE-SHIFTER: LayoutBuilder
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 800) {
-            // 💻 DESKTOP LAYOUT (Constrained Center Column)
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 800),
@@ -1027,7 +1126,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
               ),
             );
           } else {
-            // 📱 MOBILE LAYOUT (Full Screen)
             return mainContent;
           }
         },
@@ -1115,16 +1213,10 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
 
   Widget _buildActivationBar(bool isDark) {
     if (_isCheckingStatus) return const LinearProgressIndicator(minHeight: 2);
-
     Color primaryColor = Theme.of(context).primaryColor;
-
     return GestureDetector(
-      // 🚨 NEW: Makes the card clickable if the account is active!
       onTap: _accountExists
-          ? () => _showCredentialPopup(
-              primaryColor,
-              "******** (Hidden for security)", // Safely masks the password
-            )
+          ? () => _handleActiveAccountTap(primaryColor)
           : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 400),
@@ -1165,7 +1257,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                   ),
                   Text(
                     _accountExists
-                        ? "Tap to view login details." // 🚨 UPDATED TEXT
+                        ? "Tap to view login details."
                         : "Activate parent login for app access.",
                     style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
@@ -1210,11 +1302,9 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     );
   }
 
-  // 🚨 ADDED BOTTOM PADDING HERE (bottom: 100) 🚨
   Widget _buildAcademicTab(bool isDark, Color primaryColor) {
     if (_isFetchingAcademics)
       return Center(child: CircularProgressIndicator(color: primaryColor));
-
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
       children: [
@@ -1242,7 +1332,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
           ),
         ),
         const SizedBox(height: 10),
-
         if (_subjectGrades.isEmpty)
           const Padding(
             padding: EdgeInsets.only(top: 20),
@@ -1261,7 +1350,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
             if (gradeData['grade'] == 'C') gColor = Colors.orange;
             if (gradeData['grade'] == 'P') gColor = Colors.purple;
             if (gradeData['grade'] == 'F') gColor = Colors.red;
-
             return _buildGradeTile(
               gradeData['subject'],
               "${gradeData['score']} (${gradeData['grade']})",
@@ -1272,7 +1360,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     );
   }
 
-  // 🚨 WRAPPED IN SingleChildScrollView & ADDED BOTTOM PADDING HERE 🚨
   Widget _buildRecordsTab(bool isDark, Color primaryColor) {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
@@ -1433,8 +1520,8 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
   }
 
   Future<void> _callParent() async {
-    if (widget.parentPhone == null) return;
-    final Uri url = Uri(scheme: 'tel', path: widget.parentPhone);
+    if (_dbParentPhone == null) return;
+    final Uri url = Uri(scheme: 'tel', path: _dbParentPhone);
     if (await canLaunchUrl(url)) await launchUrl(url);
   }
 }

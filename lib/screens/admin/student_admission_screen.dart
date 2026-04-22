@@ -27,10 +27,13 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
   final _dobController = TextEditingController();
   final _parentNameController = TextEditingController();
   final _parentEmailController = TextEditingController();
+
+  // 🚨 DUAL PHONE CONTROLLERS
+  final _loginPhoneController = TextEditingController();
   final _parentPhoneController = TextEditingController();
+
   final _addressController = TextEditingController();
 
-  // 🚨 NEW PASSWORD CONTROLLERS
   final _parentPasswordController = TextEditingController();
   final _parentConfirmPasswordController = TextEditingController();
 
@@ -51,7 +54,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
   String _studentCategory = "Regular";
   String _generatedID = "---/--/--/---";
 
-  // 🚨 PASSWORD STATE VARIABLES (Cloned from Registration Screen)
+  bool _usePhoneAsLogin = false;
   bool _isObscure1 = true;
   bool _isObscure2 = true;
   String _passwordStrength = "";
@@ -73,6 +76,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     _dobController.dispose();
     _parentNameController.dispose();
     _parentEmailController.dispose();
+    _loginPhoneController.dispose();
     _parentPhoneController.dispose();
     _addressController.dispose();
     _parentPasswordController.dispose();
@@ -80,7 +84,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     super.dispose();
   }
 
-  // --- 🚨 PASSWORD VALIDATION LOGIC (Cloned from Registration Screen) ---
   void _checkPasswordStrength(String val) {
     if (val.isEmpty) {
       setState(() => _passwordStrength = "");
@@ -131,7 +134,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     setState(() {});
   }
 
-  // --- LOGIC: EXIT GUARD ---
   bool _isFormDirty() {
     return _firstNameController.text.isNotEmpty ||
         _parentNameController.text.isNotEmpty ||
@@ -176,7 +178,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         false;
   }
 
-  // --- LOGIC: FETCH DATA & SMART ID ---
   Future<void> _fetchSchoolConfig() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -249,7 +250,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         .toUpperCase();
   }
 
-  // --- LOGIC: IMAGE & SUBMIT ---
   Future<void> _pickImage() async {
     setState(() => isInteractingWithSystem = true);
     final XFile? image = await _picker.pickImage(
@@ -276,7 +276,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
       return;
     }
 
-    // 🚨 NEW: Validating using the simple rules
     String pwd = _parentPasswordController.text;
     if (pwd.length < 6 ||
         !RegExp(r'[a-zA-Z]').hasMatch(pwd) ||
@@ -294,6 +293,31 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
       return;
     }
 
+    // 🚨 SMART LOGIN ID GENERATOR
+    String exactLoginId = _parentEmailController.text.trim();
+    String rawLoginPhone = _loginPhoneController.text.trim();
+
+    if (_usePhoneAsLogin) {
+      if (rawLoginPhone.isEmpty) {
+        showAuthErrorDialog("Please provide a Phone Number for the Login ID.");
+        return;
+      }
+      String formattedPhone = rawLoginPhone.replaceAll(' ', '');
+      if (formattedPhone.startsWith('0')) {
+        formattedPhone = '+234${formattedPhone.substring(1)}';
+      } else if (!formattedPhone.startsWith('+')) {
+        formattedPhone = '+234$formattedPhone';
+      }
+      exactLoginId = '$formattedPhone@trideta.com';
+    } else {
+      if (exactLoginId.isEmpty || !exactLoginId.contains('@')) {
+        showAuthErrorDialog(
+          "Please provide a valid Email Address for the Login ID.",
+        );
+        return;
+      }
+    }
+
     setState(() => _isLoading = true);
     try {
       final user = _supabase.auth.currentUser;
@@ -303,46 +327,99 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
           .eq('id', user!.id)
           .single();
       final schoolId = profile['school_id'];
-      final email = _parentEmailController.text.trim();
-      final password = _parentPasswordController.text;
 
-      // SIBLING CHECK
-      final List existing = await _supabase
-          .from('students')
-          .select('parent_account_created, first_name')
-          .eq('parent_email', email)
-          .eq('school_id', schoolId)
-          .limit(1);
+      // 🚨 ADVANCED SIBLING CHECK
+      List existing = [];
+      String searchPhone = _usePhoneAsLogin
+          ? rawLoginPhone
+          : _parentPhoneController.text.trim();
+
+      if (searchPhone.isNotEmpty) {
+        existing = await _supabase
+            .from('students')
+            .select('parent_account_created, first_name, parent_email')
+            .eq('parent_phone', searchPhone)
+            .eq('school_id', schoolId)
+            .limit(1);
+      } else {
+        existing = await _supabase
+            .from('students')
+            .select('parent_account_created, first_name, parent_email')
+            .eq('parent_email', exactLoginId)
+            .eq('school_id', schoolId)
+            .limit(1);
+      }
 
       bool isExistingParent = existing.isNotEmpty;
-      bool accountAlreadyCreated =
-          isExistingParent && existing[0]['parent_account_created'] == true;
+      bool accountAlreadyCreated = false;
+      String finalLoginIdToSave = exactLoginId;
 
       if (isExistingParent) {
         setState(() => _isLoading = false);
+        String siblingName = existing[0]['first_name'];
+        String oldParentEmail = existing[0]['parent_email'] ?? '';
+        accountAlreadyCreated = existing[0]['parent_account_created'] == true;
+
         bool confirmLink = await _showSiblingDialog(
-          existing[0]['first_name'],
-          email,
+          siblingName,
+          searchPhone.isNotEmpty ? searchPhone : exactLoginId,
         );
+
         if (!confirmLink) return;
         setState(() => _isLoading = true);
+
+        // 🚨 THE SERVER-SIDE MIGRATION MAGIC
+        if (_usePhoneAsLogin &&
+            oldParentEmail.isNotEmpty &&
+            !oldParentEmail.contains('@trideta.com')) {
+          try {
+            final response = await _supabase.functions.invoke(
+              'migrate-parent-email',
+              body: {'oldEmail': oldParentEmail, 'newEmail': exactLoginId},
+            );
+
+            // Check if the Edge Function sent back a custom error
+            if (response.data != null && response.data['error'] != null) {
+              setState(() => _isLoading = false);
+              showAuthErrorDialog(
+                "Migration Failed: ${response.data['error']}",
+              );
+              return;
+            }
+
+            // We NO LONGER update the database from Flutter. The Edge Function did it!
+            finalLoginIdToSave = exactLoginId;
+          } catch (e) {
+            setState(() => _isLoading = false);
+            showAuthErrorDialog("App Error: ${e.toString()}");
+            return;
+          }
+        } else {
+          finalLoginIdToSave = oldParentEmail.isNotEmpty
+              ? oldParentEmail
+              : exactLoginId;
+        }
       } else {
-        // IF NOT A SIBLING, CREATE THE AUTH ACCOUNT
+        // NOT A SIBLING, CREATE NEW
         try {
           await _supabase.functions.invoke(
             'create-parent-account',
             body: {
-              'email': email,
-              'password': password,
-              'phone': _parentPhoneController.text.trim(),
+              'email': _usePhoneAsLogin ? '' : exactLoginId,
+              'password': pwd,
+              'phone': _usePhoneAsLogin
+                  ? rawLoginPhone
+                  : _parentPhoneController.text.trim(),
               'studentName': _firstNameController.text.trim(),
+              'usePhoneForLogin': _usePhoneAsLogin,
             },
           );
           accountAlreadyCreated = true;
+          finalLoginIdToSave = exactLoginId;
         } catch (e) {
           setState(() => _isLoading = false);
           showAuthErrorDialog(
-            "Failed to create parent login account on the server. Ensure the email is valid and the edge function is running.",
+            "Failed to create parent login account. Ensure the network is stable.",
           );
           return;
         }
@@ -362,6 +439,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
           .from('student_passports')
           .getPublicUrl(fileName);
 
+      // 🚨 INSERT NEW STUDENT
       await _supabase.from('students').insert({
         'school_id': schoolId,
         'first_name': _firstNameController.text.trim(),
@@ -374,8 +452,8 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         'dob': _dobController.text.trim(),
         'passport_url': passportUrl,
         'parent_name': _parentNameController.text.trim(),
-        'parent_email': email,
-        'parent_phone': _parentPhoneController.text.trim(),
+        'parent_email': finalLoginIdToSave, // Inherited or New
+        'parent_phone': searchPhone,
         'address': _addressController.text.trim(),
         'session_admitted': _selectedSession,
         'category': _studentCategory,
@@ -598,32 +676,98 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
                     fieldBgColor,
                   ),
                   const SizedBox(height: 15),
-                  _buildTextField(
-                    "Parent Email (Login ID)",
-                    _parentEmailController,
-                    Icons.email,
-                    isDark,
-                    primaryColor,
-                    textColor,
-                    subTextColor,
-                    fieldBgColor,
-                    type: TextInputType.emailAddress,
-                  ),
-                  const SizedBox(height: 15),
-                  _buildTextField(
-                    "Phone Number",
-                    _parentPhoneController,
-                    Icons.phone,
-                    isDark,
-                    primaryColor,
-                    textColor,
-                    subTextColor,
-                    fieldBgColor,
-                    type: TextInputType.phone,
+
+                  Container(
+                    decoration: BoxDecoration(
+                      color: primaryColor.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: primaryColor.withOpacity(0.2)),
+                    ),
+                    child: CheckboxListTile(
+                      title: const Text(
+                        "Use Phone Number for Login ID",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        "Parent will log in using their phone instead of email",
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      value: _usePhoneAsLogin,
+                      activeColor: primaryColor,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      onChanged: (val) {
+                        setState(() {
+                          _usePhoneAsLogin = val ?? false;
+                          if (_usePhoneAsLogin) {
+                            _parentEmailController.clear();
+                          } else {
+                            _loginPhoneController.clear();
+                          }
+                        });
+                      },
+                    ),
                   ),
                   const SizedBox(height: 15),
 
-                  // 🚨 NEW: PASSWORD FIELDS CLONED FROM REGISTRATION SCREEN
+                  if (_usePhoneAsLogin) ...[
+                    _buildTextField(
+                      "Parent Phone Number (Login ID)",
+                      _loginPhoneController,
+                      Icons.phone_android,
+                      isDark,
+                      primaryColor,
+                      textColor,
+                      subTextColor,
+                      fieldBgColor,
+                      type: TextInputType.phone,
+                      optional: false,
+                    ),
+                    const SizedBox(height: 15),
+                    _buildTextField(
+                      "Emergency Contact Number (Optional)",
+                      _parentPhoneController,
+                      Icons.phone,
+                      isDark,
+                      primaryColor,
+                      textColor,
+                      subTextColor,
+                      fieldBgColor,
+                      type: TextInputType.phone,
+                      optional: true,
+                    ),
+                  ] else ...[
+                    _buildTextField(
+                      "Parent Email Address (Login ID)",
+                      _parentEmailController,
+                      Icons.email,
+                      isDark,
+                      primaryColor,
+                      textColor,
+                      subTextColor,
+                      fieldBgColor,
+                      type: TextInputType.emailAddress,
+                      optional: false,
+                    ),
+                    const SizedBox(height: 15),
+                    _buildTextField(
+                      "Emergency Phone Number (Optional)",
+                      _parentPhoneController,
+                      Icons.phone,
+                      isDark,
+                      primaryColor,
+                      textColor,
+                      subTextColor,
+                      fieldBgColor,
+                      type: TextInputType.phone,
+                      optional: true,
+                    ),
+                  ],
+
+                  const SizedBox(height: 15),
+
                   TextFormField(
                     controller: _parentPasswordController,
                     obscureText: _isObscure1,
@@ -764,8 +908,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
       ),
     );
   }
-
-  // --- UI HELPERS ---
 
   Widget _buildPassportHeader(bool isDark, Color primaryColor) {
     return Center(
@@ -992,7 +1134,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     );
   }
 
-  Future<bool> _showSiblingDialog(String name, String email) async {
+  Future<bool> _showSiblingDialog(String name, String contactInfo) async {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color primaryColor = Theme.of(context).primaryColor;
     return await showDialog(
@@ -1008,7 +1150,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
               size: 40,
             ),
             content: Text(
-              "Sibling Detected!\n\n'$email' is already linked to $name. Link to the same parent account?",
+              "Sibling Detected!\n\n'$contactInfo' is already linked to $name. Link to the same parent account?",
               textAlign: TextAlign.center,
             ),
             actions: [
@@ -1034,7 +1176,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
   }
 }
 
-// 🚨 Admission Lock Overlay
 class AdmissionLockOverlay extends StatelessWidget {
   final VoidCallback onRefresh;
   const AdmissionLockOverlay({super.key, required this.onRefresh});

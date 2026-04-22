@@ -117,8 +117,63 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   Future<void> _requestOTP() async {
     final email = _emailController.text.trim();
     if (email.isEmpty) {
-      showAuthErrorDialog("Please enter your email address first.");
+      showAuthErrorDialog("Please enter your Login ID first.");
       return;
+    }
+
+    // 🚨 REQUIREMENT 3: ADMIN INTERCEPT FOR PHONE LOGINS
+    final isPhoneLogin = !email.contains('@');
+
+    if (isPhoneLogin) {
+      bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+      // It's a phone number! Stop them and show the Admin message.
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Column(
+            children: [
+              Icon(Icons.admin_panel_settings, size: 50, color: Colors.orange),
+              SizedBox(height: 10),
+              Text(
+                "Admin Assistance Required",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: const Text(
+            "For security reasons, phone number logins cannot be reset via SMS.\n\nPlease contact your School Administrator to securely reset your password.",
+            textAlign: TextAlign.center,
+            style: TextStyle(height: 1.5),
+          ),
+          actions: [
+            Center(
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).primaryColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text(
+                  "GOT IT",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+      return; // 🚨 Stop the function here so it doesn't contact Supabase!
     }
 
     if (ForgotPasswordScreen.globalLastOtpRequestTime != null &&
@@ -277,7 +332,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    "Enter your email address and we will send you a 6-digit recovery code.",
+                    "Enter your Email or Phone Number to recover your account.",
                     style: TextStyle(fontSize: 16, color: subTextColor),
                   ),
                   const SizedBox(height: 40),
@@ -286,9 +341,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                     keyboardType: TextInputType.emailAddress,
                     style: TextStyle(color: textColor),
                     decoration: InputDecoration(
-                      labelText: "Email Address",
+                      labelText: "Email or Phone Number",
                       prefixIcon: Icon(
-                        Icons.email_outlined,
+                        Icons.person_outline,
                         color: subTextColor,
                       ),
                       labelStyle: TextStyle(color: subTextColor),

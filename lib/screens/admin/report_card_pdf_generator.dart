@@ -41,11 +41,13 @@ class ReportCardPDFGenerator extends StatefulWidget {
     required String admissionNo,
     required PdfPageFormat format,
   }) async {
+    // 1. Fetch all required data
     final schoolData = await supabase
         .from('schools')
-        .select('name, address, contact_phone, logo_url')
+        .select('name, address, contact_phone, logo_url, brand_color')
         .eq('id', schoolId)
         .single();
+
     final resultData = await supabase
         .from('term_results')
         .select()
@@ -53,6 +55,7 @@ class ReportCardPDFGenerator extends StatefulWidget {
         .eq('academic_session', session)
         .eq('term', term)
         .maybeSingle();
+
     final scoresData = await supabase
         .from('exam_scores')
         .select()
@@ -60,6 +63,7 @@ class ReportCardPDFGenerator extends StatefulWidget {
         .eq('academic_session', session)
         .eq('term', term)
         .order('subject_name', ascending: true);
+
     final affectiveData = await supabase
         .from('affective_traits')
         .select()
@@ -67,6 +71,7 @@ class ReportCardPDFGenerator extends StatefulWidget {
         .eq('academic_session', session)
         .eq('term', term)
         .maybeSingle();
+
     final studentData = await supabase
         .from('students')
         .select('id, passport_url')
@@ -80,9 +85,9 @@ class ReportCardPDFGenerator extends StatefulWidget {
         .eq('class_level', className);
     final int classTotal = classCountRes.length;
 
-    // 🚨 SMARTER HEADMASTER VS PRINCIPAL LOGIC 🚨
+    // 2. Determine head title (Headmaster vs Principal)
     String clsLower = className.toLowerCase();
-    String headTitle = "Principal"; // Default
+    String headTitle = "Principal";
 
     bool isSecondary =
         clsLower.contains('jss') ||
@@ -101,7 +106,6 @@ class ReportCardPDFGenerator extends StatefulWidget {
     } else if (isSecondary) {
       headTitle = "Principal";
     } else if (clsLower.contains('basic')) {
-      // Basic 1-6 = Primary (Headmaster), Basic 7-9 = JSS (Principal)
       if (clsLower.contains('7') ||
           clsLower.contains('8') ||
           clsLower.contains('9')) {
@@ -111,6 +115,82 @@ class ReportCardPDFGenerator extends StatefulWidget {
       }
     }
 
+    // 3. Parse brand color or use default
+    PdfColor primaryColor = PdfColors.blue900;
+    PdfColor accentColor = PdfColors.blue800;
+    PdfColor lightAccent = PdfColors.blue100;
+
+    if (schoolData['brand_color'] != null) {
+      try {
+        String brandColorHex = schoolData['brand_color'].toString().replaceAll(
+          '#',
+          '',
+        );
+        if (brandColorHex.length == 6) {
+          int colorValue = int.parse(brandColorHex, radix: 16);
+          int r = (colorValue >> 16) & 0xFF;
+          int g = (colorValue >> 8) & 0xFF;
+          int b = colorValue & 0xFF;
+
+          primaryColor = PdfColor(r / 255, g / 255, b / 255);
+          accentColor = PdfColor(
+            (r * 0.85) / 255,
+            (g * 0.85) / 255,
+            (b * 0.85) / 255,
+          );
+          lightAccent = PdfColor(
+            (r + (255 - r) * 0.9) / 255,
+            (g + (255 - g) * 0.9) / 255,
+            (b + (255 - b) * 0.9) / 255,
+          );
+        }
+      } catch (e) {}
+    }
+
+    // 4. Load Dual Fonts
+    final englishFont = await PdfGoogleFonts.openSansRegular();
+    final englishFontBold = await PdfGoogleFonts.openSansBold();
+    final arabicFont = await PdfGoogleFonts.notoSansArabicRegular();
+    final arabicFontBold = await PdfGoogleFonts.notoSansArabicBold();
+
+    final pdfTheme = pw.ThemeData.withFont(
+      base: englishFont,
+      bold: englishFontBold,
+      fontFallback: [arabicFont],
+    );
+
+    // 5. Smart Arabic Detector & Explicit Font Shaper
+    bool containsArabic(String text) {
+      return RegExp(
+        r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]',
+      ).hasMatch(text);
+    }
+
+    pw.Widget smartText(
+      String text,
+      pw.TextStyle style, {
+      pw.TextAlign? align,
+    }) {
+      bool isRtl = containsArabic(text);
+
+      pw.TextStyle finalStyle = style;
+      if (isRtl) {
+        bool isBold = style.fontWeight == pw.FontWeight.bold;
+        finalStyle = style.copyWith(
+          font: isBold ? arabicFontBold : arabicFont,
+          fontFallback: [englishFont],
+        );
+      }
+
+      return pw.Text(
+        text,
+        style: finalStyle,
+        textAlign: align ?? (isRtl ? pw.TextAlign.right : pw.TextAlign.left),
+        textDirection: isRtl ? pw.TextDirection.rtl : pw.TextDirection.ltr,
+      );
+    }
+
+    // 6. Load Images
     pw.ImageProvider? logoProvider;
     if (schoolData['logo_url'] != null) {
       try {
@@ -126,72 +206,102 @@ class ReportCardPDFGenerator extends StatefulWidget {
       } catch (e) {}
     }
 
+    // 7. UI Builders
     pw.Widget buildHeader() {
       return pw.Column(
         children: [
+          pw.Container(
+            width: double.infinity,
+            height: 3,
+            decoration: pw.BoxDecoration(
+              gradient: pw.LinearGradient(
+                colors: [primaryColor, accentColor, primaryColor],
+              ),
+            ),
+          ),
+          pw.SizedBox(height: 12),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
-              if (logoProvider != null)
-                pw.Container(
-                  width: 70,
-                  height: 70,
-                  child: pw.Image(logoProvider, fit: pw.BoxFit.contain),
-                )
-              else
-                pw.SizedBox(width: 70, height: 70),
+              pw.Container(width: 80),
               pw.Expanded(
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.center,
                   children: [
-                    pw.Text(
+                    if (logoProvider != null)
+                      pw.Container(
+                        width: 50,
+                        height: 50,
+                        margin: const pw.EdgeInsets.only(bottom: 6),
+                        child: pw.Image(logoProvider, fit: pw.BoxFit.contain),
+                      ),
+
+                    smartText(
                       (schoolData['name'] ?? 'OUR SCHOOL').toUpperCase(),
-                      style: pw.TextStyle(
+                      pw.TextStyle(
                         fontSize: 22,
                         fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.blue900,
+                        color: primaryColor,
+                        letterSpacing: 1.2,
                       ),
-                      textAlign: pw.TextAlign.center,
+                      align: pw.TextAlign.center,
                     ),
+
                     pw.SizedBox(height: 4),
-                    pw.Text(
-                      schoolData['address'] ?? 'School Address',
-                      style: const pw.TextStyle(
-                        fontSize: 10,
-                        color: PdfColors.grey700,
+
+                    if (schoolData['address'] != null)
+                      smartText(
+                        schoolData['address'],
+                        pw.TextStyle(fontSize: 9, color: PdfColors.grey800),
+                        align: pw.TextAlign.center,
                       ),
-                    ),
-                    pw.Text(
-                      schoolData['contact_phone'] ?? '',
-                      style: const pw.TextStyle(
-                        fontSize: 10,
-                        color: PdfColors.grey700,
+
+                    if (schoolData['contact_phone'] != null)
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.only(top: 2),
+                        child: pw.Text(
+                          "☎ ${schoolData['contact_phone']}",
+                          style: const pw.TextStyle(
+                            fontSize: 9,
+                            color: PdfColors.grey700,
+                          ),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
-              pw.SizedBox(width: 70),
+              pw.Container(width: 80),
             ],
           ),
-          pw.SizedBox(height: 15),
+          pw.SizedBox(height: 12),
           pw.Container(
             width: double.infinity,
-            padding: const pw.EdgeInsets.symmetric(vertical: 8),
+            padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 20),
             decoration: pw.BoxDecoration(
-              color: PdfColors.blue800,
-              borderRadius: pw.BorderRadius.circular(5),
+              gradient: pw.LinearGradient(colors: [primaryColor, accentColor]),
+              borderRadius: pw.BorderRadius.circular(6),
+              boxShadow: const [
+                pw.BoxShadow(
+                  color: PdfColors.grey300,
+                  offset: PdfPoint(0, 2),
+                  blurRadius: 4,
+                ),
+              ],
             ),
             child: pw.Text(
               "OFFICIAL TERMINAL REPORT CARD",
               style: pw.TextStyle(
                 color: PdfColors.white,
                 fontWeight: pw.FontWeight.bold,
-                fontSize: 14,
+                fontSize: 13,
+                letterSpacing: 1.5,
               ),
               textAlign: pw.TextAlign.center,
             ),
           ),
+          pw.SizedBox(height: 8),
+          pw.Container(width: double.infinity, height: 2, color: lightAccent),
         ],
       );
     }
@@ -209,15 +319,17 @@ class ReportCardPDFGenerator extends StatefulWidget {
           : "N/A";
 
       return pw.Container(
-        padding: const pw.EdgeInsets.all(12),
+        padding: const pw.EdgeInsets.all(10),
         decoration: pw.BoxDecoration(
-          border: pw.Border.all(color: PdfColors.grey400),
+          color: lightAccent,
+          border: pw.Border.all(color: primaryColor, width: 1.5),
           borderRadius: pw.BorderRadius.circular(8),
         ),
         child: pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
             pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
               children: [
                 if (studentPhotoProvider != null)
                   pw.Container(
@@ -225,8 +337,8 @@ class ReportCardPDFGenerator extends StatefulWidget {
                     height: 50,
                     margin: const pw.EdgeInsets.only(right: 12),
                     decoration: pw.BoxDecoration(
-                      border: pw.Border.all(color: PdfColors.grey400),
-                      borderRadius: pw.BorderRadius.circular(4),
+                      border: pw.Border.all(color: primaryColor, width: 2),
+                      borderRadius: pw.BorderRadius.circular(6),
                       image: pw.DecorationImage(
                         image: studentPhotoProvider,
                         fit: pw.BoxFit.cover,
@@ -240,104 +352,58 @@ class ReportCardPDFGenerator extends StatefulWidget {
                       children: [
                         pw.Text(
                           "Name: ",
-                          style: pw.TextStyle(
-                            color: PdfColors.grey600,
-                            fontSize: 11,
-                            fontWeight: pw.FontWeight.bold,
+                          style: const pw.TextStyle(
+                            fontSize: 10,
+                            color: PdfColors.grey700,
                           ),
                         ),
-                        pw.Text(
-                          studentName.toUpperCase(),
-                          style: pw.TextStyle(
-                            fontSize: 11,
+                        smartText(
+                          studentName,
+                          pw.TextStyle(
+                            fontSize: 10,
                             fontWeight: pw.FontWeight.bold,
+                            color: primaryColor,
                           ),
                         ),
                       ],
                     ),
-                    pw.SizedBox(height: 5),
+                    pw.SizedBox(height: 3),
                     pw.Row(
                       children: [
                         pw.Text(
                           "Admission No: ",
-                          style: pw.TextStyle(
-                            color: PdfColors.grey600,
-                            fontSize: 11,
-                            fontWeight: pw.FontWeight.bold,
+                          style: const pw.TextStyle(
+                            fontSize: 9,
+                            color: PdfColors.grey700,
                           ),
                         ),
                         pw.Text(
                           admissionNo,
                           style: pw.TextStyle(
-                            fontSize: 11,
+                            fontSize: 9,
                             fontWeight: pw.FontWeight.bold,
                           ),
                         ),
                       ],
                     ),
-                    pw.SizedBox(height: 5),
+                    pw.SizedBox(height: 3),
                     pw.Row(
                       children: [
                         pw.Text(
                           "Class: ",
-                          style: pw.TextStyle(
-                            color: PdfColors.grey600,
-                            fontSize: 11,
-                            fontWeight: pw.FontWeight.bold,
+                          style: const pw.TextStyle(
+                            fontSize: 9,
+                            color: PdfColors.grey700,
                           ),
                         ),
-                        pw.Text(
+                        smartText(
                           className,
-                          style: pw.TextStyle(
-                            fontSize: 11,
+                          pw.TextStyle(
+                            fontSize: 9,
                             fontWeight: pw.FontWeight.bold,
                           ),
                         ),
                       ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Row(
-                  children: [
-                    pw.Text(
-                      "Session: ",
-                      style: pw.TextStyle(
-                        color: PdfColors.grey600,
-                        fontSize: 11,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
-                    pw.Text(
-                      session,
-                      style: pw.TextStyle(
-                        fontSize: 11,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                pw.SizedBox(height: 5),
-                pw.Row(
-                  children: [
-                    pw.Text(
-                      "Term: ",
-                      style: pw.TextStyle(
-                        color: PdfColors.grey600,
-                        fontSize: 11,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
-                    pw.Text(
-                      term,
-                      style: pw.TextStyle(
-                        fontSize: 11,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
                     ),
                   ],
                 ),
@@ -346,38 +412,82 @@ class ReportCardPDFGenerator extends StatefulWidget {
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.end,
               children: [
-                pw.Text(
-                  "CLASS POSITION",
-                  style: pw.TextStyle(
-                    fontSize: 9,
-                    color: PdfColors.grey600,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
+                pw.Row(
+                  children: [
+                    pw.Text(
+                      "Session: ",
+                      style: const pw.TextStyle(
+                        fontSize: 9,
+                        color: PdfColors.grey700,
+                      ),
+                    ),
+                    pw.Text(
+                      session,
+                      style: pw.TextStyle(
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
-                pw.Text(
-                  positionStr,
-                  style: pw.TextStyle(
-                    fontSize: 16,
-                    color: PdfColors.red800,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
+                pw.SizedBox(height: 3),
+                pw.Row(
+                  children: [
+                    pw.Text(
+                      "Term: ",
+                      style: const pw.TextStyle(
+                        fontSize: 9,
+                        color: PdfColors.grey700,
+                      ),
+                    ),
+                    pw.Text(
+                      term,
+                      style: pw.TextStyle(
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
-                pw.SizedBox(height: 5),
-                pw.Text(
-                  "TERM AVERAGE",
-                  style: pw.TextStyle(
-                    fontSize: 9,
-                    color: PdfColors.grey600,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
+                pw.SizedBox(height: 3),
+                pw.Row(
+                  children: [
+                    pw.Text(
+                      "Position: ",
+                      style: const pw.TextStyle(
+                        fontSize: 9,
+                        color: PdfColors.grey700,
+                      ),
+                    ),
+                    pw.Text(
+                      positionStr,
+                      style: pw.TextStyle(
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                        color: primaryColor,
+                      ),
+                    ),
+                  ],
                 ),
-                pw.Text(
-                  averageStr,
-                  style: pw.TextStyle(
-                    fontSize: 14,
-                    color: PdfColors.blue800,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
+                pw.SizedBox(height: 3),
+                pw.Row(
+                  children: [
+                    pw.Text(
+                      "Average: ",
+                      style: const pw.TextStyle(
+                        fontSize: 9,
+                        color: PdfColors.grey700,
+                      ),
+                    ),
+                    pw.Text(
+                      averageStr,
+                      style: pw.TextStyle(
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                        color: primaryColor,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -387,53 +497,256 @@ class ReportCardPDFGenerator extends StatefulWidget {
     }
 
     pw.Widget buildCognitiveTable() {
-      final headers = [
-        'SUBJECTS',
-        'ATT\n(5)',
-        'ASS\n(10)',
-        'MID\n(25)',
-        'CA\n(40)',
-        'EXAM\n(60)',
-        'TOTAL\n(100)',
-        'GRD',
-        'REMARK',
-      ];
-      final tableData = scoresData.map((s) {
-        num att = s['ca_attendance'] as num? ?? 0;
-        num ass = s['ca_assignment'] as num? ?? 0;
-        num mid = s['ca_midterm'] as num? ?? 0;
-        num caTotal = att + ass + mid;
-        num exam = s['exam_score'] as num? ?? 0;
-        num total = s['total_score'] as num? ?? 0;
-        return [
-          s['subject_name'] ?? '',
-          s['ca_attendance'] != null ? att.toInt().toString() : '-',
-          s['ca_assignment'] != null ? ass.toInt().toString() : '-',
-          s['ca_midterm'] != null ? mid.toInt().toString() : '-',
-          caTotal.toInt().toString(),
-          s['exam_score'] != null ? exam.toInt().toString() : '-',
-          s['total_score'] != null ? total.toInt().toString() : '-',
-          s['grade'] ?? '-',
-          s['remark'] ?? '-',
-        ];
-      }).toList();
+      List<pw.TableRow> rows = [];
 
-      return pw.TableHelper.fromTextArray(
-        headers: headers,
-        data: tableData,
-        headerStyle: pw.TextStyle(
-          color: PdfColors.white,
-          fontWeight: pw.FontWeight.bold,
-          fontSize: 9,
+      rows.add(
+        pw.TableRow(
+          decoration: pw.BoxDecoration(
+            gradient: pw.LinearGradient(colors: [primaryColor, accentColor]),
+          ),
+          children: [
+            // Reduced vertical padding to compress table
+            pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(
+                vertical: 4,
+                horizontal: 8,
+              ),
+              child: pw.Text(
+                "SUBJECT",
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                ),
+              ),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(
+                vertical: 4,
+                horizontal: 8,
+              ),
+              child: pw.Text(
+                "CA",
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                ),
+                textAlign: pw.TextAlign.center,
+              ),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(
+                vertical: 4,
+                horizontal: 8,
+              ),
+              child: pw.Text(
+                "EXAM",
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                ),
+                textAlign: pw.TextAlign.center,
+              ),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(
+                vertical: 4,
+                horizontal: 8,
+              ),
+              child: pw.Text(
+                "TOTAL",
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                ),
+                textAlign: pw.TextAlign.center,
+              ),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(
+                vertical: 4,
+                horizontal: 8,
+              ),
+              child: pw.Text(
+                "GRADE",
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                ),
+                textAlign: pw.TextAlign.center,
+              ),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(
+                vertical: 4,
+                horizontal: 8,
+              ),
+              child: pw.Text(
+                "REMARK",
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                ),
+                textAlign: pw.TextAlign.center,
+              ),
+            ),
+          ],
         ),
-        headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
-        cellStyle: const pw.TextStyle(fontSize: 10),
-        cellAlignment: pw.Alignment.center,
-        cellAlignments: {0: pw.Alignment.centerLeft},
-        border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-        rowDecoration: const pw.BoxDecoration(
-          border: pw.Border(
-            bottom: pw.BorderSide(color: PdfColors.grey200, width: 0.5),
+      );
+
+      for (int i = 0; i < scoresData.length; i++) {
+        final score = scoresData[i];
+        bool isEven = i % 2 == 0;
+
+        num att = score['ca_attendance'] ?? 0;
+        num ass = score['ca_assignment'] ?? 0;
+        num mid = score['ca_midterm'] ?? 0;
+        num caTotal = att + ass + mid;
+
+        bool hasCa =
+            score['ca_attendance'] != null ||
+            score['ca_assignment'] != null ||
+            score['ca_midterm'] != null;
+        String caDisplay = hasCa
+            ? (caTotal % 1 == 0
+                  ? caTotal.toInt().toString()
+                  : caTotal.toStringAsFixed(1))
+            : '-';
+
+        num examVal = score['exam_score'] ?? 0;
+        String examDisplay = score['exam_score'] != null
+            ? (examVal % 1 == 0
+                  ? examVal.toInt().toString()
+                  : examVal.toStringAsFixed(1))
+            : '-';
+
+        num totalVal = score['total_score'] ?? 0;
+        String totalDisplay = score['total_score'] != null
+            ? (totalVal % 1 == 0
+                  ? totalVal.toInt().toString()
+                  : totalVal.toStringAsFixed(1))
+            : '-';
+
+        rows.add(
+          pw.TableRow(
+            decoration: pw.BoxDecoration(
+              color: isEven ? PdfColors.white : lightAccent,
+            ),
+            children: [
+              // Reduced vertical padding to compress rows for 18 subjects
+              pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(
+                  vertical: 4,
+                  horizontal: 8,
+                ),
+                child: smartText(
+                  score['subject_name'] ?? '',
+                  const pw.TextStyle(fontSize: 9),
+                ),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(
+                  vertical: 4,
+                  horizontal: 8,
+                ),
+                child: pw.Text(
+                  caDisplay,
+                  style: const pw.TextStyle(fontSize: 9),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(
+                  vertical: 4,
+                  horizontal: 8,
+                ),
+                child: pw.Text(
+                  examDisplay,
+                  style: const pw.TextStyle(fontSize: 9),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(
+                  vertical: 4,
+                  horizontal: 8,
+                ),
+                child: pw.Text(
+                  totalDisplay,
+                  style: pw.TextStyle(
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                    color: primaryColor,
+                  ),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(
+                  vertical: 4,
+                  horizontal: 8,
+                ),
+                child: pw.Text(
+                  score['grade'] ?? '-',
+                  style: pw.TextStyle(
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(
+                  vertical: 4,
+                  horizontal: 8,
+                ),
+                child: pw.Text(
+                  score['remark'] ?? '-',
+                  style: pw.TextStyle(
+                    fontSize: 8,
+                    fontStyle: pw.FontStyle.italic,
+                  ),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      return pw.Container(
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: primaryColor, width: 1.5),
+          borderRadius: pw.BorderRadius.circular(6),
+        ),
+        child: pw.ClipRRect(
+          horizontalRadius: 6,
+          verticalRadius: 6,
+          child: pw.Table(
+            border: const pw.TableBorder(
+              horizontalInside: pw.BorderSide(
+                color: PdfColors.grey300,
+                width: 0.5,
+              ),
+              verticalInside: pw.BorderSide(
+                color: PdfColors.grey300,
+                width: 0.5,
+              ),
+            ),
+            columnWidths: const {
+              0: pw.FlexColumnWidth(3),
+              1: pw.FlexColumnWidth(1),
+              2: pw.FlexColumnWidth(1),
+              3: pw.FlexColumnWidth(1),
+              4: pw.FlexColumnWidth(1),
+              5: pw.FlexColumnWidth(2),
+            },
+            children: rows,
           ),
         ),
       );
@@ -446,12 +759,24 @@ class ReportCardPDFGenerator extends StatefulWidget {
           child: pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text(trait, style: const pw.TextStyle(fontSize: 10)),
-              pw.Text(
-                score,
-                style: pw.TextStyle(
-                  fontSize: 10,
-                  fontWeight: pw.FontWeight.bold,
+              pw.Text(trait, style: const pw.TextStyle(fontSize: 9)),
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 1,
+                ),
+                decoration: pw.BoxDecoration(
+                  color: lightAccent,
+                  borderRadius: pw.BorderRadius.circular(4),
+                  border: pw.Border.all(color: primaryColor, width: 0.5),
+                ),
+                child: pw.Text(
+                  score,
+                  style: pw.TextStyle(
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                    color: primaryColor,
+                  ),
                 ),
               ),
             ],
@@ -464,7 +789,9 @@ class ReportCardPDFGenerator extends StatefulWidget {
           width: double.infinity,
           padding: const pw.EdgeInsets.all(8),
           decoration: pw.BoxDecoration(
-            border: pw.Border.all(color: PdfColors.grey400),
+            color: PdfColors.grey50,
+            border: pw.Border.all(color: primaryColor, width: 1),
+            borderRadius: pw.BorderRadius.circular(6),
           ),
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -474,15 +801,16 @@ class ReportCardPDFGenerator extends StatefulWidget {
                 style: pw.TextStyle(
                   fontSize: 9,
                   fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.blue800,
+                  color: primaryColor,
                 ),
               ),
               pw.SizedBox(height: 4),
-              pw.Text(
+              smartText(
                 remark,
-                style: pw.TextStyle(
-                  fontSize: 10,
+                pw.TextStyle(
+                  fontSize: 9,
                   fontStyle: pw.FontStyle.italic,
+                  color: PdfColors.grey800,
                 ),
               ),
             ],
@@ -498,17 +826,29 @@ class ReportCardPDFGenerator extends StatefulWidget {
             child: pw.Container(
               padding: const pw.EdgeInsets.all(10),
               decoration: pw.BoxDecoration(
-                border: pw.Border.all(color: PdfColors.grey400),
+                color: PdfColors.white,
+                border: pw.Border.all(color: primaryColor, width: 1.5),
+                borderRadius: pw.BorderRadius.circular(6),
               ),
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Text(
-                    "AFFECTIVE DOMAIN (1-5)",
-                    style: pw.TextStyle(
-                      fontSize: 10,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.blue800,
+                  pw.Container(
+                    padding: const pw.EdgeInsets.symmetric(
+                      vertical: 3,
+                      horizontal: 6,
+                    ),
+                    decoration: pw.BoxDecoration(
+                      color: lightAccent,
+                      borderRadius: pw.BorderRadius.circular(4),
+                    ),
+                    child: pw.Text(
+                      "AFFECTIVE DOMAIN (1-5)",
+                      style: pw.TextStyle(
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                        color: primaryColor,
+                      ),
                     ),
                   ),
                   pw.SizedBox(height: 8),
@@ -545,7 +885,7 @@ class ReportCardPDFGenerator extends StatefulWidget {
                   "Form Master's Remark:",
                   affectiveData?['class_teacher_remark'] ?? "Awaiting Remark.",
                 ),
-                pw.SizedBox(height: 10),
+                pw.SizedBox(height: 8),
                 remarkBox(
                   "$headTitle's Remark:",
                   resultData?['principal_remark'] ?? "Awaiting Remark.",
@@ -558,80 +898,119 @@ class ReportCardPDFGenerator extends StatefulWidget {
     }
 
     pw.Widget buildSignatures() {
-      return pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Column(
-            children: [
-              pw.Container(
-                width: 150,
-                decoration: const pw.BoxDecoration(
-                  border: pw.Border(
-                    bottom: pw.BorderSide(color: PdfColors.black, width: 1),
+      return pw.Container(
+        padding: const pw.EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+        decoration: pw.BoxDecoration(
+          color: lightAccent,
+          borderRadius: pw.BorderRadius.circular(6),
+        ),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              children: [
+                pw.Container(
+                  width: 160,
+                  height: 35,
+                  decoration: const pw.BoxDecoration(
+                    border: pw.Border(
+                      bottom: pw.BorderSide(
+                        color: PdfColors.grey700,
+                        width: 1.5,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              pw.SizedBox(height: 5),
-              pw.Text(
-                "Class Teacher's Signature & Date",
-                style: const pw.TextStyle(
-                  fontSize: 9,
-                  color: PdfColors.grey700,
-                ),
-              ),
-            ],
-          ),
-          pw.Column(
-            children: [
-              pw.Container(
-                width: 150,
-                decoration: const pw.BoxDecoration(
-                  border: pw.Border(
-                    bottom: pw.BorderSide(color: PdfColors.black, width: 1),
+                pw.SizedBox(height: 6),
+                pw.Text(
+                  "Class Teacher's Signature",
+                  style: pw.TextStyle(
+                    fontSize: 8,
+                    color: PdfColors.grey700,
+                    fontWeight: pw.FontWeight.bold,
                   ),
                 ),
-              ),
-              pw.SizedBox(height: 5),
-              pw.Text(
-                "$headTitle's Signature & Date",
-                style: const pw.TextStyle(
-                  fontSize: 9,
-                  color: PdfColors.grey700,
+                pw.SizedBox(height: 2),
+                pw.Text(
+                  "Date: _______________",
+                  style: const pw.TextStyle(
+                    fontSize: 7,
+                    color: PdfColors.grey600,
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              children: [
+                pw.Container(
+                  width: 160,
+                  height: 35,
+                  decoration: const pw.BoxDecoration(
+                    border: pw.Border(
+                      bottom: pw.BorderSide(
+                        color: PdfColors.grey700,
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
+                ),
+                pw.SizedBox(height: 6),
+                pw.Text(
+                  "$headTitle's Signature",
+                  style: pw.TextStyle(
+                    fontSize: 8,
+                    color: PdfColors.grey700,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 2),
+                pw.Text(
+                  "Date: _______________",
+                  style: const pw.TextStyle(
+                    fontSize: 7,
+                    color: PdfColors.grey600,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       );
     }
 
+    // 8. Generate MultiPage PDF Document
     final pdf = pw.Document();
     pdf.addPage(
-      pw.Page(
+      pw.MultiPage(
         pageFormat: format,
-        margin: const pw.EdgeInsets.all(32),
+        theme: pdfTheme,
+        // Reduced page margins to allow more vertical space for 18 subjects
+        margin: const pw.EdgeInsets.symmetric(vertical: 24, horizontal: 30),
         build: (pw.Context context) {
-          return pw.FittedBox(
-            fit: pw.BoxFit.scaleDown,
-            alignment: pw.Alignment.topCenter,
-            child: pw.Container(
-              width: format.availableWidth,
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-                children: [
-                  buildHeader(),
-                  pw.SizedBox(height: 20),
-                  buildInfoBanner(),
-                  pw.SizedBox(height: 20),
-                  buildCognitiveTable(),
-                  pw.SizedBox(height: 20),
-                  buildAffectiveArea(),
-                  pw.SizedBox(height: 40),
-                  buildSignatures(),
-                ],
+          return [
+            buildHeader(),
+            pw.SizedBox(height: 10),
+            buildInfoBanner(),
+            pw.SizedBox(height: 10),
+            buildCognitiveTable(),
+            pw.SizedBox(height: 10),
+            buildAffectiveArea(),
+            pw.SizedBox(height: 15),
+            buildSignatures(),
+            pw.SizedBox(height: 10),
+            pw.Center(
+              child: pw.Text(
+                "This is an official document generated by the school management system",
+                style: pw.TextStyle(
+                  fontSize: 7,
+                  color: PdfColors.grey500,
+                  fontStyle: pw.FontStyle.italic,
+                ),
               ),
             ),
-          );
+          ];
         },
       ),
     );

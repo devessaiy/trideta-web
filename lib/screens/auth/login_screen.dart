@@ -148,53 +148,76 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
     setState(() => _canCheckBiometrics = canCheck);
   }
 
+  // ============================================================================
+  // 🚨 LOGIN LOGIC (With Phantom Email Implementation)
+  // ============================================================================
   Future<void> _handleLogin() async {
-    final email = _emailController.text.trim();
+    final rawInput = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) {
+    if (rawInput.isEmpty || password.isEmpty) {
       showAuthErrorDialog(
-        "Please enter both your email address and password to log in.",
+        "Please enter both your Login ID and password to log in.",
       );
       return;
     }
 
     setState(() => _isLoading = true);
 
+    // 🚨 PHANTOM EMAIL CONVERSION LOGIC
+    String loginId = rawInput;
+    final isPhoneLogin = !rawInput.contains('@');
+
+    if (isPhoneLogin) {
+      String formattedPhone = rawInput.replaceAll(' ', '');
+      if (formattedPhone.startsWith('0')) {
+        formattedPhone = '+234${formattedPhone.substring(1)}';
+      } else if (!formattedPhone.startsWith('+')) {
+        formattedPhone = '+234$formattedPhone';
+      }
+      loginId = '$formattedPhone@trideta.com';
+    }
+
     try {
-      String? error = await _authService.login(email, password);
+      // Pass the converted loginId to Supabase
+      String? error = await _authService.login(loginId, password);
 
       if (error == null) {
         final storedCreds = await _biometricService.getCredentials();
         final isBiometricEnabledForThisUser =
-            (storedCreds != null && storedCreds['email'] == email);
+            (storedCreds != null && storedCreds['email'] == loginId);
 
         if (_canCheckBiometrics && !isBiometricEnabledForThisUser) {
           if (mounted) {
-            bool? wantsBiometrics = await _showBiometricPromptDialog(email);
+            // Ask using the clean rawInput so the user doesn't see @trideta.com
+            bool? wantsBiometrics = await _showBiometricPromptDialog(rawInput);
 
             if (wantsBiometrics == true) {
               bool passedChallenge = await _biometricService.authenticate();
               if (passedChallenge) {
-                await _biometricService.saveCredentials(email, password);
+                // Safely save the Phantom Email to storage for future auto-logins
+                await _biometricService.saveCredentials(loginId, password);
                 await _biometricService.setBiometricEnabled(true);
-                if (mounted)
+                if (mounted) {
                   showSuccessDialog(
                     "Security Updated",
                     "Quick login with Fingerprint/Face ID is now enabled for this device.",
                   );
+                }
               } else {
-                if (mounted)
+                if (mounted) {
                   showAuthErrorDialog(
                     "Fingerprint/Face scan failed. Biometric login was not enabled.",
                   );
+                }
               }
             } else {
               await _biometricService.deleteCredentials();
             }
           }
         } else if (isBiometricEnabledForThisUser) {
-          await _biometricService.saveCredentials(email, password);
+          // Refresh credentials in case password was changed externally
+          await _biometricService.saveCredentials(loginId, password);
           await _biometricService.setBiometricEnabled(true);
         }
 
@@ -286,7 +309,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
       setState(() => _isLoading = true);
       try {
         String? error = await _authService.login(
-          creds['email']!,
+          creds['email']!, // This now injects the phantom email smoothly!
           creds['password']!,
         );
         if (error == null) {
@@ -613,14 +636,17 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
         ),
         const SizedBox(height: 40),
 
-        // TODO: Update to phone number login in the future as planned!
+        // 🚨 UPDATED TO HANDLE BOTH EMAIL AND PHONE
         TextField(
           controller: _emailController,
           keyboardType: TextInputType.emailAddress,
           style: TextStyle(color: textColor),
           decoration: InputDecoration(
-            prefixIcon: Icon(Icons.email_outlined, color: hintColor),
-            labelText: "Email Address",
+            prefixIcon: Icon(
+              Icons.person_outline,
+              color: hintColor,
+            ), // 🚨 Updated Icon
+            labelText: "Email or Phone Number", // 🚨 Updated Label
             labelStyle: TextStyle(color: hintColor),
             filled: true,
             fillColor: fieldColor,

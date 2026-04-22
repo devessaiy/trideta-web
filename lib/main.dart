@@ -7,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trideta_v2/screens/auth/login_screen.dart';
 import 'package:trideta_v2/screens/auth/onboarding_screen.dart';
 import 'package:trideta_v2/screens/admin/profile_menu_screen.dart';
-// 🚨 ADDED LANDING PAGE IMPORT
 import 'package:trideta_v2/screens/public/landing_page_screen.dart';
 
 // 🚨 FIREBASE & NOTIFICATIONS IMPORTS
@@ -42,8 +41,13 @@ Future<void> main() async {
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRrdXVwbXlyb2RhemZycmVtYnNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2MzE2MTAsImV4cCI6MjA4NjIwNzYxMH0.D46NbF3tu7Eaq2HreH4auh0flNNggubZZdKs9xgZQ4k',
   );
 
-  // 🚨 WAKE UP THE NOTIFICATION LISTENER
-  await NotificationService().initialize();
+  // 🚨 SMART NOTIFICATION WAKE-UP
+  // On mobile: Ask immediately.
+  // On Web: ONLY ask if they are actively logged in to avoid scaring public visitors!
+  final session = Supabase.instance.client.auth.currentSession;
+  if (!kIsWeb || session != null) {
+    await NotificationService().initialize();
+  }
 
   // 🚨 LOAD SAVED PREFERENCES
   final prefs = await SharedPreferences.getInstance();
@@ -95,9 +99,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
-    // ✨ UPDATED SECURITY LOGIC:
-    // We removed 'paused' (minimizing).
-    // Now the app only forces a logout if it is 'detached' (fully closed/killed).
     if (state == AppLifecycleState.detached && !isInteractingWithSystem) {
       debugPrint("--- APP CLOSED: LOCKING SCREEN ---");
 
@@ -173,7 +174,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   foregroundColor: Colors.white,
                 ),
               ),
-              // 🚨 ROUTING DECISION APPLIED HERE
               home: widget.showOnboarding
                   ? const OnboardingScreen()
                   : const LandingPageScreen(),

@@ -25,6 +25,9 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
   final List<String> _terms = ['1st Term', '2nd Term', '3rd Term'];
   List<String> _activeClasses = [];
 
+  // 🚨 INJECTED: Dictionary map to translate string names to UUIDs
+  final Map<String, String> _classNameToIdMap = {};
+
   List<Map<String, dynamic>> _students = [];
   final Map<String, Map<String, dynamic>> _affectiveData = {};
 
@@ -34,6 +37,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
     _fetchInitialData();
   }
 
+  // 🚨 INJECTED: Fetches classes and builds the UUID dictionary
   Future<void> _fetchInitialData() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -54,23 +58,38 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
           .single();
 
       List<String> fetchedClasses = [];
+      _classNameToIdMap.clear();
+
       if (_userRole == 'admin') {
         final classesData = await _supabase
             .from('classes')
-            .select('name')
+            .select('id, name')
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
-        fetchedClasses = classesData.map((c) => c['name'].toString()).toList();
+        for (var c in classesData) {
+          _classNameToIdMap[c['name'].toString()] = c['id'].toString();
+          fetchedClasses.add(c['name'].toString());
+        }
       } else {
         final assignments = await _supabase
             .from('staff_assignments')
-            .select('class_assigned')
+            .select('class_id')
             .eq('staff_id', user.id);
-        fetchedClasses = assignments
-            .map((a) => a['class_assigned'].toString())
-            .toSet()
-            .toList();
-        fetchedClasses.sort();
+        final Set<String> uniqueIds = {};
+        for (var a in assignments) {
+          if (a['class_id'] != null) uniqueIds.add(a['class_id'].toString());
+        }
+        if (uniqueIds.isNotEmpty) {
+          final freshClasses = await _supabase
+              .from('classes')
+              .select('id, name')
+              .inFilter('id', uniqueIds.toList());
+          for (var c in freshClasses) {
+            _classNameToIdMap[c['name'].toString()] = c['id'].toString();
+            fetchedClasses.add(c['name'].toString());
+          }
+          fetchedClasses.sort();
+        }
       }
 
       if (mounted) {
@@ -98,7 +117,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
           .from('students')
           .select('id, first_name, last_name')
           .eq('school_id', _schoolId!)
-          .eq('class_level', _selectedClass!)
+          .eq('class_id', _classNameToIdMap[_selectedClass]!)
           .order('first_name', ascending: true);
 
       // Fetch both traits AND term results (to get the principal's remark)
@@ -108,14 +127,14 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
           .eq('school_id', _schoolId!)
           .eq('academic_session', _selectedSession!)
           .eq('term', _selectedTerm!)
-          .eq('class_level', _selectedClass!);
+          .eq('class_id', _classNameToIdMap[_selectedClass]!);
       final resultsData = await _supabase
           .from('term_results')
           .select('student_id, principal_remark')
           .eq('school_id', _schoolId!)
           .eq('academic_session', _selectedSession!)
           .eq('term', _selectedTerm!)
-          .eq('class_level', _selectedClass!);
+          .eq('class_id', _classNameToIdMap[_selectedClass]!);
 
       Map<String, dynamic> existingTraits = {
         for (var item in traitsData) item['student_id'].toString(): item,
@@ -161,25 +180,44 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
     bool isAdmin = _userRole == 'admin';
 
     try {
-      List<Map<String, dynamic>> traitsUpsertList = [];
-
       for (var student in _students) {
         String sId = student['id'].toString();
         var data = _affectiveData[sId]!;
 
-        traitsUpsertList.add({
+        // 1. Manually check if a record already exists for this term
+        final existing = await _supabase
+            .from('affective_traits')
+            .select('id')
+            .eq('student_id', sId)
+            .eq('academic_session', _selectedSession!)
+            .eq('term', _selectedTerm!)
+            .maybeSingle();
+
+        // 2. Prepare the Payload (Sending both ID and Text to prevent Not-Null errors)
+        final payload = {
           'school_id': _schoolId,
           'student_id': sId,
           'academic_session': _selectedSession,
           'term': _selectedTerm,
-          'class_level': _selectedClass,
+          'class_id': _classNameToIdMap[_selectedClass], // The new UUID
+          'class_level': _selectedClass, // Fallback for DB safety
           'punctuality': data['punctuality'],
           'neatness': data['neatness'],
           'honesty': data['honesty'],
           'peer_relationship': data['peer_relationship'],
           'manual_dexterity': data['manual_dexterity'],
           'class_teacher_remark': data['class_teacher_remark'],
-        });
+        };
+
+        // 3. Smart Insert or Update (Bypasses the 400 Upsert Error)
+        if (existing == null) {
+          await _supabase.from('affective_traits').insert(payload);
+        } else {
+          await _supabase
+              .from('affective_traits')
+              .update(payload)
+              .eq('id', existing['id']); // Update using the exact row ID
+        }
 
         // 🚨 Admin Only: Update the principal's remark in the term_results table
         if (isAdmin &&
@@ -191,15 +229,8 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
               .eq('student_id', sId)
               .eq('academic_session', _selectedSession!)
               .eq('term', _selectedTerm!)
-              .eq('class_level', _selectedClass!);
+              .eq('class_id', _classNameToIdMap[_selectedClass]!);
         }
-      }
-
-      // Save the normal traits
-      for (var data in traitsUpsertList) {
-        await _supabase
-            .from('affective_traits')
-            .upsert(data, onConflict: 'student_id, academic_session, term');
       }
 
       if (mounted) {
@@ -214,7 +245,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        showAuthErrorDialog("Failed to save traits.");
+        showAuthErrorDialog("Failed to save traits. Check connection.");
       }
     }
   }

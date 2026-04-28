@@ -1,7 +1,50 @@
-import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:trideta_v2/utils/auth_error_handler.dart';
+
+// --- MODELS --- //
+class StudentScore {
+  final String id; // student_id
+  final String name; // First + Last Name
+  final String admissionNo;
+  String? resultId; // The ID of the existing record in exam_scores (if any)
+
+  double caAttendance; // 5
+  double caAssignment; // 10
+  double caMidterm; // 25
+  double examScore; // 60
+
+  StudentScore({
+    required this.id,
+    required this.name,
+    required this.admissionNo,
+    this.resultId,
+    this.caAttendance = 0,
+    this.caAssignment = 0,
+    this.caMidterm = 0,
+    this.examScore = 0,
+  });
+
+  double get total => caAttendance + caAssignment + caMidterm + examScore;
+
+  String get grade {
+    if (total >= 75) return 'A';
+    if (total >= 65) return 'B';
+    if (total >= 50) return 'C';
+    if (total >= 40) return 'D';
+    if (total >= 35) return 'E';
+    return 'F';
+  }
+
+  String get remark {
+    if (total >= 75) return 'Excellent';
+    if (total >= 65) return 'Very Good';
+    if (total >= 50) return 'Credit';
+    if (total >= 40) return 'Pass';
+    if (total >= 35) return 'Poor';
+    return 'Fail';
+  }
+}
 
 class ResultComputationScreen extends StatefulWidget {
   const ResultComputationScreen({super.key});
@@ -17,27 +60,33 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
 
   bool _isLoading = true;
   bool _isSaving = false;
-  String? _schoolId;
 
-  // 🚨 ROLE TRACKER
+  String? _schoolId;
+  String? _userId;
   String _userRole = 'teacher';
 
-  // --- FILTERS ---
-  String? _selectedSession;
-  String? _selectedTerm;
-  String? _selectedClass;
-  String? _selectedSubject;
-
+  // --- FILTERS --- //
   final List<String> _sessions = ['2024/2025', '2025/2026', '2026/2027'];
   final List<String> _terms = ['1st Term', '2nd Term', '3rd Term'];
-  List<String> _activeClasses = [];
-  List<String> _classSubjects = [];
+  String? _selectedSession;
+  String? _selectedTerm;
 
-  // --- ROSTER & SCORES ---
-  List<Map<String, dynamic>> _students = [];
+  // Classes & Subjects mappings
+  List<Map<String, dynamic>> _activeClasses = [];
+  List<Map<String, dynamic>> _classSubjects = [];
 
-  final Map<String, Map<String, dynamic>> _scoreData = {};
-  final Map<String, Map<String, TextEditingController>> _controllers = {};
+  String? _selectedClassId;
+  String? _selectedClassName;
+
+  String? _selectedSubjectId;
+  String? _selectedSubjectName;
+
+  // --- DATA --- //
+  List<StudentScore> _students = [];
+
+  // Used for text field focus & cursor management to stop "sticky" typing
+  final Map<String, List<FocusNode>> _focusNodes = {};
+  final Map<String, List<TextEditingController>> _controllers = {};
 
   @override
   void initState() {
@@ -47,29 +96,30 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
 
   @override
   void dispose() {
-    for (var student in _controllers.values) {
-      for (var ctrl in student.values) {
+    for (var nodes in _focusNodes.values) {
+      for (var node in nodes) {
+        node.dispose();
+      }
+    }
+    for (var ctrls in _controllers.values) {
+      for (var ctrl in ctrls) {
         ctrl.dispose();
       }
     }
     super.dispose();
   }
 
-  // ===========================================================================
-  // 1. DATA FETCHING WITH ROLE-BASED ACCESS CONTROL (RBAC)
-  // ===========================================================================
-
   Future<void> _fetchInitialData() async {
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) return;
+      _userId = user.id;
 
       final profile = await _supabase
           .from('profiles')
           .select('school_id, role')
           .eq('id', user.id)
           .single();
-
       _schoolId = profile['school_id'];
       _userRole = profile['role']?.toString().toLowerCase() ?? 'teacher';
 
@@ -79,25 +129,37 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           .eq('id', _schoolId!)
           .single();
 
-      List<String> fetchedClasses = [];
+      List<Map<String, dynamic>> fetchedClasses = [];
 
       if (_userRole == 'admin') {
         final classesData = await _supabase
             .from('classes')
-            .select('name')
+            .select('id, name')
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
-        fetchedClasses = classesData.map((c) => c['name'].toString()).toList();
+        fetchedClasses = List<Map<String, dynamic>>.from(classesData);
       } else {
+        // Teacher Logic: Fetch assigned classes, then their IDs & Names
         final assignments = await _supabase
             .from('staff_assignments')
-            .select('class_assigned')
+            .select('class_id')
             .eq('staff_id', user.id);
-        fetchedClasses = assignments
-            .map((a) => a['class_assigned'].toString())
-            .toSet()
-            .toList();
-        fetchedClasses.sort();
+
+        final Set<String> uniqueClassIds = {};
+        for (var a in assignments) {
+          if (a['class_id'] != null) {
+            uniqueClassIds.add(a['class_id'].toString());
+          }
+        }
+
+        if (uniqueClassIds.isNotEmpty) {
+          final freshClasses = await _supabase
+              .from('classes')
+              .select('id, name')
+              .inFilter('id', uniqueClassIds.toList())
+              .order('name');
+          fetchedClasses = List<Map<String, dynamic>>.from(freshClasses);
+        }
       }
 
       if (mounted) {
@@ -111,293 +173,216 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        showAuthErrorDialog("Failed to initialize. Check connection.");
+        showAuthErrorDialog("Init Error: $e");
       }
     }
   }
 
-  // 🚨 SMART SUBJECT ROUTING: Unlocks all subjects for Class Teachers
-  Future<void> _fetchSubjectsForClass(String className) async {
+  Future<void> _fetchSubjectsForClass(String classId) async {
     setState(() {
       _isLoading = true;
-      _selectedSubject = null;
-      _classSubjects.clear();
-      _students.clear();
+      _selectedSubjectId = null;
+      _selectedSubjectName = null;
+      _classSubjects = [];
+      _students = [];
+      _focusNodes.clear();
+      _controllers.clear();
     });
 
     try {
-      final user = _supabase.auth.currentUser!;
-      List<String> fetchedSubjects = [];
+      List<Map<String, dynamic>> subjects = [];
 
       if (_userRole == 'admin') {
-        // Admin gets all subjects for this class
-        final subjectsData = await _supabase
+        subjects = await _supabase
             .from('class_subjects')
-            .select('subject_name')
+            .select('id, subject_name')
             .eq('school_id', _schoolId!)
-            .eq('class_name', className);
-        fetchedSubjects = subjectsData
-            .map((s) => s['subject_name'].toString())
-            .toList();
+            .eq('class_id', classId)
+            .order('subject_name');
       } else {
-        // Fetch teacher's specific assignments for this selected class
+        // Teacher Logic: Get the assigned subject UUIDs for this specific class
         final assignments = await _supabase
             .from('staff_assignments')
-            .select('subject_assigned')
-            .eq('staff_id', user.id)
-            .eq('class_assigned', className);
+            .select('subject_id')
+            .eq('staff_id', _userId!)
+            .eq('class_id', classId);
 
-        // 🚨 MAGIC CHECK: If subject is NULL, they are the Class Teacher!
-        bool isClassTeacher = assignments.any(
-          (a) =>
-              a['subject_assigned'] == null ||
-              a['subject_assigned'].toString().trim().isEmpty,
-        );
+        final Set<String> uniqueSubjectIds = {};
+        for (var a in assignments) {
+          if (a['subject_id'] != null) {
+            uniqueSubjectIds.add(a['subject_id'].toString());
+          }
+        }
 
-        if (isClassTeacher) {
-          // Class Teachers get ALL subjects for their class
-          final classSubjects = await _supabase
+        if (uniqueSubjectIds.isNotEmpty) {
+          final freshSubjectsData = await _supabase
               .from('class_subjects')
-              .select('subject_name')
-              .eq('school_id', _schoolId!)
-              .eq('class_name', className);
-          fetchedSubjects = classSubjects
-              .map((s) => s['subject_name'].toString())
-              .toList();
-        } else {
-          // Subject Teachers only get the subjects explicitly assigned to them in this class
-          fetchedSubjects = assignments
-              .where(
-                (a) =>
-                    a['subject_assigned'] != null &&
-                    a['subject_assigned'].toString().trim().isNotEmpty,
-              )
-              .map((a) => a['subject_assigned'].toString())
-              .toSet()
-              .toList();
+              .select('id, subject_name')
+              .inFilter('id', uniqueSubjectIds.toList())
+              .order('subject_name');
+
+          subjects = List<Map<String, dynamic>>.from(freshSubjectsData);
         }
       }
 
       if (mounted) {
         setState(() {
-          _classSubjects = fetchedSubjects..sort();
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _fetchRosterAndExistingScores() async {
-    if (_selectedClass == null || _selectedSubject == null) return;
-
-    setState(() => _isLoading = true);
-    try {
-      final studentsData = await _supabase
-          .from('students')
-          .select('id, first_name, last_name, admission_no')
-          .eq('school_id', _schoolId!)
-          .eq('class_level', _selectedClass!)
-          .order('first_name', ascending: true);
-
-      final existingScores = await _supabase
-          .from('exam_scores')
-          .select()
-          .eq('school_id', _schoolId!)
-          .eq('class_level', _selectedClass!)
-          .eq('subject_name', _selectedSubject!)
-          .eq('academic_session', _selectedSession!)
-          .eq('term', _selectedTerm!);
-
-      final Map<String, dynamic> scoreMap = {
-        for (var score in existingScores) score['student_id'].toString(): score,
-      };
-
-      _scoreData.clear();
-      _controllers.clear();
-
-      for (var s in studentsData) {
-        String sId = s['id'].toString();
-        var existing = scoreMap[sId];
-
-        _scoreData[sId] = {
-          'ca_attendance': existing?['ca_attendance'] ?? 0.0,
-          'ca_assignment': existing?['ca_assignment'] ?? 0.0,
-          'ca_midterm': existing?['ca_midterm'] ?? 0.0,
-          'exam_score': existing?['exam_score'] ?? 0.0,
-          'total_score': existing?['total_score'] ?? 0.0,
-          'grade': existing?['grade'] ?? '-',
-          'remark': existing?['remark'] ?? '-',
-        };
-
-        _controllers[sId] = {
-          'ca_attendance': TextEditingController(
-            text: existing != null && existing['ca_attendance'] > 0
-                ? existing['ca_attendance'].toString()
-                : '',
-          ),
-          'ca_assignment': TextEditingController(
-            text: existing != null && existing['ca_assignment'] > 0
-                ? existing['ca_assignment'].toString()
-                : '',
-          ),
-          'ca_midterm': TextEditingController(
-            text: existing != null && existing['ca_midterm'] > 0
-                ? existing['ca_midterm'].toString()
-                : '',
-          ),
-          'exam_score': TextEditingController(
-            text: existing != null && existing['exam_score'] > 0
-                ? existing['exam_score'].toString()
-                : '',
-          ),
-        };
-      }
-
-      if (mounted) {
-        setState(() {
-          _students = List<Map<String, dynamic>>.from(studentsData);
+          _classSubjects = subjects;
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        showAuthErrorDialog("Failed to load roster: $e");
+        showAuthErrorDialog("Subject Fetch Error: $e");
       }
     }
   }
 
-  // ===========================================================================
-  // 2. THE GRADING ENGINE (BECE/WAEC STANDARD)
-  // ===========================================================================
-
-  void _recalculateScore(String studentId) {
-    double ca1 =
-        double.tryParse(_controllers[studentId]!['ca_attendance']!.text) ?? 0.0;
-    double ca2 =
-        double.tryParse(_controllers[studentId]!['ca_assignment']!.text) ?? 0.0;
-    double ca3 =
-        double.tryParse(_controllers[studentId]!['ca_midterm']!.text) ?? 0.0;
-    double exam =
-        double.tryParse(_controllers[studentId]!['exam_score']!.text) ?? 0.0;
-
-    if (ca1 > 5) {
-      ca1 = 5;
-      _controllers[studentId]!['ca_attendance']!.text = '5';
-    }
-    if (ca2 > 10) {
-      ca2 = 10;
-      _controllers[studentId]!['ca_assignment']!.text = '10';
-    }
-    if (ca3 > 25) {
-      ca3 = 25;
-      _controllers[studentId]!['ca_midterm']!.text = '25';
-    }
-    if (exam > 60) {
-      exam = 60;
-      _controllers[studentId]!['exam_score']!.text = '60';
-    }
-
-    double total = ca1 + ca2 + ca3 + exam;
-    String grade = '-';
-    String remark = '-';
-
-    if (total > 0) {
-      if (total >= 70) {
-        grade = 'A';
-        remark = 'Excellent';
-      } else if (total >= 60) {
-        grade = 'B';
-        remark = 'Very Good';
-      } else if (total >= 50) {
-        grade = 'C';
-        remark = 'Credit';
-      } else if (total >= 45) {
-        grade = 'P';
-        remark = 'Pass';
-      } else {
-        grade = 'F';
-        remark = 'Fail';
-      }
-    }
+  Future<void> _fetchStudentsAndScores() async {
+    if (_selectedClassId == null || _selectedSubjectId == null) return;
 
     setState(() {
-      _scoreData[studentId]!['ca_attendance'] = ca1;
-      _scoreData[studentId]!['ca_assignment'] = ca2;
-      _scoreData[studentId]!['ca_midterm'] = ca3;
-      _scoreData[studentId]!['exam_score'] = exam;
-      _scoreData[studentId]!['total_score'] = total;
-      _scoreData[studentId]!['grade'] = grade;
-      _scoreData[studentId]!['remark'] = remark;
+      _isLoading = true;
+      _focusNodes.clear();
+      _controllers.clear();
     });
-  }
-
-  // ===========================================================================
-  // 3. DATABASE SAVING
-  // ===========================================================================
-
-  Future<void> _saveScoresToDatabase() async {
-    FocusScope.of(context).unfocus();
-    setState(() => _isSaving = true);
 
     try {
-      final user = _supabase.auth.currentUser!;
-      List<Map<String, dynamic>> upsertPayload = [];
+      // 1. Get all active students in the class via UUID
+      final studentsData = await _supabase
+          .from('students')
+          .select('id, first_name, last_name, admission_no')
+          .eq('school_id', _schoolId!)
+          .eq('class_id', _selectedClassId!)
+          .eq('is_active', true)
+          .order('first_name');
 
-      for (var s in _students) {
-        String sId = s['id'].toString();
-        var data = _scoreData[sId]!;
+      // 2. Get existing scores via UUID
+      final existingScoresData = await _supabase
+          .from('exam_scores')
+          .select(
+            'id, student_id, ca_attendance, ca_assignment, ca_midterm, exam_score',
+          )
+          .eq('school_id', _schoolId!)
+          .eq('class_id', _selectedClassId!)
+          .eq('subject_id', _selectedSubjectId!)
+          .eq('academic_session', _selectedSession!)
+          .eq('term', _selectedTerm!);
 
-        if (data['total_score'] > 0) {
-          upsertPayload.add({
-            'school_id': _schoolId,
-            'student_id': sId,
-            'academic_session': _selectedSession,
-            'term': _selectedTerm,
-            'class_level': _selectedClass,
-            'subject_name': _selectedSubject,
-            'ca_attendance': data['ca_attendance'],
-            'ca_assignment': data['ca_assignment'],
-            'ca_midterm': data['ca_midterm'],
-            'exam_score': data['exam_score'],
-            'total_score': data['total_score'],
-            'grade': data['grade'],
-            'remark': data['remark'],
-            'last_edited_by': user.id,
-            'updated_at': DateTime.now().toIso8601String(),
-          });
-        }
-      }
+      final Map<String, Map<String, dynamic>> existingScoreMap = {
+        for (var score in existingScoresData)
+          score['student_id'].toString(): score,
+      };
 
-      if (upsertPayload.isNotEmpty) {
-        await _supabase
-            .from('exam_scores')
-            .upsert(
-              upsertPayload,
-              onConflict: 'student_id, subject_name, academic_session, term',
-            );
+      final List<StudentScore> combinedList = [];
+      for (var student in studentsData) {
+        final String sId = student['id'].toString();
+        final existing = existingScoreMap[sId];
+
+        combinedList.add(
+          StudentScore(
+            id: sId,
+            name: "${student['first_name']} ${student['last_name']}",
+            admissionNo: student['admission_no'] ?? 'N/A',
+            resultId: existing?['id'],
+            caAttendance:
+                double.tryParse(
+                  existing?['ca_attendance']?.toString() ?? '0',
+                ) ??
+                0,
+            caAssignment:
+                double.tryParse(
+                  existing?['ca_assignment']?.toString() ?? '0',
+                ) ??
+                0,
+            caMidterm:
+                double.tryParse(existing?['ca_midterm']?.toString() ?? '0') ??
+                0,
+            examScore:
+                double.tryParse(existing?['exam_score']?.toString() ?? '0') ??
+                0,
+          ),
+        );
       }
 
       if (mounted) {
-        setState(() => _isSaving = false);
-        showSuccessDialog(
-          "Scores Saved!",
-          "Successfully recorded scores for $_selectedSubject - $_selectedClass.",
-        );
+        setState(() {
+          _students = combinedList;
+          _isLoading = false;
+        });
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isSaving = false);
-        showAuthErrorDialog("Failed to save scores. Check connection.");
+        setState(() => _isLoading = false);
+        showAuthErrorDialog("Failed to load student list.");
       }
     }
   }
 
-  // ===========================================================================
-  // 4. UI BUILDERS
-  // ===========================================================================
+  // 🚨 FIXED: Smart Split into Insert vs Upsert to bypass 400 errors
+  Future<void> _saveAllScores() async {
+    if (_selectedClassId == null ||
+        _selectedSubjectId == null ||
+        _students.isEmpty) {
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      List<Map<String, dynamic>> toInsert = [];
+      List<Map<String, dynamic>> toUpdate = [];
+
+      for (var s in _students) {
+        final Map<String, dynamic> rowData = {
+          'school_id': _schoolId,
+          'student_id': s.id,
+          'academic_session': _selectedSession,
+          'term': _selectedTerm,
+          'class_id': _selectedClassId,
+          'subject_id': _selectedSubjectId,
+          'class_level': _selectedClassName,
+          'subject_name': _selectedSubjectName,
+          'ca_attendance': s.caAttendance,
+          'ca_assignment': s.caAssignment,
+          'ca_midterm': s.caMidterm,
+          'exam_score': s.examScore,
+          'total_score': s.total,
+          'grade': s.grade,
+          'remark': s.remark,
+          'last_edited_by': _userId,
+        };
+
+        if (s.resultId != null) {
+          rowData['id'] = s.resultId;
+          toUpdate.add(rowData);
+        } else {
+          toInsert.add(rowData);
+        }
+      }
+
+      // 🚨 SMART SPLIT: Insert new records vs Update existing ones to bypass 400 Errors
+      if (toInsert.isNotEmpty) {
+        await _supabase.from('exam_scores').insert(toInsert);
+      }
+      if (toUpdate.isNotEmpty) {
+        await _supabase.from('exam_scores').upsert(toUpdate, onConflict: 'id');
+      }
+
+      if (mounted) {
+        showSuccessDialog("Success", "All scores saved successfully.");
+        // Refetch to ensure we grab the freshly created result IDs
+        _fetchStudentsAndScores();
+      }
+    } catch (e) {
+      if (mounted) {
+        showAuthErrorDialog("Failed to save scores. Check connection.");
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -406,14 +391,11 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color primaryColor = Theme.of(context).primaryColor;
 
-    // 🚨 ROLE CHECK
-    bool isAdmin = _userRole == 'admin';
-
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
         title: const Text(
-          "Result Engine",
+          "Result Computation",
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: primaryColor,
@@ -423,9 +405,9 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
       ),
       body: Column(
         children: [
-          // 1. FILTER HEADER
+          // --- TOP FILTER PANEL ---
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: cardColor,
               boxShadow: [
@@ -438,106 +420,89 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
             ),
             child: Column(
               children: [
-                if (isAdmin)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 15),
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.red.withOpacity(0.3)),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.admin_panel_settings,
-                          size: 16,
-                          color: Colors.red,
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          "ADMIN OVERRIDE ACTIVE",
-                          style: TextStyle(
-                            color: Colors.red,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
                 Row(
                   children: [
-                    // 🚨 LOCKED FOR TEACHERS
                     Expanded(
-                      child: _buildFilterDropdown(
-                        "Session",
-                        _sessions,
-                        _selectedSession,
-                        isAdmin
+                      child: _buildDropdown(
+                        hint: "Session",
+                        value: _selectedSession,
+                        items: _sessions,
+                        isDark: isDark,
+                        primaryColor: primaryColor,
+                        onChanged: _userRole == 'admin'
                             ? (val) {
                                 setState(() {
                                   _selectedSession = val;
-                                  _students.clear();
+                                  _fetchStudentsAndScores();
                                 });
                               }
                             : null,
-                        isDark,
-                        primaryColor,
                       ),
                     ),
                     const SizedBox(width: 10),
-                    // 🚨 LOCKED FOR TEACHERS
                     Expanded(
-                      child: _buildFilterDropdown(
-                        "Term",
-                        _terms,
-                        _selectedTerm,
-                        isAdmin
+                      child: _buildDropdown(
+                        hint: "Term",
+                        value: _selectedTerm,
+                        items: _terms,
+                        isDark: isDark,
+                        primaryColor: primaryColor,
+                        onChanged: _userRole == 'admin'
                             ? (val) {
                                 setState(() {
                                   _selectedTerm = val;
-                                  _students.clear();
+                                  _fetchStudentsAndScores();
                                 });
                               }
                             : null,
-                        isDark,
-                        primaryColor,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 15),
+                const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
-                      child: _buildFilterDropdown(
-                        "Class",
-                        _activeClasses,
-                        _selectedClass,
-                        (val) {
-                          setState(() => _selectedClass = val);
-                          _fetchSubjectsForClass(val!);
+                      child: _buildClassDropdown(
+                        hint: "Select Class",
+                        value: _selectedClassId,
+                        items: _activeClasses,
+                        isDark: isDark,
+                        primaryColor: primaryColor,
+                        onChanged: (val) {
+                          if (val != null) {
+                            final clsName = _activeClasses.firstWhere(
+                              (c) => c['id'].toString() == val,
+                            )['name'];
+                            setState(() {
+                              _selectedClassId = val;
+                              _selectedClassName = clsName;
+                            });
+                            _fetchSubjectsForClass(val);
+                          }
                         },
-                        isDark,
-                        primaryColor,
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: _buildFilterDropdown(
-                        "Subject",
-                        _classSubjects,
-                        _selectedSubject,
-                        (val) {
-                          setState(() => _selectedSubject = val);
-                          _fetchRosterAndExistingScores();
+                      child: _buildSubjectDropdown(
+                        hint: "Select Subject",
+                        value: _selectedSubjectId,
+                        items: _classSubjects,
+                        isDark: isDark,
+                        primaryColor: primaryColor,
+                        onChanged: (val) {
+                          if (val != null) {
+                            final subName = _classSubjects.firstWhere(
+                              (s) => s['id'].toString() == val,
+                            )['subject_name'];
+                            setState(() {
+                              _selectedSubjectId = val;
+                              _selectedSubjectName = subName;
+                            });
+                            _fetchStudentsAndScores();
+                          }
                         },
-                        isDark,
-                        primaryColor,
                       ),
                     ),
                   ],
@@ -546,37 +511,42 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
             ),
           ),
 
-          // 2. MAIN LIST AREA
+          // --- STUDENTS LIST ---
           Expanded(
             child: _isLoading
                 ? Center(child: CircularProgressIndicator(color: primaryColor))
-                : _selectedSubject == null
-                ? _buildPlaceholderState(isDark)
+                : _selectedClassId == null || _selectedSubjectId == null
+                ? const Center(
+                    child: Text(
+                      "Select a class and subject to begin grading.",
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  )
                 : _students.isEmpty
                 ? const Center(
                     child: Text(
-                      "No students in this class.",
+                      "No students found in this class.",
                       style: TextStyle(color: Colors.grey),
                     ),
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: _students.length,
-                    itemBuilder: (context, index) {
-                      return _buildScoreCard(
-                        _students[index],
-                        cardColor,
+                    itemBuilder: (ctx, i) {
+                      return _buildStudentGradeCard(
+                        _students[i],
+                        i,
                         isDark,
                         primaryColor,
                       );
                     },
                   ),
           ),
-
-          // 3. SAVE BUTTON BAR
-          if (_students.isNotEmpty && _selectedSubject != null)
-            Container(
-              padding: const EdgeInsets.all(20),
+        ],
+      ),
+      bottomNavigationBar: _students.isNotEmpty
+          ? Container(
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: cardColor,
                 boxShadow: [
@@ -587,59 +557,55 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
                   ),
                 ],
               ),
-              child: SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: ElevatedButton.icon(
+              child: SafeArea(
+                child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryColor,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  onPressed: _isSaving ? null : _saveScoresToDatabase,
-                  icon: _isSaving
+                  onPressed: _isSaving ? null : _saveAllScores,
+                  child: _isSaving
                       ? const SizedBox(
-                          width: 20,
                           height: 20,
+                          width: 20,
                           child: CircularProgressIndicator(
                             color: Colors.white,
                             strokeWidth: 2,
                           ),
                         )
-                      : const Icon(Icons.save_rounded, color: Colors.white),
-                  label: Text(
-                    _isSaving
-                        ? "SAVING SECURELY..."
-                        : "SAVE ${_selectedSubject!.toUpperCase()} SCORES",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                      : const Text(
+                          "SAVE SCORES",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
                 ),
               ),
-            ),
-        ],
-      ),
+            )
+          : null,
     );
   }
 
-  Widget _buildFilterDropdown(
-    String hint,
-    List<String> items,
-    String? value,
-    Function(String?)? onChanged, // Notice this can be null now
-    bool isDark,
-    Color primaryColor,
-  ) {
+  Widget _buildDropdown({
+    required String hint,
+    required String? value,
+    required List<String> items,
+    required bool isDark,
+    required Color primaryColor,
+    required Function(String?)? onChanged,
+  }) {
     bool isLocked = onChanged == null;
     return Container(
       decoration: BoxDecoration(
         color: isLocked
             ? (isDark ? Colors.white.withOpacity(0.02) : Colors.grey[200])
             : (isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50]),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.grey.shade300,
         ),
@@ -649,18 +615,18 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           isExpanded: true,
           value: value,
           hint: Padding(
-            padding: const EdgeInsets.only(left: 12),
+            padding: const EdgeInsets.only(left: 10),
             child: Text(
               hint,
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
             ),
           ),
           icon: Padding(
-            padding: const EdgeInsets.only(right: 12),
+            padding: const EdgeInsets.only(right: 10),
             child: Icon(
               isLocked ? Icons.lock_outline : Icons.arrow_drop_down,
               color: isLocked ? Colors.grey : primaryColor,
-              size: isLocked ? 18 : 24,
+              size: isLocked ? 16 : 24,
             ),
           ),
           items: items
@@ -668,11 +634,11 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
                 (e) => DropdownMenuItem(
                   value: e,
                   child: Padding(
-                    padding: const EdgeInsets.only(left: 12),
+                    padding: const EdgeInsets.only(left: 10),
                     child: Text(
                       e,
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: isLocked ? Colors.grey : null,
                       ),
@@ -681,141 +647,228 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
                 ),
               )
               .toList(),
-          onChanged: onChanged, // Will automatically disable dropdown if null
+          onChanged: onChanged,
           dropdownColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         ),
       ),
     );
   }
 
-  Widget _buildPlaceholderState(bool isDark) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            _userRole == 'admin'
-                ? Icons.admin_panel_settings
-                : Icons.edit_document,
-            size: 80,
-            color: isDark ? Colors.white10 : Colors.grey[200],
-          ),
-          const SizedBox(height: 15),
-          Text(
-            _userRole == 'admin'
-                ? "Admin Mode: You have global access.\nSelect any Class and Subject to edit scores."
-                : "Select your assigned Class and Subject\nto start computing results.",
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: isDark ? Colors.white38 : Colors.grey[400],
-              fontSize: 15,
+  // Custom Dropdown for Classes using UUID mappings
+  Widget _buildClassDropdown({
+    required String hint,
+    required String? value,
+    required List<Map<String, dynamic>> items,
+    required bool isDark,
+    required Color primaryColor,
+    required Function(String?)? onChanged,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50],
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.grey.shade300,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          isExpanded: true,
+          value: value,
+          hint: Padding(
+            padding: const EdgeInsets.only(left: 10),
+            child: Text(
+              hint,
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
             ),
           ),
-        ],
+          icon: Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: Icon(Icons.arrow_drop_down, color: primaryColor),
+          ),
+          items: items
+              .map(
+                (c) => DropdownMenuItem<String>(
+                  value: c['id'].toString(),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 10),
+                    child: Text(
+                      c['name'],
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: onChanged,
+          dropdownColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        ),
       ),
     );
   }
 
-  Widget _buildScoreCard(
-    Map<String, dynamic> student,
-    Color cardColor,
+  // Custom Dropdown for Subjects using UUID mappings
+  Widget _buildSubjectDropdown({
+    required String hint,
+    required String? value,
+    required List<Map<String, dynamic>> items,
+    required bool isDark,
+    required Color primaryColor,
+    required Function(String?)? onChanged,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: items.isEmpty
+            ? (isDark ? Colors.white.withOpacity(0.02) : Colors.grey[200])
+            : (isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50]),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.grey.shade300,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          isExpanded: true,
+          value: value,
+          hint: Padding(
+            padding: const EdgeInsets.only(left: 10),
+            child: Text(
+              hint,
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+          ),
+          icon: Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: Icon(
+              items.isEmpty ? Icons.lock_outline : Icons.arrow_drop_down,
+              color: items.isEmpty ? Colors.grey : primaryColor,
+              size: items.isEmpty ? 16 : 24,
+            ),
+          ),
+          items: items
+              .map(
+                (s) => DropdownMenuItem<String>(
+                  value: s['id'].toString(),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 10),
+                    child: Text(
+                      s['subject_name'],
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: items.isEmpty ? null : onChanged,
+          dropdownColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStudentGradeCard(
+    StudentScore s,
+    int index,
     bool isDark,
     Color primaryColor,
   ) {
-    String sId = student['id'].toString();
-    var data = _scoreData[sId]!;
+    // Initialize persistent controllers to prevent typing format jumps
+    if (!_controllers.containsKey(s.id)) {
+      String fmt(double val) {
+        if (val == 0) return "";
+        String str = val.toStringAsFixed(1);
+        return str.endsWith(".0") ? str.substring(0, str.length - 2) : str;
+      }
 
-    Color gradeColor = Colors.grey;
-    if (data['grade'] == 'A') gradeColor = Colors.green;
-    if (data['grade'] == 'B') gradeColor = Colors.blue;
-    if (data['grade'] == 'C') gradeColor = Colors.orange;
-    if (data['grade'] == 'P') gradeColor = Colors.purple;
-    if (data['grade'] == 'F') gradeColor = Colors.red;
+      _controllers[s.id] = [
+        TextEditingController(text: fmt(s.caAttendance)),
+        TextEditingController(text: fmt(s.caAssignment)),
+        TextEditingController(text: fmt(s.caMidterm)),
+        TextEditingController(text: fmt(s.examScore)),
+      ];
+    }
 
-    String fName = student['first_name']?.toString() ?? "";
-    String initial = fName.isNotEmpty ? fName[0].toUpperCase() : "?";
+    if (!_focusNodes.containsKey(s.id)) {
+      _focusNodes[s.id] = List.generate(4, (_) => FocusNode());
+    }
 
-    String displayFullName = "${student['last_name'] ?? 'Unknown'} $fName"
-        .trim();
-    if (displayFullName.isEmpty) displayFullName = "Unnamed Student";
+    final ctrls = _controllers[s.id]!;
+    final nodes = _focusNodes[s.id]!;
+
+    final ctrlAtt = ctrls[0];
+    final ctrlAss = ctrls[1];
+    final ctrlMid = ctrls[2];
+    final ctrlExm = ctrls[3];
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 15),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(20),
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(15),
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.grey.shade200,
         ),
       ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: primaryColor.withOpacity(0.05),
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(20),
-              ),
-            ),
-            child: Row(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // Header: Name & Total
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: primaryColor.withOpacity(0.2),
-                  child: Text(
-                    initial,
-                    style: TextStyle(
-                      color: primaryColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        displayFullName.toUpperCase(),
+                        "${index + 1}. ${s.name.toUpperCase()}",
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
                       ),
+                      const SizedBox(height: 2),
                       Text(
-                        student['admission_no']?.toString() ?? "NO ID",
-                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                        s.admissionNo,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
                       ),
                     ],
                   ),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
+                    horizontal: 10,
+                    vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: gradeColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: gradeColor.withOpacity(0.3)),
+                    color: _getGradeColor(s.grade).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        "${data['total_score'].toInt()}%",
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          color: gradeColor,
-                          fontSize: 14,
+                        "${s.total.toStringAsFixed(1)} ",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
                         ),
                       ),
-                      const SizedBox(width: 6),
                       Text(
-                        data['grade'],
+                        "(${s.grade})",
                         style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          color: gradeColor,
+                          fontWeight: FontWeight.bold,
+                          color: _getGradeColor(s.grade),
                           fontSize: 16,
                         ),
                       ),
@@ -824,111 +877,141 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
                 ),
               ],
             ),
-          ),
+            const SizedBox(height: 15),
 
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
+            // Input Fields
+            Row(
               children: [
-                _buildScoreInput(
-                  "ATT\n(5)",
-                  _controllers[sId]!['ca_attendance']!,
-                  sId,
-                  isDark,
+                Expanded(
+                  child: _buildScoreInput(
+                    label: "Att (5)",
+                    ctrl: ctrlAtt,
+                    focusNode: nodes[0],
+                    maxVal: 5,
+                    isDark: isDark,
+                    onChanged: (val) {
+                      setState(() => s.caAttendance = val);
+                    },
+                  ),
                 ),
                 const SizedBox(width: 8),
-                _buildScoreInput(
-                  "ASS\n(10)",
-                  _controllers[sId]!['ca_assignment']!,
-                  sId,
-                  isDark,
+                Expanded(
+                  child: _buildScoreInput(
+                    label: "Ass (10)",
+                    ctrl: ctrlAss,
+                    focusNode: nodes[1],
+                    maxVal: 10,
+                    isDark: isDark,
+                    onChanged: (val) {
+                      setState(() => s.caAssignment = val);
+                    },
+                  ),
                 ),
                 const SizedBox(width: 8),
-                _buildScoreInput(
-                  "MID\n(25)",
-                  _controllers[sId]!['ca_midterm']!,
-                  sId,
-                  isDark,
+                Expanded(
+                  child: _buildScoreInput(
+                    label: "Mid (25)",
+                    ctrl: ctrlMid,
+                    focusNode: nodes[2],
+                    maxVal: 25,
+                    isDark: isDark,
+                    onChanged: (val) {
+                      setState(() => s.caMidterm = val);
+                    },
+                  ),
                 ),
-                const SizedBox(width: 12),
-                _buildScoreInput(
-                  "EXAM\n(60)",
-                  _controllers[sId]!['exam_score']!,
-                  sId,
-                  isDark,
-                  isExam: true,
-                  primaryColor: primaryColor,
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2, // Make Exam wider
+                  child: _buildScoreInput(
+                    label: "Exam (60)",
+                    ctrl: ctrlExm,
+                    focusNode: nodes[3],
+                    maxVal: 60,
+                    isDark: isDark,
+                    onChanged: (val) {
+                      setState(() => s.examScore = val);
+                    },
+                  ),
                 ),
               ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildScoreInput(
-    String label,
-    TextEditingController controller,
-    String studentId,
-    bool isDark, {
-    bool isExam = false,
-    Color? primaryColor,
+  Widget _buildScoreInput({
+    required String label,
+    required TextEditingController ctrl,
+    required FocusNode focusNode,
+    required double maxVal,
+    required bool isDark,
+    required Function(double) onChanged,
   }) {
-    return Expanded(
-      flex: isExam ? 2 : 1,
-      child: Column(
-        children: [
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              color: isExam ? primaryColor : Colors.grey,
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey,
           ),
-          const SizedBox(height: 6),
-          TextField(
-            controller: controller,
+        ),
+        const SizedBox(height: 4),
+        SizedBox(
+          height: 40,
+          child: TextField(
+            controller: ctrl,
+            focusNode: focusNode,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             textAlign: TextAlign.center,
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
-            ],
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: isExam
-                  ? primaryColor
-                  : (isDark ? Colors.white : Colors.black87),
-            ),
+            style: const TextStyle(fontWeight: FontWeight.bold),
             decoration: InputDecoration(
               filled: true,
-              fillColor: isExam
-                  ? primaryColor!.withOpacity(0.05)
-                  : (isDark ? Colors.white.withOpacity(0.02) : Colors.grey[50]),
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              fillColor: isDark ? Colors.black26 : Colors.grey[100],
+              contentPadding: EdgeInsets.zero,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(
-                  color: isExam
-                      ? primaryColor!.withOpacity(0.3)
-                      : Colors.transparent,
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(
-                  color: isExam ? primaryColor! : Colors.blue,
-                  width: 2,
-                ),
+                borderSide: BorderSide.none,
               ),
             ),
-            onChanged: (val) => _recalculateScore(studentId),
+            onChanged: (val) {
+              double num = double.tryParse(val) ?? 0;
+              if (num > maxVal) {
+                num = maxVal; // Prevent entering score higher than max
+                ctrl.text = maxVal.toStringAsFixed(0); // Clamp visually
+                ctrl.selection = TextSelection.fromPosition(
+                  TextPosition(offset: ctrl.text.length),
+                );
+              }
+              onChanged(num);
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
+  }
+
+  Color _getGradeColor(String grade) {
+    switch (grade) {
+      case 'A':
+        return Colors.green;
+      case 'B':
+        return Colors.blue;
+      case 'C':
+        return Colors.orange;
+      case 'D':
+        return Colors.deepOrange;
+      case 'E':
+        return Colors.redAccent;
+      case 'F':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
   }
 }

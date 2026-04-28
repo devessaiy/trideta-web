@@ -26,6 +26,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   // Stores the official class order defined by the Admin
   List<String> _officialClassOrder = [];
 
+  // 🚨 ADDED: Full class data with UUIDs for the promotion engine
+  List<Map<String, dynamic>> _allClassesData = [];
+
   @override
   void initState() {
     super.initState();
@@ -51,17 +54,18 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     }
   }
 
-  // 🚨 STRICTLY FETCHING FROM RELATIONAL 'classes' TABLE
+  // 🚨 STRICTLY FETCHING FROM RELATIONAL 'classes' TABLE (Added UUIDs)
   Future<void> _fetchSchoolConfig(String sId) async {
     try {
       final classesData = await _supabase
           .from('classes')
-          .select('name')
+          .select('id, name')
           .eq('school_id', sId)
           .order('list_order', ascending: true);
 
       if (mounted) {
         setState(() {
+          _allClassesData = List<Map<String, dynamic>>.from(classesData);
           _officialClassOrder = classesData
               .map((c) => c['name'].toString())
               .toList();
@@ -519,12 +523,17 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
               builder: (_) => _ClassListScreen(
                 className: className,
                 students: students,
+                allClasses:
+                    _allClassesData, // 🚨 Pushing down the full class data
                 cardColor: cardColor,
                 textColor: textColor,
                 isDark: isDark,
               ),
             ),
-          );
+          ).then((_) {
+            // 🚨 Refresh to update buckets accurately if students were promoted
+            if (mounted) _handleRefresh();
+          });
         },
       ),
     );
@@ -720,11 +729,12 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 }
 
 // ============================================================================
-// DEDICATED CLASS ROSTER SCREEN
+// DEDICATED CLASS ROSTER SCREEN (UPGRADED TO STATEFUL FOR MULTI-SELECT)
 // ============================================================================
-class _ClassListScreen extends StatelessWidget {
+class _ClassListScreen extends StatefulWidget {
   final String className;
   final List<Map<String, dynamic>> students;
+  final List<Map<String, dynamic>> allClasses;
   final Color cardColor;
   final Color textColor;
   final bool isDark;
@@ -732,102 +742,356 @@ class _ClassListScreen extends StatelessWidget {
   const _ClassListScreen({
     required this.className,
     required this.students,
+    required this.allClasses,
     required this.cardColor,
     required this.textColor,
     required this.isDark,
   });
 
   @override
-  Widget build(BuildContext context) {
-    Color primaryColor = Theme.of(context).primaryColor;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
+  State<_ClassListScreen> createState() => _ClassListScreenState();
+}
 
-    // Sort students alphabetically inside the class
-    final sortedStudents = List<Map<String, dynamic>>.from(students);
-    sortedStudents.sort(
+class _ClassListScreenState extends State<_ClassListScreen> {
+  final Set<String> _selectedStudentIds = {};
+  bool _isSelecting = false;
+
+  late List<Map<String, dynamic>> _localStudents;
+
+  @override
+  void initState() {
+    super.initState();
+    _localStudents = List<Map<String, dynamic>>.from(widget.students);
+    _localStudents.sort(
       (a, b) => (a['first_name'] ?? '').toString().compareTo(
         (b['first_name'] ?? '').toString(),
       ),
     );
+  }
 
-    // 🚨 EXTRACTED ROSTER LIST
-    Widget rosterContent = ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: sortedStudents.length,
-      itemBuilder: (context, index) {
-        final student = sortedStudents[index];
-        final String fullName =
-            "${student['first_name']} ${student['last_name']}";
+  void _toggleSelectAll() {
+    setState(() {
+      if (_selectedStudentIds.length == _localStudents.length) {
+        _selectedStudentIds
+            .clear(); // Unselect all if all are currently selected
+      } else {
+        _selectedStudentIds.addAll(
+          _localStudents.map((s) => s['id'].toString()),
+        );
+      }
+    });
+  }
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: cardColor,
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withOpacity(0.05)
-                  : Colors.grey.shade100,
-            ),
-          ),
-          child: ListTile(
-            leading: Hero(
-              tag: student['id'],
-              child: CircleAvatar(
-                backgroundColor: primaryColor.withOpacity(0.1),
-                backgroundImage: student['passport_url'] != null
-                    ? NetworkImage(student['passport_url'])
-                    : null,
-                child: student['passport_url'] == null
-                    ? Icon(Icons.person_rounded, color: primaryColor)
-                    : null,
+  void _toggleStudent(String id) {
+    setState(() {
+      if (_selectedStudentIds.contains(id)) {
+        _selectedStudentIds.remove(id);
+      } else {
+        _selectedStudentIds.add(id);
+      }
+    });
+  }
+
+  void _showPromotionDialog(Color primaryColor) {
+    String? selectedClassId;
+    String? selectedClassName;
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: widget.isDark
+                  ? const Color(0xFF1E1E1E)
+                  : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
               ),
-            ),
-            title: Text(
-              fullName,
-              style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
-            ),
-            subtitle: Text(
-              "${student['admission_no'] ?? 'NO ID'} • ${student['gender']}",
-              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-            ),
-            trailing: const Icon(
-              Icons.chevron_right_rounded,
-              color: Colors.grey,
-            ),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => StudentProfileScreen(
-                    name: fullName,
-                    id: student['id'],
-                    studentClass: student['class_level'] ?? "Unassigned",
-                    imagePath: student['passport_url'],
-                    parentPhone: student['parent_phone'],
-                    parentEmail: student['parent_email'],
+              title: const Text("Promote / Reassign"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Moving ${_selectedStudentIds.length} students to:"),
+                  const SizedBox(height: 15),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: widget.isDark
+                          ? Colors.white.withOpacity(0.05)
+                          : Colors.grey[50],
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: widget.isDark
+                            ? Colors.white10
+                            : Colors.grey.shade300,
+                      ),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        isExpanded: true,
+                        value: selectedClassId,
+                        hint: const Padding(
+                          padding: EdgeInsets.only(left: 10),
+                          child: Text(
+                            "Select Destination Class",
+                            style: TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        items: widget.allClasses.map((c) {
+                          return DropdownMenuItem<String>(
+                            value: c['id'].toString(),
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 10),
+                              child: Text(c['name'].toString()),
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          setDialogState(() {
+                            selectedClassId = val;
+                            selectedClassName = widget.allClasses
+                                .firstWhere(
+                                  (c) => c['id'].toString() == val,
+                                )['name']
+                                .toString();
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                  child: const Text(
+                    "Cancel",
+                    style: TextStyle(color: Colors.grey),
                   ),
                 ),
-              );
-            },
-          ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                  ),
+                  onPressed: (isSaving || selectedClassId == null)
+                      ? null
+                      : () async {
+                          setDialogState(() => isSaving = true);
+                          try {
+                            // 🚨 THE BATCH UPDATE ENGINE 🚨
+                            await Supabase.instance.client
+                                .from('students')
+                                .update({
+                                  'class_id': selectedClassId,
+                                  'class_level': selectedClassName,
+                                })
+                                .inFilter('id', _selectedStudentIds.toList());
+
+                            if (mounted) {
+                              setState(() {
+                                // Remove them from local view and reset selection
+                                _localStudents.removeWhere(
+                                  (s) => _selectedStudentIds.contains(
+                                    s['id'].toString(),
+                                  ),
+                                );
+                                _selectedStudentIds.clear();
+                                _isSelecting = false;
+                              });
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    "Successfully moved students to $selectedClassName",
+                                  ),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            setDialogState(() => isSaving = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text("Failed to move students: $e"),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text(
+                          "Confirm",
+                          style: TextStyle(color: Colors.white),
+                        ),
+                ),
+              ],
+            );
+          },
         );
       },
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Color primaryColor = Theme.of(context).primaryColor;
+    Color bgColor = widget.isDark
+        ? const Color(0xFF121212)
+        : const Color(0xFFF8FAFC);
+
+    Widget rosterContent = _localStudents.isEmpty
+        ? Center(
+            child: Text(
+              "No students left in this class.",
+              style: TextStyle(color: Colors.grey[500], fontSize: 16),
+            ),
+          )
+        : ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: _localStudents.length,
+            itemBuilder: (context, index) {
+              final student = _localStudents[index];
+              final String fullName =
+                  "${student['first_name']} ${student['last_name']}";
+              final String sId = student['id'].toString();
+              final bool isSelected = _selectedStudentIds.contains(sId);
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? primaryColor.withOpacity(0.1)
+                      : widget.cardColor,
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(
+                    color: isSelected
+                        ? primaryColor.withOpacity(0.5)
+                        : (widget.isDark
+                              ? Colors.white.withOpacity(0.05)
+                              : Colors.grey.shade100),
+                  ),
+                ),
+                child: ListTile(
+                  leading: _isSelecting
+                      ? Checkbox(
+                          value: isSelected,
+                          onChanged: (val) => _toggleStudent(sId),
+                          activeColor: primaryColor,
+                        )
+                      : Hero(
+                          tag: student['id'],
+                          child: CircleAvatar(
+                            backgroundColor: primaryColor.withOpacity(0.1),
+                            backgroundImage: student['passport_url'] != null
+                                ? NetworkImage(student['passport_url'])
+                                : null,
+                            child: student['passport_url'] == null
+                                ? Icon(
+                                    Icons.person_rounded,
+                                    color: primaryColor,
+                                  )
+                                : null,
+                          ),
+                        ),
+                  title: Text(
+                    fullName,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: widget.textColor,
+                    ),
+                  ),
+                  subtitle: Text(
+                    "${student['admission_no'] ?? 'NO ID'} • ${student['gender']}",
+                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                  ),
+                  trailing: _isSelecting
+                      ? null
+                      : const Icon(
+                          Icons.chevron_right_rounded,
+                          color: Colors.grey,
+                        ),
+                  onTap: () {
+                    if (_isSelecting) {
+                      _toggleStudent(sId);
+                    } else {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => StudentProfileScreen(
+                            name: fullName,
+                            id: student['id'],
+                            studentClass:
+                                student['class_level'] ?? "Unassigned",
+                            imagePath: student['passport_url'],
+                            parentPhone: student['parent_phone'],
+                            parentEmail: student['parent_email'],
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                  onLongPress: () {
+                    if (!_isSelecting) {
+                      setState(() {
+                        _isSelecting = true;
+                        _selectedStudentIds.add(sId);
+                      });
+                    }
+                  },
+                ),
+              );
+            },
+          );
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: Text("${className.toUpperCase()} Roster"),
+        title: Text(
+          _isSelecting
+              ? "${_selectedStudentIds.length} Selected"
+              : "${widget.className.toUpperCase()} Roster",
+        ),
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         centerTitle: true,
+        leading: _isSelecting
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => setState(() {
+                  _isSelecting = false;
+                  _selectedStudentIds.clear();
+                }),
+              )
+            : null,
+        actions: [
+          if (_isSelecting)
+            IconButton(
+              icon: const Icon(Icons.select_all),
+              tooltip: "Select All",
+              onPressed: _toggleSelectAll,
+            ),
+          if (!_isSelecting && _localStudents.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.checklist_rtl_rounded),
+              tooltip: "Multi-Select",
+              onPressed: () => setState(() => _isSelecting = true),
+            ),
+        ],
       ),
-      // 🚨 SHAPE-SHIFTER: LayoutBuilder FOR INNER ROSTER SCREEN
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 800) {
-            // 💻 DESKTOP LAYOUT (Constrained Center Column)
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 800),
@@ -836,11 +1100,15 @@ class _ClassListScreen extends StatelessWidget {
                     color: bgColor,
                     border: Border(
                       left: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                        color: widget.isDark
+                            ? Colors.white10
+                            : Colors.grey.shade200,
                         width: 1,
                       ),
                       right: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                        color: widget.isDark
+                            ? Colors.white10
+                            : Colors.grey.shade200,
                         width: 1,
                       ),
                     ),
@@ -850,11 +1118,25 @@ class _ClassListScreen extends StatelessWidget {
               ),
             );
           } else {
-            // 📱 MOBILE LAYOUT
             return rosterContent;
           }
         },
       ),
+      floatingActionButton: _selectedStudentIds.isNotEmpty
+          ? FloatingActionButton.extended(
+              onPressed: () => _showPromotionDialog(primaryColor),
+              backgroundColor: primaryColor,
+              icon: const Icon(Icons.move_up_rounded, color: Colors.white),
+              label: const Text(
+                "REASSIGN",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                ),
+              ),
+            )
+          : null,
     );
   }
 }

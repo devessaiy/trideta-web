@@ -35,6 +35,9 @@ class _ReportCardScreenState extends State<ReportCardScreen>
   final List<String> _terms = ['1st Term', '2nd Term', '3rd Term'];
   List<String> _activeClasses = [];
 
+  // 🚨 ADDED: Hidden dictionary map to translate string names to UUIDs
+  final Map<String, String> _classNameToIdMap = {};
+
   List<Map<String, dynamic>> _students = [];
   final Map<String, bool> _hasResultMap = {};
 
@@ -64,23 +67,40 @@ class _ReportCardScreenState extends State<ReportCardScreen>
           .single();
 
       List<String> fetchedClasses = [];
+      _classNameToIdMap.clear();
+
       if (_userRole == 'admin') {
+        // Fetch IDs and Names, then map them together
         final classesData = await _supabase
             .from('classes')
-            .select('name')
+            .select('id, name')
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
-        fetchedClasses = classesData.map((c) => c['name'].toString()).toList();
+        for (var c in classesData) {
+          _classNameToIdMap[c['name'].toString()] = c['id'].toString();
+          fetchedClasses.add(c['name'].toString());
+        }
       } else {
+        // Teacher Logic: Get assigned UUIDs, then get fresh names
         final assignments = await _supabase
             .from('staff_assignments')
-            .select('class_assigned')
+            .select('class_id')
             .eq('staff_id', user.id);
-        fetchedClasses = assignments
-            .map((a) => a['class_assigned'].toString())
-            .toSet()
-            .toList();
-        fetchedClasses.sort();
+        final Set<String> uniqueIds = {};
+        for (var a in assignments) {
+          if (a['class_id'] != null) uniqueIds.add(a['class_id'].toString());
+        }
+        if (uniqueIds.isNotEmpty) {
+          final freshClasses = await _supabase
+              .from('classes')
+              .select('id, name')
+              .inFilter('id', uniqueIds.toList());
+          for (var c in freshClasses) {
+            _classNameToIdMap[c['name'].toString()] = c['id'].toString();
+            fetchedClasses.add(c['name'].toString());
+          }
+          fetchedClasses.sort();
+        }
       }
 
       if (mounted) {
@@ -108,15 +128,18 @@ class _ReportCardScreenState extends State<ReportCardScreen>
           .from('students')
           .select('id, first_name, last_name, admission_no')
           .eq('school_id', _schoolId!)
-          .eq('class_level', _selectedClass!)
+          // 🚨 TRANSLATED TO UUID
+          .eq('class_id', _classNameToIdMap[_selectedClass]!)
           .order('first_name', ascending: true);
+
       final resultsData = await _supabase
           .from('term_results')
           .select('student_id')
           .eq('school_id', _schoolId!)
           .eq('academic_session', _selectedSession!)
           .eq('term', _selectedTerm!)
-          .eq('class_level', _selectedClass!);
+          // 🚨 TRANSLATED TO UUID
+          .eq('class_id', _classNameToIdMap[_selectedClass]!);
 
       final Set<String> studentsWithResults = resultsData
           .map((r) => r['student_id'].toString())

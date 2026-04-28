@@ -27,6 +27,9 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
   final List<String> _terms = ['1st Term', '2nd Term', '3rd Term'];
   List<String> _activeClasses = [];
 
+  // 🚨 ADDED: Hidden dictionary map to translate string names to UUIDs
+  final Map<String, String> _classNameToIdMap = {};
+
   // --- BROADSHEET DATA ---
   List<String> _classSubjects = []; // Grid Columns
   List<Map<String, dynamic>> _students = []; // Grid Rows
@@ -41,9 +44,10 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
   }
 
   // ===========================================================================
-  // 1. DATA FETCHING & RBAC
+  // 1. INITIALIZATION & DATA FETCHING
   // ===========================================================================
 
+  // 🚨 REWRITTEN: Populates the dictionary and the dropdown
   Future<void> _fetchInitialData() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -65,25 +69,39 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
           .single();
 
       List<String> fetchedClasses = [];
+      _classNameToIdMap.clear();
 
       if (_userRole == 'admin') {
         final classesData = await _supabase
             .from('classes')
-            .select('name')
+            .select('id, name')
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
-        fetchedClasses = classesData.map((c) => c['name'].toString()).toList();
+        for (var c in classesData) {
+          _classNameToIdMap[c['name'].toString()] = c['id'].toString();
+          fetchedClasses.add(c['name'].toString());
+        }
       } else {
-        // Teachers only see classes they are assigned to (as subject or form master)
+        // Teachers only see classes they are assigned to
         final assignments = await _supabase
             .from('staff_assignments')
-            .select('class_assigned')
+            .select('class_id')
             .eq('staff_id', user.id);
-        fetchedClasses = assignments
-            .map((a) => a['class_assigned'].toString())
-            .toSet()
-            .toList();
-        fetchedClasses.sort();
+        final Set<String> uniqueIds = {};
+        for (var a in assignments) {
+          if (a['class_id'] != null) uniqueIds.add(a['class_id'].toString());
+        }
+        if (uniqueIds.isNotEmpty) {
+          final freshClasses = await _supabase
+              .from('classes')
+              .select('id, name')
+              .inFilter('id', uniqueIds.toList());
+          for (var c in freshClasses) {
+            _classNameToIdMap[c['name'].toString()] = c['id'].toString();
+            fetchedClasses.add(c['name'].toString());
+          }
+          fetchedClasses.sort();
+        }
       }
 
       if (mounted) {
@@ -105,200 +123,294 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
   Future<void> _generateBroadsheet() async {
     if (_selectedClass == null) return;
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _students.clear();
+      _classSubjects.clear();
+      _broadsheetData.clear();
+    });
 
+    await _fetchBroadsheetData();
+  }
+
+  Future<void> _fetchBroadsheetData() async {
     try {
-      // 1. Get all subjects offered in this class (for the table headers)
-      final subjectsData = await _supabase
-          .from('class_subjects')
-          .select('subject_name')
-          .eq('school_id', _schoolId!)
-          .eq('class_name', _selectedClass!);
-
-      _classSubjects =
-          subjectsData.map((s) => s['subject_name'].toString()).toList()
-            ..sort();
-
-      // 2. Get all students in this class
+      // 1. Get all active students in the selected class
       final studentsData = await _supabase
           .from('students')
           .select('id, first_name, last_name, admission_no')
           .eq('school_id', _schoolId!)
-          .eq('class_level', _selectedClass!)
+          // 🚨 TRANSLATED TO UUID
+          .eq('class_id', _classNameToIdMap[_selectedClass]!)
           .order('first_name', ascending: true);
 
-      _students = List<Map<String, dynamic>>.from(studentsData);
+      if (studentsData.isEmpty) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
 
-      // 3. Get ALL exam scores for this class, session, and term
+      // 2. Fetch ALL exam scores for this class + session + term
       final scoresData = await _supabase
           .from('exam_scores')
           .select('student_id, subject_name, total_score')
           .eq('school_id', _schoolId!)
-          .eq('class_level', _selectedClass!)
           .eq('academic_session', _selectedSession!)
-          .eq('term', _selectedTerm!);
+          .eq('term', _selectedTerm!)
+          // 🚨 TRANSLATED TO UUID
+          .eq('class_id', _classNameToIdMap[_selectedClass]!);
 
-      // Group scores by Student ID
-      Map<String, Map<String, double>> studentScores = {};
+      // 3. Extract unique subjects taught in this class
+      Set<String> uniqueSubjects = {};
+      for (var score in scoresData) {
+        if (score['subject_name'] != null) {
+          uniqueSubjects.add(score['subject_name'].toString());
+        }
+      }
+      List<String> subjectList = uniqueSubjects.toList();
+      subjectList.sort();
+
+      // 4. Fetch existing published positions/averages (if any)
+      final termResultsData = await _supabase
+          .from('term_results')
+          .select(
+            'student_id, total_score, average_score, position, position_suffix',
+          )
+          .eq('school_id', _schoolId!)
+          .eq('academic_session', _selectedSession!)
+          .eq('term', _selectedTerm!)
+          // 🚨 TRANSLATED TO UUID
+          .eq('class_id', _classNameToIdMap[_selectedClass]!);
+
+      Map<String, dynamic> existingResults = {
+        for (var item in termResultsData) item['student_id'].toString(): item,
+      };
+
+      // 5. Structure the Grid Data
+      Map<String, Map<String, dynamic>> tempGrid = {};
+
+      for (var student in studentsData) {
+        String sId = student['id'].toString();
+
+        tempGrid[sId] = {
+          'id': sId,
+          'name': "${student['last_name']} ${student['first_name']}",
+          'admission_no': student['admission_no'] ?? 'N/A',
+          'Total': 0.0,
+          'Average': 0.0,
+          'Position': existingResults[sId]?['position']?.toString() ?? '-',
+          'PositionSuffix': existingResults[sId]?['position_suffix'] ?? '',
+        };
+
+        // Initialize all subjects with null (meaning no score entered yet)
+        for (String sub in subjectList) {
+          tempGrid[sId]![sub] = null;
+        }
+      }
+
+      // 6. Populate grid with scores and compute raw totals
       for (var score in scoresData) {
         String sId = score['student_id'].toString();
         String subject = score['subject_name'].toString();
-        double total = (score['total_score'] ?? 0).toDouble();
+        double totalScore =
+            double.tryParse(score['total_score']?.toString() ?? '0') ?? 0;
 
-        studentScores.putIfAbsent(sId, () => {});
-        studentScores[sId]![subject] = total;
+        if (tempGrid.containsKey(sId)) {
+          tempGrid[sId]![subject] = totalScore;
+          tempGrid[sId]!['Total'] =
+              (tempGrid[sId]!['Total'] as double) + totalScore;
+        }
       }
 
-      // 4. Build the initial unranked broadsheet data
-      _broadsheetData.clear();
-
-      for (var student in _students) {
-        String sId = student['id'].toString();
-        var scores = studentScores[sId] ?? {};
-
-        double grandTotal = 0;
+      // Compute simple averages locally for display (before official publish)
+      for (var sId in tempGrid.keys) {
         int subjectsTaken = 0;
-
-        scores.forEach((key, value) {
-          grandTotal += value;
-          subjectsTaken++;
-        });
-
-        double average = subjectsTaken > 0 ? (grandTotal / subjectsTaken) : 0.0;
-
-        _broadsheetData[sId] = {
-          'scores': scores,
-          'grand_total': grandTotal,
-          'average': average,
-          'subjects_taken': subjectsTaken,
-          'position': 0, // Will compute next
-          'suffix': '',
-        };
+        for (String sub in subjectList) {
+          if (tempGrid[sId]![sub] != null) subjectsTaken++;
+        }
+        if (subjectsTaken > 0) {
+          tempGrid[sId]!['Average'] =
+              (tempGrid[sId]!['Total'] as double) / subjectsTaken;
+        }
       }
-
-      // 5. Instantly compute rankings locally
-      _computeRankingsLocally();
 
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _classSubjects = subjectList;
+          _students = List<Map<String, dynamic>>.from(studentsData);
+          _broadsheetData.addAll(tempGrid);
+          _isLoading = false;
+        });
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        showAuthErrorDialog("Failed to generate broadsheet.");
+        showAuthErrorDialog("Failed to load Broadsheet.");
       }
     }
   }
 
   // ===========================================================================
-  // 2. THE RANKING ENGINE (Math & Ties)
+  // 2. COMPUTATION & PUBLISHING LOGIC
   // ===========================================================================
 
-  void _computeRankingsLocally() {
-    // Create a list of students to sort by average
-    List<Map<String, dynamic>> rankingList = _students.map((s) {
-      String sId = s['id'].toString();
-      return {'id': sId, 'average': _broadsheetData[sId]!['average'] as double};
-    }).toList();
+  Future<void> _computeAndSaveMasterBroadsheet() async {
+    if (_selectedClass == null || _students.isEmpty) return;
 
-    // Sort descending (highest average first)
-    rankingList.sort((a, b) => b['average'].compareTo(a['average']));
-
-    int currentRank = 1;
-    for (int i = 0; i < rankingList.length; i++) {
-      // Handle ties (If average is exactly the same as the previous person, they share the rank)
-      if (i > 0 && rankingList[i]['average'] == rankingList[i - 1]['average']) {
-        // Keep currentRank the same
-      } else {
-        currentRank =
-            i + 1; // Actual position (e.g., if two 1sts, next person is 3rd)
-      }
-
-      String sId = rankingList[i]['id'];
-
-      // Only rank students who actually took exams
-      if (rankingList[i]['average'] > 0) {
-        _broadsheetData[sId]!['position'] = currentRank;
-        _broadsheetData[sId]!['suffix'] = _getPositionSuffix(currentRank);
-      } else {
-        _broadsheetData[sId]!['position'] = 0; // Unranked / Absent
-        _broadsheetData[sId]!['suffix'] = '-';
-      }
+    // Admin authorization check
+    if (_userRole != 'admin') {
+      showAuthErrorDialog("Only administrators can Compute & Publish results.");
+      return;
     }
-  }
 
-  String _getPositionSuffix(int number) {
-    if (number == 0) return "";
-    if (number >= 11 && number <= 13) return "th";
-    switch (number % 10) {
-      case 1:
-        return "st";
-      case 2:
-        return "nd";
-      case 3:
-        return "rd";
-      default:
-        return "th";
-    }
-  }
+    bool confirm = await _showConfirmDialog();
+    if (!confirm) return;
 
-  // ===========================================================================
-  // 3. DATABASE PUBLISHING
-  // ===========================================================================
-
-  Future<void> _publishRankingsToDatabase() async {
     setState(() => _isComputing = true);
 
     try {
-      List<Map<String, dynamic>> upsertPayload = [];
+      // 1. Sort students by Total Score (Descending) to find positions
+      List<String> rankedStudentIds = _broadsheetData.keys.toList();
+      rankedStudentIds.sort((a, b) {
+        double totalA = _broadsheetData[a]!['Total'];
+        double totalB = _broadsheetData[b]!['Total'];
+        return totalB.compareTo(totalA); // Highest first
+      });
 
-      for (var student in _students) {
-        String sId = student['id'].toString();
-        var data = _broadsheetData[sId]!;
+      // 2. Assign positions (handling ties properly)
+      int currentRank = 1;
+      int nextRank = 1;
+      double previousScore = -1.0;
 
-        if (data['average'] > 0) {
-          upsertPayload.add({
+      for (int i = 0; i < rankedStudentIds.length; i++) {
+        String sId = rankedStudentIds[i];
+        double score = _broadsheetData[sId]!['Total'];
+
+        if (score != previousScore) {
+          currentRank = nextRank;
+        }
+
+        _broadsheetData[sId]!['Position'] = currentRank.toString();
+        _broadsheetData[sId]!['PositionSuffix'] = _getOrdinalSuffix(
+          currentRank,
+        );
+
+        previousScore = score;
+        nextRank++;
+      }
+
+      // 3. Save to `term_results` table so Parents/Report Cards can see it
+      for (String sId in rankedStudentIds) {
+        var stData = _broadsheetData[sId]!;
+        int position = int.parse(stData['Position']);
+
+        // Check if record exists
+        final existing = await _supabase
+            .from('term_results')
+            .select('id')
+            .eq('student_id', sId)
+            .eq('academic_session', _selectedSession!)
+            .eq('term', _selectedTerm!)
+            .maybeSingle();
+
+        if (existing == null) {
+          // Insert
+          await _supabase.from('term_results').insert({
             'school_id': _schoolId,
             'student_id': sId,
             'academic_session': _selectedSession,
             'term': _selectedTerm,
-            'class_level': _selectedClass,
-            'total_score': data['grand_total'],
-            'average_score': data['average'],
-            'position': data['position'],
-            'position_suffix': data['suffix'],
+            // 🚨 TRANSLATED TO UUID
+            'class_id': _classNameToIdMap[_selectedClass],
+            'class_level': _selectedClass, // Kept for readable db records
+            'total_score': stData['Total'],
+            'average_score': stData['Average'],
+            'position': position,
+            'position_suffix': _getOrdinalSuffix(position),
             'updated_at': DateTime.now().toIso8601String(),
           });
+        } else {
+          // Update
+          await _supabase
+              .from('term_results')
+              .update({
+                'total_score': stData['Total'],
+                'average_score': stData['Average'],
+                'position': position,
+                'position_suffix': _getOrdinalSuffix(position),
+                'updated_at': DateTime.now().toIso8601String(),
+              })
+              .eq('student_id', sId)
+              .eq('academic_session', _selectedSession!)
+              .eq('term', _selectedTerm!)
+              // 🚨 TRANSLATED TO UUID
+              .eq('class_id', _classNameToIdMap[_selectedClass]!);
         }
       }
 
-      if (upsertPayload.isNotEmpty) {
-        // Upsert into the new term_results table
-        await _supabase
-            .from('term_results')
-            .upsert(
-              upsertPayload,
-              onConflict: 'student_id, academic_session, term',
-            );
-      }
-
       if (mounted) {
-        setState(() => _isComputing = false);
-        showSuccessDialog(
-          "Rankings Published!",
-          "Class positions have been successfully computed and saved. Report cards are now ready for printing.",
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Broadsheet Computed & Published Successfully!"),
+            backgroundColor: Colors.green,
+          ),
         );
+        // Refresh grid to show new positions
+        await _generateBroadsheet();
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isComputing = false);
-        showAuthErrorDialog("Failed to publish rankings to database.");
+        showAuthErrorDialog("Failed during computation: $e");
       }
+    } finally {
+      if (mounted) setState(() => _isComputing = false);
     }
   }
 
+  String _getOrdinalSuffix(int number) {
+    if (number >= 11 && number <= 13) {
+      return 'th';
+    }
+    switch (number % 10) {
+      case 1:
+        return 'st';
+      case 2:
+        return 'nd';
+      case 3:
+        return 'rd';
+      default:
+        return 'th';
+    }
+  }
+
+  Future<bool> _showConfirmDialog() async {
+    bool? res = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Compute & Publish?"),
+        content: const Text(
+          "This will lock in the total scores, calculate class positions, and officially publish the results to parent portals and report cards. Continue?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              "Yes, Compute",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+    return res ?? false;
+  }
+
   // ===========================================================================
-  // 4. UI BUILDERS
+  // 3. UI BUILDING
   // ===========================================================================
 
   @override
@@ -377,20 +489,13 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
           ),
         ),
 
-        // 2. SPREADSHEET GRID AREA
+        // 2. DATATABLE SPREADSHEET
         Expanded(
           child: _isLoading
               ? Center(child: CircularProgressIndicator(color: primaryColor))
-              : _selectedClass == null
-              ? _buildPlaceholderState(isDark)
               : _students.isEmpty
-              ? const Center(
-                  child: Text(
-                    "No students found in this class.",
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                )
-              : _buildBroadsheetGrid(isDark, primaryColor),
+              ? _buildPlaceholderState(isDark)
+              : _buildBroadsheetGrid(isDark, primaryColor, cardColor),
         ),
       ],
     );
@@ -404,226 +509,242 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
         ),
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
-        centerTitle: true,
         elevation: 0,
+        actions: [
+          if (_students.isNotEmpty && _userRole == 'admin')
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: primaryColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onPressed: _isComputing
+                    ? null
+                    : _computeAndSaveMasterBroadsheet,
+                icon: _isComputing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.calculate, size: 18),
+                label: Text(
+                  _isComputing ? "Computing..." : "Compute & Publish",
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+        ],
       ),
-      // 🚨 SHAPE-SHIFTER: LayoutBuilder
       body: LayoutBuilder(
         builder: (context, constraints) {
-          if (constraints.maxWidth > 800) {
-            // 💻 DESKTOP LAYOUT (Constrained broad column for data grid)
+          if (constraints.maxWidth > 1000) {
+            // DESKTOP/WEB LAYOUT: Center it and add margins
             return Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 1200,
-                ), // Massive 1200px width for broadsheet!
+                constraints: const BoxConstraints(maxWidth: 1200),
                 child: Container(
+                  margin: const EdgeInsets.symmetric(vertical: 20),
                   decoration: BoxDecoration(
                     color: bgColor,
-                    border: Border(
-                      left: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
-                      ),
-                      right: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
-                      ),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(
+                      color: isDark ? Colors.white10 : Colors.grey.shade200,
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                  child: mainContent,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(15),
+                    child: mainContent,
+                  ),
                 ),
               ),
             );
           } else {
-            // 📱 MOBILE LAYOUT
+            // MOBILE/TABLET LAYOUT: Full width
             return mainContent;
           }
         },
       ),
-      // 3. FLOATING ACTION BUTTON
-      floatingActionButton: _students.isNotEmpty && _selectedClass != null
-          ? FloatingActionButton.extended(
-              backgroundColor: primaryColor,
-              onPressed: _isComputing ? null : _publishRankingsToDatabase,
-              icon: _isComputing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : const Icon(
-                      Icons.workspace_premium_rounded,
-                      color: Colors.white,
-                    ),
-              label: Text(
-                _isComputing ? "PUBLISHING..." : "PUBLISH RANKINGS",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            )
-          : null,
     );
   }
 
-  // --- SPREADSHEET BUILDER ---
-  Widget _buildBroadsheetGrid(bool isDark, Color primaryColor) {
-    Color headerColor = isDark ? Colors.grey[900]! : Colors.grey[100]!;
-    Color textColor = isDark ? Colors.white : Colors.black87;
+  // ===========================================================================
+  // 4. WIDGET HELPERS
+  // ===========================================================================
 
+  Widget _buildBroadsheetGrid(
+    bool isDark,
+    Color primaryColor,
+    Color cardColor,
+  ) {
     return SingleChildScrollView(
       scrollDirection: Axis.vertical,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: DataTable(
-          headingRowColor: WidgetStateProperty.all(headerColor),
+          headingRowColor: WidgetStateProperty.all(
+            isDark ? Colors.white10 : Colors.grey[200],
+          ),
+          dataRowColor: WidgetStateProperty.resolveWith<Color>((
+            Set<WidgetState> states,
+          ) {
+            if (states.contains(WidgetState.selected)) {
+              return primaryColor.withOpacity(0.1);
+            }
+            return cardColor;
+          }),
+          border: TableBorder.all(
+            color: isDark ? Colors.white10 : Colors.grey.shade300,
+            width: 1,
+          ),
           columnSpacing: 25,
-          dataRowMaxHeight: 60,
+          horizontalMargin: 20,
           columns: [
-            DataColumn(
+            const DataColumn(
+              label: Text("SN", style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            const DataColumn(
               label: Text(
-                "Student Name",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: primaryColor,
-                ),
+                "Name",
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
 
             // Dynamic Subject Columns
-            ..._classSubjects.map(
-              (sub) => DataColumn(
+            ..._classSubjects.map((sub) {
+              // Extract first 4 letters for compact header
+              String compactTitle = sub.length > 5
+                  ? sub.substring(0, 5).toUpperCase()
+                  : sub.toUpperCase();
+              return DataColumn(
                 label: Text(
-                  sub.length > 5
-                      ? sub.substring(0, 5).toUpperCase()
-                      : sub.toUpperCase(),
+                  compactTitle,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Colors.grey[600],
-                    fontSize: 12,
+                    color: primaryColor,
                   ),
                 ),
-              ),
-            ),
+                tooltip: sub, // Full name on hover
+              );
+            }),
 
-            DataColumn(
+            // Summary Columns
+            const DataColumn(
               label: Text(
                 "TOTAL",
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: primaryColor,
+                  color: Colors.blue,
                 ),
               ),
             ),
-            DataColumn(
+            const DataColumn(
               label: Text(
                 "AVG",
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: primaryColor,
+                  color: Colors.purple,
                 ),
               ),
             ),
-            DataColumn(
+            const DataColumn(
               label: Text(
                 "POS",
                 style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  color: Colors.orange[700],
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
                 ),
               ),
             ),
           ],
-          rows: _students.map((student) {
-            String sId = student['id'].toString();
-            var data = _broadsheetData[sId]!;
-            var scores = data['scores'] as Map<String, double>;
+          rows: List<DataRow>.generate(_students.length, (index) {
+            String sId = _students[index]['id'].toString();
+            var rowData = _broadsheetData[sId]!;
 
             return DataRow(
               cells: [
-                // 1. Name Cell
+                DataCell(Text("${index + 1}")),
                 DataCell(
                   SizedBox(
                     width: 150,
                     child: Text(
-                      "${student['last_name']} ${student['first_name']}",
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: textColor,
-                      ),
+                      rowData['name'],
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ),
 
-                // 2. Dynamic Subject Score Cells
+                // Dynamic Subject Scores
                 ..._classSubjects.map((sub) {
-                  double score = scores[sub] ?? 0.0;
+                  var score = rowData[sub];
                   return DataCell(
-                    Text(
-                      score > 0 ? score.toInt().toString() : '-',
-                      style: TextStyle(
-                        color: score < 45 && score > 0
-                            ? Colors.red
-                            : (isDark ? Colors.white70 : Colors.black87),
-                        fontWeight: score < 45
-                            ? FontWeight.bold
-                            : FontWeight.normal,
+                    Center(
+                      child: Text(
+                        score != null ? score.toStringAsFixed(0) : "-",
+                        style: TextStyle(
+                          color: score == null ? Colors.grey : null,
+                          fontWeight: score != null
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
                       ),
                     ),
                   );
                 }),
 
-                // 3. Computed Cells (Total, Avg, Position)
+                // Summary Data Cells
                 DataCell(
                   Text(
-                    data['grand_total'].toInt().toString(),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    (rowData['Total'] as double).toStringAsFixed(1),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                    ),
                   ),
                 ),
                 DataCell(
                   Text(
-                    data['average'].toStringAsFixed(1),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    (rowData['Average'] as double).toStringAsFixed(1),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.purple,
+                    ),
                   ),
                 ),
-
-                // Position Cell with styling
                 DataCell(
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: data['position'] == 1
-                          ? Colors.orange.withOpacity(0.2) // Gold for 1st
-                          : data['position'] == 2
-                          ? Colors.grey.withOpacity(0.2) // Silver for 2nd
-                          : Colors.blue.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      data['position'] > 0
-                          ? "${data['position']}${data['suffix']}"
-                          : "N/A",
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        color: data['position'] == 1
-                            ? Colors.orange[700]
-                            : primaryColor,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        rowData['Position'],
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red,
+                          fontSize: 16,
+                        ),
                       ),
-                    ),
+                      Text(
+                        rowData['PositionSuffix'],
+                        style: const TextStyle(color: Colors.red, fontSize: 10),
+                      ),
+                    ],
                   ),
                 ),
               ],
             );
-          }).toList(),
+          }),
         ),
       ),
     );

@@ -229,11 +229,26 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
         }
       }
 
+      // 🚨 ADDED: Dictionary to grab the class UUIDs
+      Map<String, String> classNameToId = {};
+
       if (classesToInsert.isNotEmpty) {
-        await _supabase.from('classes').insert(classesToInsert);
+        final insertedClasses = await _supabase
+            .from('classes')
+            .insert(classesToInsert)
+            .select('id, name');
+        for (var c in insertedClasses) {
+          classNameToId[c['name'].toString()] = c['id'].toString();
+        }
       }
       if (classesToUpdate.isNotEmpty) {
-        await _supabase.from('classes').upsert(classesToUpdate);
+        final updatedClasses = await _supabase
+            .from('classes')
+            .upsert(classesToUpdate)
+            .select('id, name');
+        for (var c in updatedClasses) {
+          classNameToId[c['name'].toString()] = c['id'].toString();
+        }
       }
 
       // 🚨 SMART SPLIT: Subjects
@@ -245,6 +260,8 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
           subjectsToInsert.add({
             'school_id': _schoolId,
             'class_name': s['class_name'],
+            'class_id':
+                classNameToId[s['class_name']], // 🚨 ADDED: Link the UUID directly!
             'subject_name': s['subject_name'],
             'type': s['type'],
           });
@@ -253,6 +270,8 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
             'id': s['id'],
             'school_id': _schoolId,
             'class_name': s['class_name'],
+            'class_id':
+                classNameToId[s['class_name']], // 🚨 ADDED: Link the UUID directly!
             'subject_name': s['subject_name'],
             'type': s['type'],
           });
@@ -492,121 +511,283 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   void _showDuplicateAlert(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Row(
+          children: [
+            const Icon(Icons.info_outline, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message)),
+          ],
+        ),
         backgroundColor: Colors.orange.shade800,
         behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    Color primaryColor = Theme.of(context).primaryColor;
+  void _applySubjectsToMultipleClasses(List<String> targetClasses) {
+    if (_selectedClassName == null) return;
 
-    if (_isLoading) {
-      return Scaffold(
-        backgroundColor: bgColor,
-        body: Center(child: CircularProgressIndicator(color: primaryColor)),
+    // Get the actual subjects that currently belong to the selected class
+    List<Map<String, dynamic>> sourceSubjects = _classSubjects
+        .where((s) => s['class_name'] == _selectedClassName)
+        .toList();
+
+    if (sourceSubjects.isEmpty) {
+      _showDuplicateAlert(
+        "There are no subjects to copy from $_selectedClassName",
       );
+      return;
     }
 
-    // 🚨 EXTRACTED MAIN CONTENT FOR LAYOUT BUILDER
-    Widget mainContent = Column(
-      children: [
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              _buildSectionLabel("1. MANAGE CLASSES", isDark, primaryColor),
-              _buildClassManager(cardColor, isDark, primaryColor),
-              const SizedBox(height: 30),
-              _buildSectionLabel("2. SUBJECT CURRICULUM", isDark, primaryColor),
-              _buildSubjectManager(cardColor, isDark, primaryColor),
-            ],
-          ),
+    setState(() {
+      for (String targetClass in targetClasses) {
+        for (var sub in sourceSubjects) {
+          bool exists = _classSubjects.any(
+            (s) =>
+                s['class_name'] == targetClass &&
+                s['subject_name'] == sub['subject_name'],
+          );
+
+          if (!exists) {
+            _classSubjects.add({
+              'id': null, // It's a new entry for the target class
+              'class_name': targetClass,
+              'subject_name': sub['subject_name'],
+              'type': sub['type'],
+            });
+          }
+        }
+      }
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          "Subjects successfully copied! Remember to save changes.",
         ),
-        _buildSaveBottomBar(isDark, primaryColor),
-      ],
+        backgroundColor: Colors.green,
+      ),
     );
+  }
+
+  void _showDuplicateDialog() {
+    if (_classes.length <= 1) {
+      _showDuplicateAlert("No other classes available to copy to.");
+      return;
+    }
+
+    List<String> availableClasses = _classes
+        .map((c) => c['name'] as String)
+        .where((name) => name != _selectedClassName)
+        .toList();
+
+    List<String> selectedTargets = [];
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+              title: Text(
+                "Copy Subjects to...",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).primaryColor,
+                ),
+              ),
+              content: SizedBox(
+                width: 300,
+                height: 300,
+                child: Column(
+                  children: [
+                    Text(
+                      "Copying from $_selectedClassName",
+                      style: const TextStyle(
+                        color: Colors.grey,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: ListView(
+                          children: availableClasses.map((cls) {
+                            return CheckboxListTile(
+                              title: Text(
+                                cls,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              value: selectedTargets.contains(cls),
+                              activeColor: Theme.of(context).primaryColor,
+                              onChanged: (val) {
+                                setDialogState(() {
+                                  if (val == true) {
+                                    selectedTargets.add(cls);
+                                  } else {
+                                    selectedTargets.remove(cls);
+                                  }
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(
+                    "Cancel",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).primaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    if (selectedTargets.isNotEmpty) {
+                      _applySubjectsToMultipleClasses(selectedTargets);
+                    }
+                  },
+                  child: const Text(
+                    "Apply",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // --- UI BUILDING ---
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
+    Color primaryColor = Theme.of(context).primaryColor;
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
         title: const Text(
-          "Structure Editor",
+          "School Configuration",
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
-        centerTitle: true,
       ),
-      // 🚨 SHAPE-SHIFTER: LayoutBuilder
       body: LayoutBuilder(
         builder: (context, constraints) {
-          if (constraints.maxWidth > 800) {
-            // 💻 DESKTOP LAYOUT (Constrained Center Column)
+          if (constraints.maxWidth > 900) {
+            // 💻 DESKTOP TWO-COLUMN LAYOUT
             return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 800),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: bgColor,
-                    border: Border(
-                      left: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
-                      ),
-                      right: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
-                      ),
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 1200),
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: _buildClassesPanel(isDark, primaryColor),
                     ),
-                  ),
-                  child: mainContent,
+                    const SizedBox(width: 20),
+                    Expanded(
+                      flex: 6,
+                      child: _buildSubjectsPanel(isDark, primaryColor),
+                    ),
+                  ],
                 ),
               ),
             );
           } else {
-            // 📱 MOBILE LAYOUT (Full Screen)
-            return mainContent;
+            // 📱 MOBILE TAB LAYOUT
+            return DefaultTabController(
+              length: 2,
+              child: Column(
+                children: [
+                  Container(
+                    color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                    child: TabBar(
+                      labelColor: primaryColor,
+                      unselectedLabelColor: Colors.grey,
+                      indicatorColor: primaryColor,
+                      indicatorWeight: 3,
+                      labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+                      tabs: const [
+                        Tab(text: "Classes"),
+                        Tab(text: "Subjects"),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: TabBarView(
+                      children: [
+                        _buildClassesPanel(isDark, primaryColor),
+                        _buildSubjectsPanel(isDark, primaryColor),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
           }
         },
       ),
+      bottomNavigationBar: _buildBottomBar(isDark, primaryColor),
     );
   }
 
-  Widget _buildSectionLabel(String text, bool isDark, Color primaryColor) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontWeight: FontWeight.w800,
-          color: primaryColor,
-          fontSize: 12,
-          letterSpacing: 1.2,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildClassManager(Color cardColor, bool isDark, Color primaryColor) {
+  Widget _buildClassesPanel(bool isDark, Color primaryColor) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: cardColor,
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Text(
+            "Manage Classes",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 15),
           Row(
             children: [
               Expanded(
@@ -614,11 +795,12 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                   controller: _classController,
                   textCapitalization: TextCapitalization.characters,
                   decoration: _inputStyle(
-                    "e.g. JSS 1",
+                    "Add new class",
                     Icons.school,
                     isDark,
                     primaryColor,
                   ),
+                  onSubmitted: (_) => _addClass(),
                 ),
               ),
               const SizedBox(width: 10),
@@ -632,159 +814,200 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
               ),
             ],
           ),
-          const SizedBox(height: 15),
-          const Text(
-            "Drag to reorder. Tap the pencil to edit.",
-            style: TextStyle(fontSize: 11, color: Colors.grey),
-          ),
-          const SizedBox(height: 10),
-          if (_classes.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(20.0),
-                child: Text("No classes added yet."),
-              ),
-            ),
-          SizedBox(
-            height: 250,
-            child: ReorderableListView.builder(
-              shrinkWrap: true,
-              itemCount: _classes.length,
-              onReorder: (oldIdx, newIdx) {
-                setState(() {
-                  if (newIdx > oldIdx) newIdx -= 1;
-                  _classes.insert(newIdx, _classes.removeAt(oldIdx));
-                });
-              },
-              itemBuilder: (ctx, i) => Container(
-                key: ValueKey(_classes[i]['name']),
-                margin: const EdgeInsets.only(bottom: 5),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withOpacity(0.02)
-                      : Colors.grey[50],
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: ListTile(
-                  dense: true,
-                  leading: Text(
-                    "${i + 1}.",
-                    style: TextStyle(
-                      color: primaryColor,
-                      fontWeight: FontWeight.bold,
+          const SizedBox(height: 20),
+          Expanded(
+            child: _classes.isEmpty
+                ? const Center(
+                    child: Text(
+                      "No classes found",
+                      style: TextStyle(color: Colors.grey),
                     ),
-                  ),
-                  title: Text(
-                    _classes[i]['name'],
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(
-                          Icons.edit_rounded,
-                          color: Colors.blue,
-                          size: 18,
+                  )
+                : ReorderableListView.builder(
+                    itemCount: _classes.length,
+                    onReorder: (oldIdx, newIdx) {
+                      setState(() {
+                        if (newIdx > oldIdx) newIdx -= 1;
+                        _classes.insert(newIdx, _classes.removeAt(oldIdx));
+                      });
+                    },
+                    itemBuilder: (ctx, i) {
+                      var cls = _classes[i];
+                      return Card(
+                        key: ValueKey(cls['name']),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        color: isDark
+                            ? Colors.white.withOpacity(0.02)
+                            : Colors.grey[50],
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: BorderSide(
+                            color: isDark
+                                ? Colors.white10
+                                : Colors.grey.shade200,
+                          ),
                         ),
-                        onPressed: () => _editClass(_classes[i]),
-                      ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.remove_circle_outline,
-                          color: Colors.red,
-                          size: 20,
+                        child: ListTile(
+                          title: Text(
+                            cls['name'],
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          leading: const Icon(
+                            Icons.drag_indicator,
+                            color: Colors.grey,
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.edit,
+                                  size: 18,
+                                  color: Colors.blue,
+                                ),
+                                onPressed: () => _editClass(cls),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  size: 18,
+                                  color: Colors.red,
+                                ),
+                                onPressed: () => _removeClass(cls),
+                              ),
+                            ],
+                          ),
                         ),
-                        onPressed: () => _removeClass(_classes[i]),
-                      ),
-                      const Icon(Icons.drag_handle, color: Colors.grey),
-                    ],
+                      );
+                    },
                   ),
-                ),
-              ),
-            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSubjectManager(
-    Color cardColor,
-    bool isDark,
-    Color primaryColor,
-  ) {
+  Widget _buildSubjectsPanel(bool isDark, Color primaryColor) {
     if (_classes.isEmpty) {
-      return const Text(
-        "Add a class first.",
-        style: TextStyle(color: Colors.grey),
+      return const Center(
+        child: Text(
+          "Add a class first to manage subjects.",
+          style: TextStyle(color: Colors.grey),
+        ),
       );
     }
+
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: cardColor,
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          DropdownButtonFormField<String>(
-            initialValue: _selectedClassName,
-            decoration: _inputStyle(
-              "Target Class",
-              Icons.class_,
-              isDark,
-              primaryColor,
-            ),
-            items: _classes
-                .map(
-                  (c) => DropdownMenuItem<String>(
-                    value: c['name'],
-                    child: Text(c['name']),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "Manage Subjects",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              if (_classSubjects.isNotEmpty)
+                TextButton.icon(
+                  onPressed: _showDuplicateDialog,
+                  icon: const Icon(Icons.copy_all, size: 18),
+                  label: const Text("Copy to..."),
+                  style: TextButton.styleFrom(
+                    foregroundColor: primaryColor,
+                    textStyle: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                )
-                .toList(),
-            onChanged: (val) => setState(() => _selectedClassName = val),
+                ),
+            ],
           ),
           const SizedBox(height: 15),
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'Compulsory', label: Text('Compulsory')),
-              ButtonSegment(value: 'Elective', label: Text('Elective')),
-            ],
-            selected: {_subjectType},
-            onSelectionChanged: (Set<String> newSelection) =>
-                setState(() => _subjectType = newSelection.first),
-            style: ButtonStyle(
-              backgroundColor: WidgetStateProperty.resolveWith(
-                (states) => states.contains(WidgetState.selected)
-                    ? primaryColor.withOpacity(0.1)
-                    : Colors.transparent,
+
+          // Target Class Dropdown
+          Container(
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withOpacity(0.03) : Colors.grey[50],
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: DropdownButtonFormField<String>(
+              value: _selectedClassName,
+              decoration: _inputStyle(
+                "Target Class",
+                Icons.filter_alt,
+                isDark,
+                primaryColor,
               ),
-              foregroundColor: WidgetStateProperty.resolveWith(
-                (states) => states.contains(WidgetState.selected)
-                    ? primaryColor
-                    : Colors.grey,
-              ),
+              items: _classes
+                  .map(
+                    (c) => DropdownMenuItem<String>(
+                      value: c['name'],
+                      child: Text(c['name']),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (val) => setState(() => _selectedClassName = val),
             ),
           ),
           const SizedBox(height: 15),
+
+          // Input Row
           Row(
             children: [
               Expanded(
+                flex: 5,
                 child: TextField(
                   controller: _subjectController,
                   textCapitalization: TextCapitalization.characters,
                   decoration: _inputStyle(
-                    "Subject Name",
+                    "Add subject",
                     Icons.book,
                     isDark,
                     primaryColor,
                   ),
+                  onSubmitted: (_) => _addSubject(),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 4,
+                child: DropdownButtonFormField<String>(
+                  value: _subjectType,
+                  isExpanded:
+                      true, // 🚨 Added to force text to stay inside bounds
+                  decoration: _inputStyle(
+                    "Type",
+                    Icons.category,
+                    isDark,
+                    primaryColor,
+                  ),
+                  items: ['Compulsory', 'Elective']
+                      .map(
+                        (t) => DropdownMenuItem(
+                          value: t,
+                          child: Text(
+                            t,
+                            style: const TextStyle(
+                              fontSize: 12,
+                            ), // 🚨 Scaled down slightly for mobile
+                            overflow: TextOverflow
+                                .ellipsis, // 🚨 Prevents overlay by adding "..." if too tight
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (val) => setState(() => _subjectType = val!),
                 ),
               ),
               const SizedBox(width: 10),
@@ -799,72 +1022,77 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
             ],
           ),
           const SizedBox(height: 20),
-          const Text(
-            "Tap a subject to rename it.",
-            style: TextStyle(
-              fontSize: 10,
-              color: Colors.grey,
-              fontStyle: FontStyle.italic,
-            ),
+
+          // Subjects List
+          Expanded(
+            child: _selectedClassName == null
+                ? const Center(child: Text("Select a class to view subjects"))
+                : ListView(
+                    children: [
+                      _buildSubjectCategory("Compulsory", isDark),
+                      const SizedBox(height: 15),
+                      _buildSubjectCategory("Elective", isDark),
+                    ],
+                  ),
           ),
-          const SizedBox(height: 10),
-          _buildSubjectChipWrap("Compulsory Subjects", 'Compulsory'),
-          const SizedBox(height: 15),
-          _buildSubjectChipWrap("Elective Subjects", 'Elective'),
         ],
       ),
     );
   }
 
-  Widget _buildSubjectChipWrap(String label, String type) {
-    if (_selectedClassName == null) return const SizedBox();
-    final subjects = _classSubjects
+  Widget _buildSubjectCategory(String type, bool isDark) {
+    final subs = _classSubjects
         .where(
           (s) => s['class_name'] == _selectedClassName && s['type'] == type,
         )
         .toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          label,
+          "$type Subjects",
           style: const TextStyle(
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: FontWeight.bold,
             color: Colors.grey,
           ),
         ),
         const SizedBox(height: 5),
-        if (subjects.isEmpty)
+        if (subs.isEmpty)
           const Text(
             "None added",
-            style: TextStyle(
-              fontSize: 10,
-              color: Colors.grey,
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-        Wrap(
-          spacing: 8,
-          children: subjects
-              .map(
-                (s) => InputChip(
-                  label: Text(
-                    s['subject_name'],
-                    style: const TextStyle(fontSize: 11),
+            style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
+          )
+        else
+          Wrap(
+            spacing: 8,
+            children: subs.map((s) {
+              return InputChip(
+                label: Text(
+                  s['subject_name'],
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
                   ),
-                  deleteIconColor: Colors.red,
-                  onDeleted: () => _removeSubject(s),
-                  onPressed: () => _editSubject(s),
                 ),
-              )
-              .toList(),
-        ),
+                backgroundColor: isDark
+                    ? Colors.white.withOpacity(0.05)
+                    : (type == 'Compulsory'
+                          ? Colors.red[50]
+                          : Colors.green[50]),
+                side: BorderSide.none,
+                deleteIconColor: Colors.red,
+                onPressed: () => _editSubject(s),
+                onDeleted: () => _removeSubject(s),
+              );
+            }).toList(),
+          ),
       ],
     );
   }
 
-  Widget _buildSaveBottomBar(bool isDark, Color primaryColor) {
+  Widget _buildBottomBar(bool isDark, Color primaryColor) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -916,6 +1144,12 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide(
+          color: isDark ? Colors.white10 : Colors.grey.shade200,
+        ),
       ),
     );
   }

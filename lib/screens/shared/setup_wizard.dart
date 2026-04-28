@@ -161,8 +161,20 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
           'list_order': i,
         });
       }
+
+      // 🚨 ADDED: Dictionary to grab the newly created class UUIDs
+      Map<String, String> classNameToId = {};
+
       if (classesToInsert.isNotEmpty) {
-        await _supabase.from('classes').upsert(classesToInsert);
+        // 🚨 ADDED: .select('id, name') to fetch the UUIDs right after creating them
+        final insertedClasses = await _supabase
+            .from('classes')
+            .upsert(classesToInsert)
+            .select('id, name');
+
+        for (var c in insertedClasses) {
+          classNameToId[c['name'].toString()] = c['id'].toString();
+        }
       }
 
       // 4. Save Subjects to Relational Table
@@ -171,6 +183,8 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
         subjectsToInsert.add({
           'school_id': _schoolId,
           'class_name': s['class_name'],
+          'class_id':
+              classNameToId[s['class_name']], // 🚨 ADDED: Link the UUID directly!
           'subject_name': s['subject_name'],
           'type': s['type'],
         });

@@ -43,6 +43,8 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
   final ImagePicker _picker = ImagePicker();
 
   List<String> _activeClasses = [];
+  // 🚨 INJECTED: Dictionary map to translate string names to UUIDs
+  final Map<String, String> _classNameToIdMap = {};
   bool _isLoading = true;
   bool _hasClasses = false;
 
@@ -57,125 +59,11 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
   bool _usePhoneAsLogin = false;
   bool _isObscure1 = true;
   bool _isObscure2 = true;
-  String _passwordStrength = "";
-  Color _strengthColor = Colors.transparent;
-  String _matchStatus = "";
-  Color _matchColor = Colors.transparent;
 
   @override
   void initState() {
     super.initState();
     _fetchSchoolConfig();
-  }
-
-  @override
-  void dispose() {
-    _firstNameController.dispose();
-    _middleNameController.dispose();
-    _lastNameController.dispose();
-    _dobController.dispose();
-    _parentNameController.dispose();
-    _parentEmailController.dispose();
-    _loginPhoneController.dispose();
-    _parentPhoneController.dispose();
-    _addressController.dispose();
-    _parentPasswordController.dispose();
-    _parentConfirmPasswordController.dispose();
-    super.dispose();
-  }
-
-  void _checkPasswordStrength(String val) {
-    if (val.isEmpty) {
-      setState(() => _passwordStrength = "");
-      _checkMatch(_parentConfirmPasswordController.text);
-      return;
-    }
-
-    bool hasLetters = RegExp(r'[a-zA-Z]').hasMatch(val);
-    bool hasNumbers = RegExp(r'[0-9]').hasMatch(val);
-    bool hasSpecial = RegExp(r'[!@#\$&*~%]').hasMatch(val);
-
-    Color primaryColor = Theme.of(context).primaryColor;
-
-    if (val.length < 6) {
-      _passwordStrength = "Too short (Min 6 characters)";
-      _strengthColor = Colors.red;
-    } else if (!hasLetters || !hasNumbers) {
-      _passwordStrength = "Weak (Add letters & numbers)";
-      _strengthColor = Colors.orange;
-    } else if (hasLetters && hasNumbers && !hasSpecial && val.length >= 6) {
-      _passwordStrength = "Good Password";
-      _strengthColor = primaryColor;
-    } else if (hasLetters && hasNumbers && hasSpecial && val.length >= 8) {
-      _passwordStrength = "Strong Password";
-      _strengthColor = Colors.green;
-    } else {
-      _passwordStrength = "Good Password";
-      _strengthColor = primaryColor;
-    }
-
-    setState(() {});
-    _checkMatch(_parentConfirmPasswordController.text);
-  }
-
-  void _checkMatch(String val) {
-    if (val.isEmpty) {
-      setState(() => _matchStatus = "");
-      return;
-    }
-
-    if (val == _parentPasswordController.text) {
-      _matchStatus = "Passwords match";
-      _matchColor = Colors.green;
-    } else {
-      _matchStatus = "Passwords do not match";
-      _matchColor = Colors.red;
-    }
-    setState(() {});
-  }
-
-  bool _isFormDirty() {
-    return _firstNameController.text.isNotEmpty ||
-        _parentNameController.text.isNotEmpty ||
-        _pickedFile != null;
-  }
-
-  Future<bool> _onWillPop() async {
-    if (!_isFormDirty()) return true;
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    return await showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: const Text("Discard Changes?"),
-            content: const Text(
-              "Leaving now will lose all the student data you've entered. Exit anyway?",
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text("Stay"),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.redAccent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text(
-                  "Discard",
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-        ) ??
-        false;
   }
 
   Future<void> _fetchSchoolConfig() async {
@@ -198,7 +86,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
 
       final classesData = await _supabase
           .from('classes')
-          .select('name')
+          .select('id, name')
           .eq('school_id', schoolId)
           .order('list_order', ascending: true);
 
@@ -206,7 +94,11 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         setState(() {
           _currentSchoolName = school['name'] ?? "";
 
+          _classNameToIdMap.clear();
           if (classesData.isNotEmpty) {
+            for (var c in classesData) {
+              _classNameToIdMap[c['name'].toString()] = c['id'].toString();
+            }
             _activeClasses = classesData
                 .map((c) => c['name'].toString())
                 .toList();
@@ -252,15 +144,31 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
 
   Future<void> _pickImage() async {
     setState(() => isInteractingWithSystem = true);
+
+    // 🚨 AUTO-COMPRESSION ENGINE
     final XFile? image = await _picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 600,
-      maxHeight: 600,
-      imageQuality: 70,
+      imageQuality:
+          70, // 70% quality is visually identical for passports but saves massive space
+      maxWidth:
+          600, // Crushes 4000px phone camera photos down to a sensible size
+      maxHeight: 600, // Keeps the aspect ratio bounded
     );
+
     setState(() => isInteractingWithSystem = false);
+
     if (image != null) {
       final bytes = await image.readAsBytes();
+
+      // OPTIONAL: Extreme Safety Net (Hard Limit of 2MB)
+      // Just in case the compressed image is somehow still too large
+      if (bytes.lengthInBytes > 500 * 1024) {
+        showAuthErrorDialog(
+          "Image is too large. Please choose a simpler photo.",
+        );
+        return;
+      }
+
       setState(() {
         _pickedFile = image;
         _webImage = bytes;
@@ -270,52 +178,24 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
 
   Future<void> _registerStudent() async {
     if (!_formKey.currentState!.validate() || _pickedFile == null) {
-      showAuthErrorDialog(
-        "Incomplete details. Please upload a passport photo and fill all required fields.",
-      );
+      if (_pickedFile == null) {
+        showAuthErrorDialog(
+          "Passport photo is missing.\\n\\nPlease scroll up and tap the camera icon to upload a photo of the student.",
+        );
+      }
       return;
     }
 
-    String pwd = _parentPasswordController.text;
-    if (pwd.length < 6 ||
-        !RegExp(r'[a-zA-Z]').hasMatch(pwd) ||
-        !RegExp(r'[0-9]').hasMatch(pwd)) {
-      showAuthErrorDialog(
-        "Your password is too weak. It must be at least 6 characters long and contain both letters and numbers.",
-      );
-      return;
-    }
-
-    if (pwd != _parentConfirmPasswordController.text) {
-      showAuthErrorDialog(
-        "The passwords you entered do not match. Please check them and try again.",
-      );
-      return;
-    }
-
-    // 🚨 SMART LOGIN ID GENERATOR
-    String exactLoginId = _parentEmailController.text.trim();
+    String exactLoginId = _parentEmailController.text.trim().toLowerCase();
     String rawLoginPhone = _loginPhoneController.text.trim();
+    String pwd = _parentPasswordController.text;
 
     if (_usePhoneAsLogin) {
       if (rawLoginPhone.isEmpty) {
-        showAuthErrorDialog("Please provide a Phone Number for the Login ID.");
+        showAuthErrorDialog("Please enter a phone number for login.");
         return;
       }
-      String formattedPhone = rawLoginPhone.replaceAll(' ', '');
-      if (formattedPhone.startsWith('0')) {
-        formattedPhone = '+234${formattedPhone.substring(1)}';
-      } else if (!formattedPhone.startsWith('+')) {
-        formattedPhone = '+234$formattedPhone';
-      }
-      exactLoginId = '$formattedPhone@trideta.com';
-    } else {
-      if (exactLoginId.isEmpty || !exactLoginId.contains('@')) {
-        showAuthErrorDialog(
-          "Please provide a valid Email Address for the Login ID.",
-        );
-        return;
-      }
+      exactLoginId = "+234${rawLoginPhone.replaceAll(' ', '')}@trideta.com";
     }
 
     setState(() => _isLoading = true);
@@ -357,16 +237,8 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
       if (isExistingParent) {
         setState(() => _isLoading = false);
         String siblingName = existing[0]['first_name'];
-        String oldParentEmail = existing[0]['parent_email'] ?? '';
-        accountAlreadyCreated = existing[0]['parent_account_created'] == true;
-
-        bool confirmLink = await _showSiblingDialog(
-          siblingName,
-          searchPhone.isNotEmpty ? searchPhone : exactLoginId,
-        );
-
-        if (!confirmLink) return;
-        setState(() => _isLoading = true);
+        accountAlreadyCreated = existing[0]['parent_account_created'] ?? false;
+        String oldParentEmail = existing[0]['parent_email']?.toString() ?? "";
 
         // 🚨 THE SERVER-SIDE MIGRATION MAGIC
         if (_usePhoneAsLogin &&
@@ -388,11 +260,66 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
             }
 
             // We NO LONGER update the database from Flutter. The Edge Function did it!
-            finalLoginIdToSave = exactLoginId;
           } catch (e) {
             setState(() => _isLoading = false);
-            showAuthErrorDialog("App Error: ${e.toString()}");
+            showAuthErrorDialog(
+              "Migration Error.\\n\\nCould not migrate existing email account to phone number. Contact support if this persists.",
+            );
             return;
+          }
+        }
+
+        bool proceed =
+            await showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text("Sibling Detected"),
+                content: Text(
+                  "We found an existing parent profile matching this ${_usePhoneAsLogin ? 'phone number' : 'email address'} (Child: $siblingName).\\n\\nDo you want to link this new student to the same parent account?",
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text("Cancel"),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text("Yes, Link Sibling"),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+
+        if (!proceed) {
+          setState(() => _isLoading = false);
+          return;
+        }
+
+        setState(() => _isLoading = true);
+        if (!accountAlreadyCreated) {
+          try {
+            await _supabase.functions.invoke(
+              'create-parent-account',
+              body: {
+                'email': _usePhoneAsLogin ? '' : exactLoginId,
+                'password': pwd,
+                'phone': _usePhoneAsLogin
+                    ? rawLoginPhone
+                    : _parentPhoneController.text.trim(),
+                'studentName': _firstNameController.text.trim(),
+                'usePhoneForLogin': _usePhoneAsLogin,
+              },
+            );
+            accountAlreadyCreated = true;
+          } catch (e) {
+            if (e.toString().contains("already exists")) {
+              accountAlreadyCreated = true;
+            } else {
+              setState(() => _isLoading = false);
+              showAuthErrorDialog("Auth Link Error: $e");
+              return;
+            }
           }
         } else {
           finalLoginIdToSave = oldParentEmail.isNotEmpty
@@ -417,16 +344,22 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
           accountAlreadyCreated = true;
           finalLoginIdToSave = exactLoginId;
         } catch (e) {
+          if (e.toString().contains("already exists")) {
+            setState(() => _isLoading = false);
+            showAuthErrorDialog(
+              "Account Collision.\\n\\nThis exact login already exists in the Trideta network but is NOT linked to your school yet. Please use a slightly different email or phone number.",
+            );
+            return;
+          }
           setState(() => _isLoading = false);
-          showAuthErrorDialog(
-            "Failed to create parent login account. Ensure the network is stable.",
-          );
+          showAuthErrorDialog("Auth Creation Error: $e");
           return;
         }
       }
 
+      // --- SAVE PASSPORT & STUDENT DATA ---
       String finalID = _generatedID.replaceAll(
-        "XXX",
+        'XXX',
         DateTime.now().millisecondsSinceEpoch.toString().substring(9),
       );
       final fileExt = _pickedFile!.name.split('.').last;
@@ -446,6 +379,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         'middle_name': _middleNameController.text.trim(),
         'last_name': _lastNameController.text.trim(),
         'admission_no': finalID,
+        'class_id': _classNameToIdMap[_selectedClass], // 🚨 PUSHING THE UUID!
         'class_level': _selectedClass,
         'department': _selectedDepartment,
         'gender': _selectedGender,
@@ -455,25 +389,47 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         'parent_email': finalLoginIdToSave, // Inherited or New
         'parent_phone': searchPhone,
         'address': _addressController.text.trim(),
-        'session_admitted': _selectedSession,
         'category': _studentCategory,
+        'session_admitted': _selectedSession,
         'parent_account_created': accountAlreadyCreated,
       });
 
       if (mounted) {
-        setState(() => _isLoading = false);
         showSuccessDialog(
           "Admission Successful",
-          "Student ID: $finalID\n\n${isExistingParent ? 'Linked to existing parent account.' : 'Parent login credentials generated securely.'}",
-          onOkay: () => Navigator.pop(context),
+          "Student $finalID has been registered${isExistingParent ? ' and linked as a sibling' : ''}.",
         );
+        _clearForm();
       }
     } catch (e) {
-      setState(() => _isLoading = false);
-      showAuthErrorDialog(
-        "Admission failed. We couldn't save the student record.",
-      );
+      debugPrint("💥 ADMISSION ERROR: $e");
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showAuthErrorDialog(
+          "Failed to admit student.\\n\\nPlease check your internet connection.",
+        );
+      }
     }
+  }
+
+  void _clearForm() {
+    setState(() {
+      _firstNameController.clear();
+      _middleNameController.clear();
+      _lastNameController.clear();
+      _dobController.clear();
+      _parentNameController.clear();
+      _parentEmailController.clear();
+      _loginPhoneController.clear();
+      _parentPhoneController.clear();
+      _addressController.clear();
+      _parentPasswordController.clear();
+      _parentConfirmPasswordController.clear();
+      _pickedFile = null;
+      _webImage = null;
+      _isLoading = false;
+      _updateSmartID();
+    });
   }
 
   @override
@@ -482,738 +438,638 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     if (!_hasClasses) {
-      return AdmissionLockOverlay(onRefresh: () => _fetchSchoolConfig());
+      return _NoClassesView(
+        onRefresh: () {
+          setState(() => _isLoading = true);
+          _fetchSchoolConfig();
+        },
+      );
     }
 
     bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color primaryColor = Theme.of(context).primaryColor;
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    Color primaryColor = Theme.of(context).primaryColor;
-    Color textColor = isDark ? Colors.white : Colors.black87;
-    Color subTextColor = isDark ? Colors.white54 : Colors.grey[600]!;
-    Color fieldBgColor = isDark
-        ? Colors.white.withOpacity(0.03)
-        : Colors.grey[50]!;
 
-    bool showDepartment =
-        _selectedClass != null &&
-        _selectedClass!.toUpperCase().startsWith("SS");
-
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        final bool shouldPop = await _onWillPop();
-        if (shouldPop && mounted) Navigator.pop(context);
-      },
-      child: Scaffold(
-        backgroundColor: bgColor,
-        appBar: AppBar(
-          title: const Text(
-            "Student Admission",
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          backgroundColor: primaryColor,
-          foregroundColor: Colors.white,
-          centerTitle: true,
+    return Scaffold(
+      backgroundColor: bgColor,
+      appBar: AppBar(
+        title: const Text(
+          "Admit New Student",
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildPassportHeader(isDark, primaryColor),
-                const SizedBox(height: 30),
-
-                _buildSectionHeader(
-                  Icons.school_rounded,
-                  "Academic Details",
-                  primaryColor,
-                ),
-                _buildFormCard(cardColor, [
-                  _buildDropdown(
-                    "Session",
-                    ["2024/2025", "2025/2026"],
-                    _selectedSession,
-                    (v) {
-                      setState(() {
-                        _selectedSession = v!;
-                        _updateSmartID();
-                      });
-                    },
-                    isDark,
-                    primaryColor,
-                    textColor,
-                    subTextColor,
-                    fieldBgColor,
-                  ),
-                  const SizedBox(height: 15),
-                  _buildDropdown(
-                    "Class",
-                    _activeClasses,
-                    _selectedClass,
-                    (v) {
-                      setState(() {
-                        _selectedClass = v!;
-                        _updateSmartID();
-                        if (!showDepartment) _selectedDepartment = null;
-                      });
-                    },
-                    isDark,
-                    primaryColor,
-                    textColor,
-                    subTextColor,
-                    fieldBgColor,
-                  ),
-                  if (showDepartment) ...[
-                    const SizedBox(height: 15),
-                    _buildDropdown(
-                      "Class Category / Department",
-                      ["Science", "Art", "Commercial"],
-                      _selectedDepartment,
-                      (v) => setState(() => _selectedDepartment = v),
-                      isDark,
-                      primaryColor,
-                      textColor,
-                      subTextColor,
-                      fieldBgColor,
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth > 800) {
+            // 💻 DESKTOP LAYOUT
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(vertical: 20),
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isDark ? Colors.white10 : Colors.grey.shade200,
                     ),
-                  ],
-                  const SizedBox(height: 15),
-                  _buildDropdown(
-                    "Category",
-                    ["Regular", "Transfer", "Scholarship"],
-                    _studentCategory,
-                    (v) => setState(() => _studentCategory = v!),
-                    isDark,
-                    primaryColor,
-                    textColor,
-                    subTextColor,
-                    fieldBgColor,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 15,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
                   ),
-                ]),
-
-                const SizedBox(height: 30),
-                _buildSectionHeader(
-                  Icons.person_rounded,
-                  "Student Information",
-                  primaryColor,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: _buildFormContent(isDark, primaryColor),
+                  ),
                 ),
-                _buildFormCard(cardColor, [
-                  _buildTextField(
-                    "First Name",
+              ),
+            );
+          } else {
+            // 📱 MOBILE LAYOUT
+            return _buildFormContent(isDark, primaryColor);
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildFormContent(bool isDark, Color primaryColor) {
+    return Form(
+      key: _formKey,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 🚨 PHOTO & PREVIEW HEADER
+            Center(
+              child: Column(
+                children: [
+                  GestureDetector(
+                    onTap: _pickImage,
+                    child: CircleAvatar(
+                      radius: 60,
+                      backgroundColor: primaryColor.withOpacity(0.1),
+                      backgroundImage: _webImage != null
+                          ? MemoryImage(_webImage!)
+                          : null,
+                      child: _webImage == null
+                          ? Icon(
+                              Icons.add_a_photo,
+                              size: 40,
+                              color: primaryColor,
+                            )
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    "Student Passport",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    child: Text(
+                      _generatedID,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: primaryColor,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 40),
+
+            _buildSectionTitle("Student Details", Icons.person_outline),
+            const SizedBox(height: 15),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTextField(
                     _firstNameController,
-                    Icons.person,
+                    "First Name",
+                    Icons.badge,
                     isDark,
-                    primaryColor,
-                    textColor,
-                    subTextColor,
-                    fieldBgColor,
                   ),
-                  const SizedBox(height: 15),
-                  _buildTextField(
-                    "Middle Name (Optional)",
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: _buildTextField(
                     _middleNameController,
-                    Icons.person_outline,
+                    "Middle Name",
+                    null,
                     isDark,
-                    primaryColor,
-                    textColor,
-                    subTextColor,
-                    fieldBgColor,
-                    optional: true,
+                    isRequired: false,
                   ),
-                  const SizedBox(height: 15),
-                  _buildTextField(
-                    "Surname / Last Name",
-                    _lastNameController,
-                    Icons.person,
+                ),
+              ],
+            ),
+            const SizedBox(height: 15),
+            _buildTextField(
+              _lastNameController,
+              "Surname (Last Name)",
+              Icons.badge_outlined,
+              isDark,
+            ),
+            const SizedBox(height: 15),
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: _buildTextField(
+                    _dobController,
+                    "Date of Birth (DD/MM/YYYY)",
+                    Icons.cake,
                     isDark,
-                    primaryColor,
-                    textColor,
-                    subTextColor,
-                    fieldBgColor,
                   ),
-                  const SizedBox(height: 15),
-                  _buildDropdown(
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  flex: 2,
+                  child: _buildDropdown(
                     "Gender",
-                    ["Male", "Female"],
+                    ['Male', 'Female'],
                     _selectedGender,
                     (v) => setState(() => _selectedGender = v!),
                     isDark,
                     primaryColor,
-                    textColor,
-                    subTextColor,
-                    fieldBgColor,
                   ),
-                  const SizedBox(height: 15),
-                  _buildDateField(
-                    context,
-                    isDark,
-                    primaryColor,
-                    textColor,
-                    subTextColor,
-                    fieldBgColor,
-                  ),
-                ]),
-
-                const SizedBox(height: 30),
-                _buildSectionHeader(
-                  Icons.family_restroom_rounded,
-                  "Parent Contact & Login",
-                  primaryColor,
                 ),
-                _buildFormCard(cardColor, [
-                  _buildTextField(
-                    "Parent Full Name",
-                    _parentNameController,
-                    Icons.supervisor_account,
+              ],
+            ),
+            const SizedBox(height: 30),
+
+            _buildSectionTitle("Academic Setup", Icons.school_outlined),
+            const SizedBox(height: 15),
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: _buildDropdown(
+                    "Session",
+                    ['2024/2025', '2025/2026', '2026/2027'],
+                    _selectedSession,
+                    (v) => setState(() {
+                      _selectedSession = v!;
+                      _updateSmartID();
+                    }),
                     isDark,
                     primaryColor,
-                    textColor,
-                    subTextColor,
-                    fieldBgColor,
                   ),
-                  const SizedBox(height: 15),
-
-                  Container(
-                    decoration: BoxDecoration(
-                      color: primaryColor.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: primaryColor.withOpacity(0.2)),
-                    ),
-                    child: CheckboxListTile(
-                      title: const Text(
-                        "Use Phone Number for Login ID",
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      subtitle: const Text(
-                        "Parent will log in using their phone instead of email",
-                        style: TextStyle(fontSize: 12),
-                      ),
-                      value: _usePhoneAsLogin,
-                      activeColor: primaryColor,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      onChanged: (val) {
-                        setState(() {
-                          _usePhoneAsLogin = val ?? false;
-                          if (_usePhoneAsLogin) {
-                            _parentEmailController.clear();
-                          } else {
-                            _loginPhoneController.clear();
-                          }
-                        });
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-
-                  if (_usePhoneAsLogin) ...[
-                    _buildTextField(
-                      "Parent Phone Number (Login ID)",
-                      _loginPhoneController,
-                      Icons.phone_android,
-                      isDark,
-                      primaryColor,
-                      textColor,
-                      subTextColor,
-                      fieldBgColor,
-                      type: TextInputType.phone,
-                      optional: false,
-                    ),
-                    const SizedBox(height: 15),
-                    _buildTextField(
-                      "Emergency Contact Number (Optional)",
-                      _parentPhoneController,
-                      Icons.phone,
-                      isDark,
-                      primaryColor,
-                      textColor,
-                      subTextColor,
-                      fieldBgColor,
-                      type: TextInputType.phone,
-                      optional: true,
-                    ),
-                  ] else ...[
-                    _buildTextField(
-                      "Parent Email Address (Login ID)",
-                      _parentEmailController,
-                      Icons.email,
-                      isDark,
-                      primaryColor,
-                      textColor,
-                      subTextColor,
-                      fieldBgColor,
-                      type: TextInputType.emailAddress,
-                      optional: false,
-                    ),
-                    const SizedBox(height: 15),
-                    _buildTextField(
-                      "Emergency Phone Number (Optional)",
-                      _parentPhoneController,
-                      Icons.phone,
-                      isDark,
-                      primaryColor,
-                      textColor,
-                      subTextColor,
-                      fieldBgColor,
-                      type: TextInputType.phone,
-                      optional: true,
-                    ),
-                  ],
-
-                  const SizedBox(height: 15),
-
-                  TextFormField(
-                    controller: _parentPasswordController,
-                    obscureText: _isObscure1,
-                    onChanged: _checkPasswordStrength,
-                    style: TextStyle(color: textColor),
-                    validator: (v) =>
-                        v!.isEmpty ? "Please create a password" : null,
-                    decoration: InputDecoration(
-                      labelText: "Create Password",
-                      labelStyle: TextStyle(color: subTextColor, fontSize: 14),
-                      prefixIcon: Icon(
-                        Icons.lock_outline_rounded,
-                        color: primaryColor,
-                        size: 20,
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _isObscure1 ? Icons.visibility : Icons.visibility_off,
-                          color: subTextColor,
-                          size: 20,
-                        ),
-                        onPressed: () =>
-                            setState(() => _isObscure1 = !_isObscure1),
-                      ),
-                      filled: true,
-                      fillColor: fieldBgColor,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  if (_passwordStrength.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0, left: 10.0),
-                      child: Text(
-                        _passwordStrength,
-                        style: TextStyle(
-                          color: _strengthColor,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 15),
-
-                  TextFormField(
-                    controller: _parentConfirmPasswordController,
-                    obscureText: _isObscure2,
-                    onChanged: _checkMatch,
-                    style: TextStyle(color: textColor),
-                    validator: (v) {
-                      if (v!.isEmpty) return "Required";
-                      if (v != _parentPasswordController.text) {
-                        return "Passwords do not match";
-                      }
-                      return null;
-                    },
-                    decoration: InputDecoration(
-                      labelText: "Confirm Password",
-                      labelStyle: TextStyle(color: subTextColor, fontSize: 14),
-                      prefixIcon: Icon(
-                        Icons.lock_reset_rounded,
-                        color: primaryColor,
-                        size: 20,
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _isObscure2 ? Icons.visibility : Icons.visibility_off,
-                          color: subTextColor,
-                          size: 20,
-                        ),
-                        onPressed: () =>
-                            setState(() => _isObscure2 = !_isObscure2),
-                      ),
-                      filled: true,
-                      fillColor: fieldBgColor,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  if (_matchStatus.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0, left: 10.0),
-                      child: Text(
-                        _matchStatus,
-                        style: TextStyle(
-                          color: _matchColor,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-
-                  const SizedBox(height: 15),
-                  _buildTextField(
-                    "Residential Address",
-                    _addressController,
-                    Icons.home_rounded,
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  flex: 4,
+                  child: _buildDropdown(
+                    "Class",
+                    _activeClasses,
+                    _selectedClass,
+                    (v) => setState(() {
+                      _selectedClass = v!;
+                      _updateSmartID();
+                    }),
                     isDark,
                     primaryColor,
-                    textColor,
-                    subTextColor,
-                    fieldBgColor,
-                    lines: 2,
                   ),
-                ]),
+                ),
+              ],
+            ),
+            if ((_selectedClass ?? "").contains("SS")) ...[
+              const SizedBox(height: 15),
+              _buildDropdown(
+                "Department (Optional)",
+                ['Science', 'Art', 'Commercial'],
+                _selectedDepartment,
+                (v) => setState(() => _selectedDepartment = v),
+                isDark,
+                primaryColor,
+              ),
+            ],
+            const SizedBox(height: 15),
+            _buildDropdown(
+              "Admission Type",
+              ['Regular', 'Transfer', 'Scholarship', 'Special'],
+              _studentCategory,
+              (v) => setState(() => _studentCategory = v!),
+              isDark,
+              primaryColor,
+            ),
+            const SizedBox(height: 40),
 
-                const SizedBox(height: 40),
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                    ),
-                    onPressed: _isLoading ? null : _registerStudent,
-                    child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text(
-                            "COMPLETE ADMISSION",
+            // 🚨 GUARDIAN / LOGIN SECTION
+            _buildSectionTitle(
+              "Parent/Guardian Profile",
+              Icons.family_restroom_rounded,
+            ),
+            const SizedBox(height: 10),
+
+            // 🚨 LOGIN METHOD TOGGLE
+            Container(
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withOpacity(0.05)
+                    : Colors.grey[200],
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() {
+                        _usePhoneAsLogin = false;
+                        _loginPhoneController.clear();
+                      }),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: !_usePhoneAsLogin
+                              ? primaryColor
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Center(
+                          child: Text(
+                            "Use Email to Login",
                             style: TextStyle(
-                              color: Colors.white,
+                              color: !_usePhoneAsLogin
+                                  ? Colors.white
+                                  : Colors.grey,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() {
+                        _usePhoneAsLogin = true;
+                        _parentEmailController.clear();
+                      }),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: _usePhoneAsLogin
+                              ? primaryColor
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Center(
+                          child: Text(
+                            "Use Phone to Login",
+                            style: TextStyle(
+                              color: _usePhoneAsLogin
+                                  ? Colors.white
+                                  : Colors.grey,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            _buildTextField(
+              _parentNameController,
+              "Parent/Guardian Full Name",
+              Icons.person,
+              isDark,
+            ),
+            const SizedBox(height: 15),
+
+            // 🚨 DYNAMIC LOGIN FIELDS
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: _usePhoneAsLogin
+                  ? _buildPhoneLoginFields(isDark, primaryColor)
+                  : _buildEmailLoginFields(isDark, primaryColor),
+            ),
+
+            const SizedBox(height: 15),
+            _buildTextField(
+              _addressController,
+              "Home Address",
+              Icons.location_on,
+              isDark,
+              maxLines: 2,
+            ),
+
+            const SizedBox(height: 30),
+            _buildSectionTitle("Parent Login Setup", Icons.security_outlined),
+            const SizedBox(height: 15),
+            _buildPasswordField(
+              _parentPasswordController,
+              "Create Parent Password",
+              _isObscure1,
+              (v) => setState(() => _isObscure1 = v),
+              isDark,
+            ),
+            const SizedBox(height: 15),
+            _buildPasswordField(
+              _parentConfirmPasswordController,
+              "Confirm Password",
+              _isObscure2,
+              (v) => setState(() => _isObscure2 = v),
+              isDark,
+            ),
+
+            const SizedBox(height: 50),
+
+            // 🚨 SUBMIT BUTTON
+            SizedBox(
+              width: double.infinity,
+              height: 55,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
                   ),
                 ),
-                const SizedBox(height: 50),
-              ],
+                onPressed: _isLoading ? null : _registerStudent,
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                        "SUBMIT ENROLLMENT",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 1,
+                        ),
+                      ),
+              ),
             ),
+            const SizedBox(height: 50),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- COMPONENT HELPERS ---
+
+  Widget _buildSectionTitle(String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.grey, size: 20),
+        const SizedBox(width: 8),
+        Text(
+          title.toUpperCase(),
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.grey,
+            letterSpacing: 1.2,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTextField(
+    TextEditingController ctrl,
+    String label,
+    IconData? icon,
+    bool isDark, {
+    bool isRequired = true,
+    int maxLines = 1,
+  }) {
+    return TextFormField(
+      controller: ctrl,
+      maxLines: maxLines,
+      validator: isRequired
+          ? (v) => v!.trim().isEmpty ? "Required field" : null
+          : null,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: icon != null ? Icon(icon, color: Colors.grey) : null,
+        filled: true,
+        fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50],
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(
+            color: isDark ? Colors.white10 : Colors.grey.shade300,
           ),
         ),
       ),
     );
   }
 
-  Widget _buildPassportHeader(bool isDark, Color primaryColor) {
-    return Center(
-      child: Column(
-        children: [
-          GestureDetector(
-            onTap: _pickImage,
-            child: Stack(
-              children: [
-                Container(
-                  width: 110,
-                  height: 110,
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white10 : Colors.grey[200],
-                    shape: BoxShape.circle,
-                    border: Border.all(color: primaryColor, width: 3),
-                    image: _webImage != null
-                        ? DecorationImage(
-                            image: MemoryImage(_webImage!),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                  ),
-                  child: _webImage == null
-                      ? Icon(
-                          Icons.add_a_photo_rounded,
-                          color: primaryColor,
-                          size: 35,
-                        )
-                      : null,
-                ),
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: CircleAvatar(
-                    backgroundColor: primaryColor,
-                    radius: 18,
-                    child: const Icon(
-                      Icons.edit,
-                      color: Colors.white,
-                      size: 18,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 15),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              "PROJECTED ID: $_generatedID",
-              style: TextStyle(
-                color: primaryColor,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(IconData icon, String title, Color primaryColor) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 8, bottom: 12),
-      child: Row(
-        children: [
-          Icon(icon, color: primaryColor, size: 20),
-          const SizedBox(width: 10),
-          Text(
-            title.toUpperCase(),
-            style: TextStyle(
-              color: primaryColor,
-              fontWeight: FontWeight.w800,
-              fontSize: 13,
-              letterSpacing: 1.1,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFormCard(Color cardColor, List<Widget> children) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: children,
-      ),
-    );
-  }
-
-  Widget _buildTextField(
+  Widget _buildPasswordField(
+    TextEditingController ctrl,
     String label,
-    TextEditingController controller,
-    IconData icon,
+    bool isObscure,
+    Function(bool) onToggle,
     bool isDark,
-    Color primaryColor,
-    Color textColor,
-    Color subTextColor,
-    Color fieldBgColor, {
-    TextInputType type = TextInputType.text,
-    int lines = 1,
-    bool optional = false,
-  }) {
+  ) {
     return TextFormField(
-      controller: controller,
-      keyboardType: type,
-      maxLines: lines,
-      style: TextStyle(color: textColor),
-      validator: (v) => (!optional && v!.isEmpty) ? "Required" : null,
+      controller: ctrl,
+      obscureText: isObscure,
+      validator: (v) {
+        if (v!.isEmpty) return "Password required";
+        if (v.length < 6) return "Must be at least 6 chars";
+        if (ctrl == _parentConfirmPasswordController &&
+            v != _parentPasswordController.text) {
+          return "Passwords do not match";
+        }
+        return null;
+      },
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: subTextColor, fontSize: 14),
-        prefixIcon: Icon(icon, color: primaryColor, size: 20),
+        prefixIcon: const Icon(Icons.lock_outline, color: Colors.grey),
+        suffixIcon: IconButton(
+          icon: Icon(
+            isObscure ? Icons.visibility_off : Icons.visibility,
+            color: Colors.grey,
+          ),
+          onPressed: () => onToggle(!isObscure),
+        ),
         filled: true,
-        fillColor: fieldBgColor,
+        fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50],
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
           borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(
+            color: isDark ? Colors.white10 : Colors.grey.shade300,
+          ),
         ),
       ),
     );
   }
 
   Widget _buildDropdown(
-    String label,
+    String hint,
     List<String> items,
     String? value,
     Function(String?) onChanged,
     bool isDark,
     Color primaryColor,
-    Color textColor,
-    Color subTextColor,
-    Color fieldBgColor,
   ) {
-    return DropdownButtonFormField<String>(
-      initialValue: value,
-      items: items
-          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-          .toList(),
-      onChanged: onChanged,
-      dropdownColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-      style: TextStyle(color: textColor),
-      validator: (v) => v == null ? "Required" : null,
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(color: subTextColor, fontSize: 14),
-        prefixIcon: Icon(
-          Icons.arrow_drop_down_circle_outlined,
-          color: primaryColor,
-          size: 20,
-        ),
-        filled: true,
-        fillColor: fieldBgColor,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide.none,
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50],
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.grey.shade300,
         ),
       ),
-    );
-  }
-
-  Widget _buildDateField(
-    BuildContext context,
-    bool isDark,
-    Color primaryColor,
-    Color textColor,
-    Color subTextColor,
-    Color fieldBgColor,
-  ) {
-    return TextFormField(
-      controller: _dobController,
-      readOnly: true,
-      style: TextStyle(color: textColor),
-      onTap: () async {
-        final DateTime? picked = await showDatePicker(
-          context: context,
-          initialDate: DateTime(2015),
-          firstDate: DateTime(2000),
-          lastDate: DateTime.now(),
-        );
-        if (picked != null) {
-          setState(
-            () => _dobController.text =
-                "${picked.day}/${picked.month}/${picked.year}",
-          );
-        }
-      },
-      validator: (v) => v!.isEmpty ? "Required" : null,
-      decoration: InputDecoration(
-        labelText: "Date of Birth",
-        labelStyle: TextStyle(color: subTextColor, fontSize: 14),
-        prefixIcon: Icon(
-          Icons.calendar_month_rounded,
-          color: primaryColor,
-          size: 20,
-        ),
-        filled: true,
-        fillColor: fieldBgColor,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide.none,
-        ),
-      ),
-    );
-  }
-
-  Future<bool> _showSiblingDialog(String name, String contactInfo) async {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color primaryColor = Theme.of(context).primaryColor;
-    return await showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: const Icon(
-              Icons.group_add_rounded,
-              color: Colors.orange,
-              size: 40,
-            ),
-            content: Text(
-              "Sibling Detected!\n\n'$contactInfo' is already linked to $name. Link to the same parent account?",
-              textAlign: TextAlign.center,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text(
-                  "New Account",
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text(
-                  "Yes, Link",
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          isExpanded: true,
+          value: value,
+          hint: Padding(
+            padding: const EdgeInsets.only(left: 15),
+            child: Text(hint, style: const TextStyle(color: Colors.grey)),
           ),
-        ) ??
-        false;
+          icon: Padding(
+            padding: const EdgeInsets.only(right: 15),
+            child: Icon(Icons.arrow_drop_down, color: primaryColor),
+          ),
+          items: items
+              .map(
+                (e) => DropdownMenuItem(
+                  value: e,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 15),
+                    child: Text(e),
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: onChanged,
+          dropdownColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmailLoginFields(bool isDark, Color primaryColor) {
+    return Column(
+      key: const ValueKey('email_login'),
+      children: [
+        _buildTextField(
+          _parentEmailController,
+          "Parent Login Email",
+          Icons.email_outlined,
+          isDark,
+        ),
+        const SizedBox(height: 15),
+        _buildTextField(
+          _parentPhoneController,
+          "Contact Phone Number (Optional)",
+          Icons.phone,
+          isDark,
+          isRequired: false,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPhoneLoginFields(bool isDark, Color primaryColor) {
+    return Column(
+      key: const ValueKey('phone_login'),
+      children: [
+        TextFormField(
+          controller: _loginPhoneController,
+          keyboardType: TextInputType.phone,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          validator: (v) =>
+              v!.trim().isEmpty ? "Phone required for login" : null,
+          decoration: InputDecoration(
+            labelText: "Login Phone Number",
+            hintText: "08012345678",
+            prefixIcon: const Padding(
+              padding: EdgeInsets.all(15),
+              child: Text(
+                "🇳🇬 +234",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+            filled: true,
+            fillColor: isDark
+                ? Colors.white.withOpacity(0.05)
+                : Colors.grey[50],
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(15),
+              borderSide: BorderSide.none,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(15),
+              borderSide: BorderSide(
+                color: isDark ? Colors.white10 : Colors.grey.shade300,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          "Parents will log in using this number exactly as entered.",
+          style: TextStyle(color: Colors.orange[700], fontSize: 12),
+        ),
+      ],
+    );
   }
 }
 
-class AdmissionLockOverlay extends StatelessWidget {
+class _NoClassesView extends StatelessWidget {
   final VoidCallback onRefresh;
-  const AdmissionLockOverlay({super.key, required this.onRefresh});
+  const _NoClassesView({required this.onRefresh});
+
   @override
   Widget build(BuildContext context) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color primaryColor = Theme.of(context).primaryColor;
-
     return Scaffold(
-      backgroundColor: isDark
-          ? const Color(0xFF121212)
-          : const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text("Admission Restricted"),
+        title: const Text("System Check"),
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
-        centerTitle: true,
       ),
       body: Center(
         child: Padding(
-          padding: const EdgeInsets.all(40),
+          padding: const EdgeInsets.all(30),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                padding: const EdgeInsets.all(30),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.domain_disabled_rounded,
-                  size: 80,
-                  color: Colors.orange,
-                ),
-              ),
-              const SizedBox(height: 30),
+              Icon(Icons.warning_amber_rounded, size: 80, color: Colors.orange),
+              const SizedBox(height: 20),
               const Text(
                 "Configuration Required",
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),

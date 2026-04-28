@@ -12,8 +12,8 @@ import 'package:trideta_v2/main.dart';
 
 void main() {
   testWidgets('App boots up smoke test', (WidgetTester tester) async {
-    // 🚨 FIX: We now pass 'showOnboarding: true' to satisfy your updated main.dart
-    await tester.pumpWidget(const MyApp(showOnboarding: true));
+    // Build the app
+    await tester.pumpWidget(const MyApp());
 
     // 🚨 The old counter app test logic (expecting '0' and tapping '+') has been removed
     // because Trideta is a full app now, not a counter!

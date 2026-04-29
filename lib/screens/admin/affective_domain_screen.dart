@@ -37,7 +37,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
     _fetchInitialData();
   }
 
-  // 🚨 INJECTED: Fetches classes and builds the UUID dictionary
+  // 🚨 FIXED: Only the teacher fetch logic was updated to use class_assigned and class_id safely
   Future<void> _fetchInitialData() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -71,25 +71,35 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
           fetchedClasses.add(c['name'].toString());
         }
       } else {
+        // Teacher Logic: Fetch all classes, then filter locally to seamlessly match text or UUIDs
+        final classesData = await _supabase
+            .from('classes')
+            .select('id, name')
+            .eq('school_id', _schoolId!)
+            .order('list_order', ascending: true);
+
         final assignments = await _supabase
             .from('staff_assignments')
-            .select('class_id')
+            .select('class_id, class_assigned')
             .eq('staff_id', user.id);
-        final Set<String> uniqueIds = {};
+
+        final Set<String> assignedKeys = {};
         for (var a in assignments) {
-          if (a['class_id'] != null) uniqueIds.add(a['class_id'].toString());
+          if (a['class_id'] != null) assignedKeys.add(a['class_id'].toString());
+          if (a['class_assigned'] != null)
+            assignedKeys.add(a['class_assigned'].toString());
         }
-        if (uniqueIds.isNotEmpty) {
-          final freshClasses = await _supabase
-              .from('classes')
-              .select('id, name')
-              .inFilter('id', uniqueIds.toList());
-          for (var c in freshClasses) {
-            _classNameToIdMap[c['name'].toString()] = c['id'].toString();
-            fetchedClasses.add(c['name'].toString());
+
+        for (var c in classesData) {
+          String cId = c['id'].toString();
+          String cName = c['name'].toString();
+
+          if (assignedKeys.contains(cId) || assignedKeys.contains(cName)) {
+            _classNameToIdMap[cName] = cId;
+            fetchedClasses.add(cName);
           }
-          fetchedClasses.sort();
         }
+        fetchedClasses.sort();
       }
 
       if (mounted) {

@@ -109,6 +109,7 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     super.dispose();
   }
 
+  // 🚨 FIXED: Bulletproof RBAC local filtering using 'class_assigned'
   Future<void> _fetchInitialData() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -131,34 +132,34 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
 
       List<Map<String, dynamic>> fetchedClasses = [];
 
-      if (_userRole == 'admin') {
-        final classesData = await _supabase
-            .from('classes')
-            .select('id, name')
-            .eq('school_id', _schoolId!)
-            .order('list_order', ascending: true);
-        fetchedClasses = List<Map<String, dynamic>>.from(classesData);
+      final allClasses = await _supabase
+          .from('classes')
+          .select('id, name')
+          .eq('school_id', _schoolId!)
+          .order('list_order', ascending: true);
+
+      if (_userRole == 'admin' || _userRole == 'principal') {
+        fetchedClasses = List<Map<String, dynamic>>.from(allClasses);
       } else {
-        // Teacher Logic: Fetch assigned classes, then their IDs & Names
+        // Teacher Logic: Fetch assigned classes
         final assignments = await _supabase
             .from('staff_assignments')
-            .select('class_id')
+            .select('class_assigned')
             .eq('staff_id', user.id);
 
-        final Set<String> uniqueClassIds = {};
+        final Set<String> assignedClasses = {};
         for (var a in assignments) {
-          if (a['class_id'] != null) {
-            uniqueClassIds.add(a['class_id'].toString());
+          if (a['class_assigned'] != null) {
+            assignedClasses.add(a['class_assigned'].toString());
           }
         }
 
-        if (uniqueClassIds.isNotEmpty) {
-          final freshClasses = await _supabase
-              .from('classes')
-              .select('id, name')
-              .inFilter('id', uniqueClassIds.toList())
-              .order('name');
-          fetchedClasses = List<Map<String, dynamic>>.from(freshClasses);
+        // Locally filter so UUIDs and Text names both match seamlessly
+        for (var c in allClasses) {
+          if (assignedClasses.contains(c['id'].toString()) ||
+              assignedClasses.contains(c['name'].toString())) {
+            fetchedClasses.add(c);
+          }
         }
       }
 
@@ -178,6 +179,7 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     }
   }
 
+  // 🚨 FIXED: Bulletproof RBAC local filtering using 'subject_assigned'
   Future<void> _fetchSubjectsForClass(String classId) async {
     setState(() {
       _isLoading = true;
@@ -192,36 +194,46 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     try {
       List<Map<String, dynamic>> subjects = [];
 
-      if (_userRole == 'admin') {
-        subjects = await _supabase
-            .from('class_subjects')
-            .select('id, subject_name')
-            .eq('school_id', _schoolId!)
-            .eq('class_id', classId)
-            .order('subject_name');
+      final allSubjects = await _supabase
+          .from('class_subjects')
+          .select('id, subject_name')
+          .eq('school_id', _schoolId!)
+          .eq('class_id', classId)
+          .order('subject_name');
+
+      if (_userRole == 'admin' || _userRole == 'principal') {
+        subjects = List<Map<String, dynamic>>.from(allSubjects);
       } else {
-        // Teacher Logic: Get the assigned subject UUIDs for this specific class
+        // Teacher Logic: Get the assigned subject UUIDs or Names
         final assignments = await _supabase
             .from('staff_assignments')
-            .select('subject_id')
-            .eq('staff_id', _userId!)
-            .eq('class_id', classId);
+            .select('class_assigned, subject_assigned')
+            .eq('staff_id', _userId!);
 
-        final Set<String> uniqueSubjectIds = {};
+        final Set<String> assignedSubjects = {};
+        bool isFormMasterForThisClass = false;
+
         for (var a in assignments) {
-          if (a['subject_id'] != null) {
-            uniqueSubjectIds.add(a['subject_id'].toString());
+          String? cAssigned = a['class_assigned']?.toString();
+          // Match if assigned to this exact UUID or the Class Name
+          if (cAssigned == classId || cAssigned == _selectedClassName) {
+            if (a['subject_assigned'] != null) {
+              assignedSubjects.add(a['subject_assigned'].toString());
+            } else {
+              isFormMasterForThisClass = true; // Form master: sees all subjects
+            }
           }
         }
 
-        if (uniqueSubjectIds.isNotEmpty) {
-          final freshSubjectsData = await _supabase
-              .from('class_subjects')
-              .select('id, subject_name')
-              .inFilter('id', uniqueSubjectIds.toList())
-              .order('subject_name');
-
-          subjects = List<Map<String, dynamic>>.from(freshSubjectsData);
+        if (isFormMasterForThisClass) {
+          subjects = List<Map<String, dynamic>>.from(allSubjects);
+        } else {
+          for (var s in allSubjects) {
+            if (assignedSubjects.contains(s['id'].toString()) ||
+                assignedSubjects.contains(s['subject_name'].toString())) {
+              subjects.add(s);
+            }
+          }
         }
       }
 
@@ -320,7 +332,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     }
   }
 
-  // 🚨 FIXED: Smart Split into Insert vs Upsert to bypass 400 errors
   Future<void> _saveAllScores() async {
     if (_selectedClassId == null ||
         _selectedSubjectId == null ||
@@ -362,7 +373,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
         }
       }
 
-      // 🚨 SMART SPLIT: Insert new records vs Update existing ones to bypass 400 Errors
       if (toInsert.isNotEmpty) {
         await _supabase.from('exam_scores').insert(toInsert);
       }
@@ -429,7 +439,8 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
                         items: _sessions,
                         isDark: isDark,
                         primaryColor: primaryColor,
-                        onChanged: _userRole == 'admin'
+                        onChanged:
+                            _userRole == 'admin' || _userRole == 'principal'
                             ? (val) {
                                 setState(() {
                                   _selectedSession = val;
@@ -447,7 +458,8 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
                         items: _terms,
                         isDark: isDark,
                         primaryColor: primaryColor,
-                        onChanged: _userRole == 'admin'
+                        onChanged:
+                            _userRole == 'admin' || _userRole == 'principal'
                             ? (val) {
                                 setState(() {
                                   _selectedTerm = val;

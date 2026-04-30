@@ -86,8 +86,9 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
         final Set<String> assignedKeys = {};
         for (var a in assignments) {
           if (a['class_id'] != null) assignedKeys.add(a['class_id'].toString());
-          if (a['class_assigned'] != null)
+          if (a['class_assigned'] != null) {
             assignedKeys.add(a['class_assigned'].toString());
+          }
         }
 
         for (var c in classesData) {

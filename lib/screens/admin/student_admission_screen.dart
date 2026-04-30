@@ -43,7 +43,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
   final ImagePicker _picker = ImagePicker();
 
   List<String> _activeClasses = [];
-  // 🚨 INJECTED: Dictionary map to translate string names to UUIDs
   final Map<String, String> _classNameToIdMap = {};
   bool _isLoading = true;
   bool _hasClasses = false;
@@ -145,14 +144,11 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
   Future<void> _pickImage() async {
     setState(() => isInteractingWithSystem = true);
 
-    // 🚨 AUTO-COMPRESSION ENGINE
     final XFile? image = await _picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality:
-          70, // 70% quality is visually identical for passports but saves massive space
-      maxWidth:
-          600, // Crushes 4000px phone camera photos down to a sensible size
-      maxHeight: 600, // Keeps the aspect ratio bounded
+      imageQuality: 70,
+      maxWidth: 600,
+      maxHeight: 600,
     );
 
     setState(() => isInteractingWithSystem = false);
@@ -160,8 +156,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     if (image != null) {
       final bytes = await image.readAsBytes();
 
-      // OPTIONAL: Extreme Safety Net (Hard Limit of 2MB)
-      // Just in case the compressed image is somehow still too large
       if (bytes.lengthInBytes > 500 * 1024) {
         showAuthErrorDialog(
           "Image is too large. Please choose a simpler photo.",
@@ -180,7 +174,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     if (!_formKey.currentState!.validate() || _pickedFile == null) {
       if (_pickedFile == null) {
         showAuthErrorDialog(
-          "Passport photo is missing.\\n\\nPlease scroll up and tap the camera icon to upload a photo of the student.",
+          "Passport photo is missing.\n\nPlease scroll up and tap the camera icon to upload a photo of the student.",
         );
       }
       return;
@@ -195,7 +189,15 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         showAuthErrorDialog("Please enter a phone number for login.");
         return;
       }
-      exactLoginId = "+234${rawLoginPhone.replaceAll(' ', '')}@trideta.com";
+
+      // 🚨 THE FIX: Strips the leading zero so Flutter matches the Edge Function EXACTLY
+      String cleanPhone = rawLoginPhone.replaceAll(' ', '');
+      if (cleanPhone.startsWith('0')) {
+        cleanPhone = '+234${cleanPhone.substring(1)}';
+      } else if (!cleanPhone.startsWith('+')) {
+        cleanPhone = '+234$cleanPhone';
+      }
+      exactLoginId = "$cleanPhone@trideta.com";
     }
 
     setState(() => _isLoading = true);
@@ -208,7 +210,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
           .single();
       final schoolId = profile['school_id'];
 
-      // 🚨 ADVANCED SIBLING CHECK
       List existing = [];
       String searchPhone = _usePhoneAsLogin
           ? rawLoginPhone
@@ -240,7 +241,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         accountAlreadyCreated = existing[0]['parent_account_created'] ?? false;
         String oldParentEmail = existing[0]['parent_email']?.toString() ?? "";
 
-        // 🚨 THE SERVER-SIDE MIGRATION MAGIC
         if (_usePhoneAsLogin &&
             oldParentEmail.isNotEmpty &&
             !oldParentEmail.contains('@trideta.com')) {
@@ -250,7 +250,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
               body: {'oldEmail': oldParentEmail, 'newEmail': exactLoginId},
             );
 
-            // Check if the Edge Function sent back a custom error
             if (response.data != null && response.data['error'] != null) {
               setState(() => _isLoading = false);
               showAuthErrorDialog(
@@ -258,12 +257,10 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
               );
               return;
             }
-
-            // We NO LONGER update the database from Flutter. The Edge Function did it!
           } catch (e) {
             setState(() => _isLoading = false);
             showAuthErrorDialog(
-              "Migration Error.\\n\\nCould not migrate existing email account to phone number. Contact support if this persists.",
+              "Migration Error.\n\nCould not migrate existing email account to phone number. Contact support if this persists.",
             );
             return;
           }
@@ -275,7 +272,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
               builder: (ctx) => AlertDialog(
                 title: const Text("Sibling Detected"),
                 content: Text(
-                  "We found an existing parent profile matching this ${_usePhoneAsLogin ? 'phone number' : 'email address'} (Child: $siblingName).\\n\\nDo you want to link this new student to the same parent account?",
+                  "We found an existing parent profile matching this ${_usePhoneAsLogin ? 'phone number' : 'email address'} (Child: $siblingName).\n\nDo you want to link this new student to the same parent account?",
                 ),
                 actions: [
                   TextButton(
@@ -347,7 +344,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
           if (e.toString().contains("already exists")) {
             setState(() => _isLoading = false);
             showAuthErrorDialog(
-              "Account Collision.\\n\\nThis exact login already exists in the Trideta network but is NOT linked to your school yet. Please use a slightly different email or phone number.",
+              "Account Collision.\n\nThis exact login already exists in the Trideta network but is NOT linked to your school yet. Please use a slightly different email or phone number.",
             );
             return;
           }
@@ -379,14 +376,14 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         'middle_name': _middleNameController.text.trim(),
         'last_name': _lastNameController.text.trim(),
         'admission_no': finalID,
-        'class_id': _classNameToIdMap[_selectedClass], // 🚨 PUSHING THE UUID!
+        'class_id': _classNameToIdMap[_selectedClass],
         'class_level': _selectedClass,
         'department': _selectedDepartment,
         'gender': _selectedGender,
         'dob': _dobController.text.trim(),
         'passport_url': passportUrl,
         'parent_name': _parentNameController.text.trim(),
-        'parent_email': finalLoginIdToSave, // Inherited or New
+        'parent_email': finalLoginIdToSave,
         'parent_phone': searchPhone,
         'address': _addressController.text.trim(),
         'category': _studentCategory,
@@ -406,7 +403,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
       if (mounted) {
         setState(() => _isLoading = false);
         showAuthErrorDialog(
-          "Failed to admit student.\\n\\nPlease check your internet connection.",
+          "Failed to admit student.\n\nPlease check your internet connection.",
         );
       }
     }
@@ -466,7 +463,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 800) {
-            // 💻 DESKTOP LAYOUT
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 800),
@@ -494,7 +490,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
               ),
             );
           } else {
-            // 📱 MOBILE LAYOUT
             return _buildFormContent(isDark, primaryColor);
           }
         },
@@ -510,7 +505,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 🚨 PHOTO & PREVIEW HEADER
             Center(
               child: Column(
                 children: [
@@ -680,14 +674,12 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
             ),
             const SizedBox(height: 40),
 
-            // 🚨 GUARDIAN / LOGIN SECTION
             _buildSectionTitle(
               "Parent/Guardian Profile",
               Icons.family_restroom_rounded,
             ),
             const SizedBox(height: 10),
 
-            // 🚨 LOGIN METHOD TOGGLE
             Container(
               padding: const EdgeInsets.all(5),
               decoration: BoxDecoration(
@@ -767,7 +759,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
             ),
             const SizedBox(height: 15),
 
-            // 🚨 DYNAMIC LOGIN FIELDS
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 300),
               child: _usePhoneAsLogin
@@ -805,7 +796,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
 
             const SizedBox(height: 50),
 
-            // 🚨 SUBMIT BUTTON
             SizedBox(
               width: double.infinity,
               height: 55,
@@ -836,8 +826,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
       ),
     );
   }
-
-  // --- COMPONENT HELPERS ---
 
   Widget _buildSectionTitle(String title, IconData icon) {
     return Row(

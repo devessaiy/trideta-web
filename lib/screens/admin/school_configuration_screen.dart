@@ -942,7 +942,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
               borderRadius: BorderRadius.circular(15),
             ),
             child: DropdownButtonFormField<String>(
-              value: _selectedClassName,
+              initialValue: _selectedClassName,
               decoration: _inputStyle(
                 "Target Class",
                 Icons.filter_alt,
@@ -983,7 +983,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
               Expanded(
                 flex: 4,
                 child: DropdownButtonFormField<String>(
-                  value: _subjectType,
+                  initialValue: _subjectType,
                   isExpanded:
                       true, // 🚨 Added to force text to stay inside bounds
                   decoration: _inputStyle(

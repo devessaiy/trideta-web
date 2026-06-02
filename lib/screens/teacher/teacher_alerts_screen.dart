@@ -31,10 +31,16 @@ class _TeacherAlertsScreenState extends State<TeacherAlertsScreen> {
           .select('school_id')
           .eq('id', user.id)
           .single();
+
+      // 🚨 ROLE-BASED FILTERING FOR TEACHERS
+      // Teachers should only see website updates, general announcements, and teacher-specific alerts.
+      final allowedAlertTypes = ['school_website', 'general', 'teacher_alert'];
+
       final data = await _supabase
           .from('alerts')
           .select()
-          .eq('school_id', profile['school_id'])
+          .eq('school_id', profile['school_id']) // 🚨 Multi-tenancy isolation
+          .filter('type', 'in', allowedAlertTypes) // 🚨 Role-based filtering
           .order('created_at', ascending: false);
 
       if (mounted) {
@@ -52,18 +58,18 @@ class _TeacherAlertsScreenState extends State<TeacherAlertsScreen> {
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color primaryColor = Theme.of(context).primaryColor;
+    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF1F4F8);
 
     return Scaffold(
-      backgroundColor: isDark
-          ? const Color(0xFF121212)
-          : const Color(0xFFF8FAFC),
+      backgroundColor: bgColor,
       appBar: AppBar(
         title: const Text(
-          "School Announcements",
+          "Announcements",
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
+        centerTitle: true,
         elevation: 0,
       ),
       body: _isLoading
@@ -75,12 +81,28 @@ class _TeacherAlertsScreenState extends State<TeacherAlertsScreen> {
               itemCount: _alerts.length,
               itemBuilder: (context, index) {
                 final alert = _alerts[index];
-                DateTime date = DateTime.parse(alert['created_at']);
+
+                // Color coding based on type
+                Color alertColor = primaryColor;
+                IconData alertIcon = Icons.notifications;
+                String type = (alert['type'] ?? '').toString().toLowerCase();
+
+                if (type.contains('urgent')) {
+                  alertColor = Colors.orange;
+                  alertIcon = Icons.warning_amber_rounded;
+                } else if (type.contains('teacher')) {
+                  alertColor = Colors.purple;
+                  alertIcon = Icons.school_rounded;
+                }
+
                 return Card(
-                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                   margin: const EdgeInsets.only(bottom: 12),
+                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(15),
+                    side: BorderSide(
+                      color: isDark ? Colors.white10 : Colors.grey.shade200,
+                    ),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -88,19 +110,36 @@ class _TeacherAlertsScreenState extends State<TeacherAlertsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: alertColor.withValues(alpha: 0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                alertIcon,
+                                color: alertColor,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
                             Expanded(
                               child: Text(
                                 alert['title'] ?? 'Notice',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
+                                  color: isDark ? Colors.white : Colors.black87,
                                 ),
                               ),
                             ),
                             Text(
-                              DateFormat('MMM d, yyyy').format(date),
+                              alert['created_at'] != null
+                                  ? DateFormat('MMM dd').format(
+                                      DateTime.parse(alert['created_at']),
+                                    )
+                                  : '',
                               style: const TextStyle(
                                 color: Colors.grey,
                                 fontSize: 12,

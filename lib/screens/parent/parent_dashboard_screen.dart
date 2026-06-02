@@ -73,20 +73,54 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
         }
       }
 
-      // 3. Fetch Alerts
+      // 3. Fetch Alerts (Filtered by Role and Tenancy)
       if (_myChildren.isNotEmpty) {
         List<String> schoolIds = _myChildren
             .map((c) => c['school_id'].toString())
             .toSet()
             .toList();
+
+        // Check if any child has outstanding fees (debtor)
+        bool isDebtor = false;
+        for (var child in _myChildren) {
+          // Checks if fee_balance exists and is greater than 0
+          if (child['fee_balance'] != null && child['fee_balance'] > 0) {
+            isDebtor = true;
+          }
+        }
+
+        // 🚨 ROLE-BASED FILTERING
+        // Only fetch alerts meant for parents, general audiences, or the website.
+        List<String> allowedAlertTypes = [
+          'school_website',
+          'general',
+          'parent_alert',
+        ];
+
+        // ONLY append the fee_urgent alert if the parent is flagged as a debtor
+        if (isDebtor) {
+          allowedAlertTypes.add('fee_urgent');
+        }
+
         try {
           final alertsData = await _supabase
               .from('alerts')
               .select('*, schools(name, logo_url)')
-              .filter('school_id', 'in', schoolIds)
+              .filter(
+                'school_id',
+                'in',
+                schoolIds,
+              ) // 🚨 Multi-tenancy isolation
+              .filter(
+                'type',
+                'in',
+                allowedAlertTypes,
+              ) // 🚨 Role-based filtering
               .order('created_at', ascending: false);
           _alerts = List<Map<String, dynamic>>.from(alertsData);
-        } catch (_) {}
+        } catch (e) {
+          debugPrint("Failed to load alerts: $e");
+        }
       }
 
       if (mounted) setState(() => _isLoading = false);
@@ -458,7 +492,6 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
       ),
     );
   }
-
   // ===========================================================================
   // 2. MY WARDS TAB
   // ===========================================================================

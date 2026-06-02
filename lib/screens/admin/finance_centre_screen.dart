@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -38,7 +39,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
     _fetchFinanceData();
   }
 
-  // --- 🚨 IRONCLAD FINANCIAL MATH ENGINE WITH LEGACY SAFEGUARDS 🚨 ---
+  // --- 🚨 IRONCLAD FINANCIAL MATH ENGINE WITH NATIVE UUID MATCHING 🚨 ---
   Future<void> _fetchFinanceData() async {
     setState(() => _isLoading = true);
     try {
@@ -61,7 +62,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
 
       _currentSession = schoolData['current_session'] ?? "";
 
-      // 1.5 🚨 FETCH OFFICIAL CLASSES FROM RELATIONAL TABLE 🚨
+      // 1.5 🚨 FETCH OFFICIAL CLASSES FROM RELATIONAL TABLE
       final classesData = await _supabase
           .from('classes')
           .select('name')
@@ -70,19 +71,18 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
 
       _officialClasses = classesData.map((c) => c['name'].toString()).toList();
 
-      // 2. FETCH FEE STRUCTURE (SAFELY HANDLING LEGACY DATA)
+      // 2. FETCH FEE STRUCTURE (NOW FETCHING id)
       final rawFeeData = await _supabase
           .from('fee_structures')
           .select(
-            'fee_name, amount, applicable_classes, applicable_categories, academic_session',
+            'id, fee_name, amount, applicable_classes, applicable_class_ids, applicable_categories, academic_session',
           )
           .eq('school_id', schoolId);
 
-      // Filter fees locally to protect old records
+      // Filter fees locally
       List<Map<String, dynamic>> feeData = [];
       for (var fee in rawFeeData) {
         String feeSession = (fee['academic_session'] ?? '').toString();
-        // 🚨 LEGACY SAFEGUARD: Accept current session OR empty (old data)
         if (feeSession == _currentSession || feeSession.isEmpty) {
           feeData.add(fee);
         }
@@ -92,13 +92,13 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
         _activeSessionLabel = _currentSession.toUpperCase();
       }
 
-      // 3. FETCH TRANSACTIONS (SAFELY HANDLING LEGACY DATA)
+      // 3. FETCH TRANSACTIONS (NOW FETCHING fee_id)
       final txData = await _supabase
           .from('transactions')
-          .select('student_id, category, amount, academic_session')
+          .select('student_id, category, amount, academic_session, fee_id')
           .eq('school_id', schoolId);
 
-      // Group payments by Student AND Category: { "Student_A_ID": { "Tuition": 50000, "Books": 10000 } }
+      // 🚨 GROUP PAYMENTS NATIVELY BY fee_id
       Map<String, Map<String, double>> studentCategoryPayments = {};
       double totalCollected = 0.0;
       int validInvoiceCount = 0;
@@ -106,15 +106,18 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
       for (var tx in txData) {
         String txSession = (tx['academic_session'] ?? '').toString();
 
-        // 🚨 LEGACY SAFEGUARD: Only count matching sessions or legacy empty sessions
         if (txSession == _currentSession || txSession.isEmpty) {
           String sId = tx['student_id'].toString();
-          String category = (tx['category'] ?? '').toString();
+          String txFeeId = (tx['fee_id'] ?? '').toString();
+          String txCategory = (tx['category'] ?? '').toString();
           double amt = (tx['amount'] ?? 0).toDouble();
 
+          // 🚨 HYBRID GROUPING: Uses UUID if available, falls back to text if the migration script missed it
+          String paymentKey = txFeeId.isNotEmpty ? txFeeId : txCategory;
+
           studentCategoryPayments.putIfAbsent(sId, () => {});
-          studentCategoryPayments[sId]![category] =
-              (studentCategoryPayments[sId]![category] ?? 0) + amt;
+          studentCategoryPayments[sId]![paymentKey] =
+              (studentCategoryPayments[sId]![paymentKey] ?? 0) + amt;
 
           totalCollected += amt;
           validInvoiceCount++;
@@ -132,21 +135,32 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
       for (var student in studentsData) {
         String sId = student['id'].toString();
         String sClass = (student['class_level'] ?? '').toString();
+        String sClassId = (student['class_id'] ?? '').toString();
         String sCategory = (student['category'] ?? '').toString();
 
         double studentDebt = 0.0;
 
-        // 🚨 SQUASHED PHANTOM CREDIT BUG: Check debt item by item!
         for (var fee in feeData) {
+          String feeId = fee['id'].toString();
           String feeName = fee['fee_name'].toString();
           double expectedAmt = (fee['amount'] ?? 0).toDouble();
 
-          // 🚨 Passing _officialClasses to _doesItApply for dynamic 'All' resolution
-          bool classMatch = _doesItApply(
-            fee['applicable_classes'],
-            sClass,
-            officialList: _officialClasses,
-          );
+          bool classMatch = false;
+
+          // Match by UUID first
+          final List<dynamic>? classIdsList = fee['applicable_class_ids'];
+          if (classIdsList != null &&
+              classIdsList.isNotEmpty &&
+              sClassId.isNotEmpty) {
+            classMatch = classIdsList.contains(sClassId);
+          } else {
+            classMatch = _doesItApply(
+              fee['applicable_classes'],
+              sClass,
+              officialList: _officialClasses,
+            );
+          }
+
           bool categoryMatch = _doesItApply(
             fee['applicable_categories'],
             sCategory,
@@ -154,7 +168,11 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
           );
 
           if (classMatch && categoryMatch) {
-            double paidAmt = studentCategoryPayments[sId]?[feeName] ?? 0.0;
+            // 🚨 NATIVE UUID LOOKUP: Checks for payments under the UUID, falls back to text name lookup
+            double paidAmt =
+                (studentCategoryPayments[sId]?[feeId] ?? 0.0) +
+                (studentCategoryPayments[sId]?[feeName] ?? 0.0);
+
             double remaining = expectedAmt - paidAmt;
             if (remaining > 0) {
               studentDebt += remaining;
@@ -203,7 +221,6 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
     return v;
   }
 
-  // 🚨 ADDED optional officialList parameter
   bool _doesItApply(
     dynamic columnData,
     String studentData, {
@@ -226,7 +243,6 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
         ? columnData.toString().replaceAll(' ', '').toLowerCase()
         : _standardizeClass(columnData.toString());
 
-    // 🚨 If 'all', instantly approve
     if (colStr.isEmpty ||
         colStr == 'all' ||
         colStr == '[]' ||
@@ -268,12 +284,11 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
 
     Color primaryColor = Theme.of(context).primaryColor;
 
-    // 🚨 EXTRACTED MAIN CONTENT FOR LAYOUT BUILDER
     Widget mainContent = RefreshIndicator(
       onRefresh: _fetchFinanceData,
       color: primaryColor,
       child: _isLoading
-          ? Center(child: CircularProgressIndicator(color: primaryColor))
+          ? Center(child: TridetaLoader(color: primaryColor))
           : SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(24),
@@ -287,7 +302,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                     "ADMINISTRATIVE ACTIONS",
                     style: TextStyle(
                       fontWeight: FontWeight.w800,
-                      color: primaryColor.withOpacity(0.8),
+                      color: primaryColor.withValues(alpha: 0.8),
                       fontSize: 12,
                       letterSpacing: 1.1,
                     ),
@@ -375,11 +390,9 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
         elevation: 0,
         centerTitle: true,
       ),
-      // 🚨 SHAPE-SHIFTER: LayoutBuilder
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 800) {
-            // 💻 DESKTOP LAYOUT (Constrained center column)
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 800),
@@ -402,7 +415,6 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
               ),
             );
           } else {
-            // 📱 MOBILE LAYOUT
             return mainContent;
           }
         },
@@ -422,12 +434,12 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [primaryColor, primaryColor.withOpacity(0.8)],
+          colors: [primaryColor, primaryColor.withValues(alpha: 0.8)],
         ),
         borderRadius: BorderRadius.circular(25),
         boxShadow: [
           BoxShadow(
-            color: primaryColor.withOpacity(0.3),
+            color: primaryColor.withValues(alpha: 0.3),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -554,8 +566,8 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: isLocked
-                        ? Colors.grey.withOpacity(0.1)
-                        : color.withOpacity(0.1),
+                        ? Colors.grey.withValues(alpha: 0.1)
+                        : color.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -590,9 +602,9 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
       margin: const EdgeInsets.only(bottom: 25),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.1),
+        color: Colors.orange.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.orange.withOpacity(0.2)),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
       ),
       child: const Row(
         children: [

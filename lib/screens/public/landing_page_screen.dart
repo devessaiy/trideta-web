@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 
 import 'package:trideta_v2/screens/auth/login_screen.dart';
 
@@ -33,7 +34,7 @@ class _LandingPageScreenState extends State<LandingPageScreen> {
     try {
       // Create a table called 'trideta_announcements' in your Supabase for this!
       final data = await _supabase
-          .from('trideta_announcements')
+          .from('alerts')
           .select()
           .order('created_at', ascending: false)
           .limit(6); // Fetch latest 6
@@ -158,7 +159,7 @@ class _LandingPageScreenState extends State<LandingPageScreen> {
               ),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [primaryColor.withOpacity(0.05), Colors.white],
+                  colors: [primaryColor.withValues(alpha: 0.05), Colors.white],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
@@ -172,7 +173,7 @@ class _LandingPageScreenState extends State<LandingPageScreen> {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: primaryColor.withOpacity(0.1),
+                      color: primaryColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -314,9 +315,7 @@ class _LandingPageScreenState extends State<LandingPageScreen> {
                       const SizedBox(height: 40),
 
                       if (_isLoadingAnnouncements)
-                        Center(
-                          child: CircularProgressIndicator(color: primaryColor),
-                        )
+                        Center(child: TridetaLoader(color: primaryColor))
                       else if (_announcements.isEmpty)
                         Center(
                           child: Text(
@@ -425,7 +424,7 @@ class _LandingPageScreenState extends State<LandingPageScreen> {
           border: Border.all(color: Colors.grey.shade200),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 15,
               offset: const Offset(0, 8),
             ),
@@ -436,7 +435,7 @@ class _LandingPageScreenState extends State<LandingPageScreen> {
             Container(
               padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: color, size: 30),
@@ -495,7 +494,7 @@ class _LandingPageScreenState extends State<LandingPageScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
+              color: Colors.blue.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(

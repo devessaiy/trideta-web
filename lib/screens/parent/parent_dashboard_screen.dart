@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -129,13 +130,13 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
     return Scaffold(
       backgroundColor: bgColor,
       body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: primaryColor))
+          ? Center(child: TridetaLoader(color: primaryColor))
           : IndexedStack(index: _currentIndex, children: pages),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (i) => setState(() => _currentIndex = i),
         backgroundColor: navBarColor,
-        indicatorColor: primaryColor.withOpacity(0.1),
+        indicatorColor: primaryColor.withValues(alpha: 0.1),
         destinations: [
           NavigationDestination(
             icon: const Icon(Icons.home_outlined),
@@ -193,9 +194,11 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
                 Container(
                   margin: const EdgeInsets.only(bottom: 30),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
+                    color: Colors.orange.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(15),
-                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    border: Border.all(
+                      color: Colors.orange.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: ListTile(
                     leading: const Icon(
@@ -281,9 +284,15 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
             color: Colors.white,
             shape: BoxShape.circle,
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 8,
+              ),
             ],
-            border: Border.all(color: primaryColor.withOpacity(0.2), width: 2),
+            border: Border.all(
+              color: primaryColor.withValues(alpha: 0.2),
+              width: 2,
+            ),
           ),
           child: Icon(Icons.person_rounded, color: primaryColor, size: 32),
         ),
@@ -329,12 +338,12 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [primaryColor, primaryColor.withOpacity(0.8)],
+          colors: [primaryColor, primaryColor.withValues(alpha: 0.8)],
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: primaryColor.withOpacity(0.3),
+            color: primaryColor.withValues(alpha: 0.3),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -375,7 +384,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(30),
             ),
             child: const Text(
@@ -409,7 +418,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.03),
+              color: Colors.black.withValues(alpha: 0.03),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -421,7 +430,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: color, size: 24),
@@ -466,7 +475,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
               border: Border(
-                bottom: BorderSide(color: Colors.grey.withOpacity(0.1)),
+                bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.1)),
               ),
             ),
             child: Row(
@@ -474,7 +483,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: primaryColor.withOpacity(0.1),
+                    color: primaryColor.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -545,7 +554,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
+                                color: Colors.black.withValues(alpha: 0.05),
                                 blurRadius: 10,
                                 offset: const Offset(0, 4),
                               ),
@@ -559,13 +568,15 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
                                   vertical: 10,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: primaryColor.withOpacity(0.05),
+                                  color: primaryColor.withValues(alpha: 0.05),
                                   borderRadius: const BorderRadius.vertical(
                                     top: Radius.circular(20),
                                   ),
                                   border: Border(
                                     bottom: BorderSide(
-                                      color: primaryColor.withOpacity(0.1),
+                                      color: primaryColor.withValues(
+                                        alpha: 0.1,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -604,8 +615,8 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
                                 contentPadding: const EdgeInsets.all(15),
                                 leading: CircleAvatar(
                                   radius: 30,
-                                  backgroundColor: primaryColor.withOpacity(
-                                    0.1,
+                                  backgroundColor: primaryColor.withValues(
+                                    alpha: 0.1,
                                   ),
                                   backgroundImage: passport.isNotEmpty
                                       ? NetworkImage(passport)
@@ -688,7 +699,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
                                       ),
                                       style: IconButton.styleFrom(
                                         backgroundColor: Colors.orange
-                                            .withOpacity(0.1),
+                                            .withValues(alpha: 0.1),
                                         shape: RoundedRectangleBorder(
                                           borderRadius: BorderRadius.circular(
                                             10,
@@ -752,7 +763,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
               const SizedBox(height: 25),
               ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: Colors.green.withOpacity(0.1),
+                  backgroundColor: Colors.green.withValues(alpha: 0.1),
                   child: const Icon(Icons.phone, color: Colors.green),
                 ),
                 title: const Text("Call School"),
@@ -763,7 +774,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
               ),
               ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: Colors.blue.withOpacity(0.1),
+                  backgroundColor: Colors.blue.withValues(alpha: 0.1),
                   child: const Icon(Icons.email, color: Colors.blue),
                 ),
                 title: const Text("Email School"),
@@ -793,7 +804,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
               border: Border(
-                bottom: BorderSide(color: Colors.grey.withOpacity(0.1)),
+                bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.1)),
               ),
             ),
             child: Row(
@@ -801,7 +812,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: primaryColor.withOpacity(0.1),
+                    color: primaryColor.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -885,7 +896,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(15),
                             side: BorderSide(
-                              color: alertColor.withOpacity(0.3),
+                              color: alertColor.withValues(alpha: 0.3),
                             ),
                           ),
                           child: Padding(
@@ -966,7 +977,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
           Center(
             child: CircleAvatar(
               radius: 50,
-              backgroundColor: primaryColor.withOpacity(0.1),
+              backgroundColor: primaryColor.withValues(alpha: 0.1),
               child: Icon(Icons.person, size: 50, color: primaryColor),
             ),
           ),

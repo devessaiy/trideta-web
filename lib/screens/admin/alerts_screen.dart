@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
@@ -406,10 +407,7 @@ class _AlertsScreenState extends State<AlertsScreen>
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
+                            child: TridetaLoader(color: Colors.white),
                           )
                         : const Text(
                             "POST ALERT",
@@ -435,7 +433,7 @@ class _AlertsScreenState extends State<AlertsScreen>
     if (_isLoading) {
       return Scaffold(
         backgroundColor: bgColor,
-        body: Center(child: CircularProgressIndicator(color: primaryColor)),
+        body: Center(child: TridetaLoader(color: primaryColor)),
       );
     }
 
@@ -530,7 +528,7 @@ class _AlertsScreenState extends State<AlertsScreen>
         margin: const EdgeInsets.all(20),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.grey.withOpacity(0.1),
+          color: Colors.grey.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
         ),
         child: const Row(
@@ -556,7 +554,7 @@ class _AlertsScreenState extends State<AlertsScreen>
     bool showButton = false;
 
     if (_collectionPercentage < 50.0) {
-      cardColor = Colors.redAccent.withOpacity(0.1);
+      cardColor = Colors.redAccent.withValues(alpha: 0.1);
       textColor = Colors.redAccent;
       icon = Icons.warning_amber_rounded;
       title = "LOW REVENUE DETECTED";
@@ -564,21 +562,21 @@ class _AlertsScreenState extends State<AlertsScreen>
           "Collection for $_currentSession is only ${_collectionPercentage.toStringAsFixed(1)}%. Expected is 50% or more. High outstanding debt detected.";
       showButton = true;
     } else if (_collectionPercentage < 60.0) {
-      cardColor = Colors.orange.withOpacity(0.1);
+      cardColor = Colors.orange.withValues(alpha: 0.1);
       textColor = Colors.orange;
       icon = Icons.health_and_safety_outlined;
       title = "SYSTEM STABLE";
       subtitle =
           "Collection for $_currentSession is at ${_collectionPercentage.toStringAsFixed(1)}%. Minimum operational threshold met.";
     } else if (_collectionPercentage < 70.0) {
-      cardColor = Colors.teal.withOpacity(0.1);
+      cardColor = Colors.teal.withValues(alpha: 0.1);
       textColor = Colors.teal;
       icon = Icons.trending_up_rounded;
       title = "HEALTHY REVENUE";
       subtitle =
           "Collection for $_currentSession is at ${_collectionPercentage.toStringAsFixed(1)}%. Financial health is looking very good.";
     } else {
-      cardColor = Colors.green.withOpacity(0.1);
+      cardColor = Colors.green.withValues(alpha: 0.1);
       textColor = Colors.green;
       icon = Icons.verified_user_rounded;
       title = "EXCELLENT REVENUE";
@@ -592,7 +590,7 @@ class _AlertsScreenState extends State<AlertsScreen>
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: textColor.withOpacity(0.3)),
+        border: Border.all(color: textColor.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -637,10 +635,7 @@ class _AlertsScreenState extends State<AlertsScreen>
                     ? const SizedBox(
                         width: 15,
                         height: 15,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
+                        child: TridetaLoader(color: Colors.white),
                       )
                     : const Icon(Icons.notifications_active, size: 18),
                 label: Text(
@@ -675,9 +670,7 @@ class _AlertsScreenState extends State<AlertsScreen>
                   !snapshot.hasData) {
                 return Padding(
                   padding: const EdgeInsets.all(20),
-                  child: Center(
-                    child: CircularProgressIndicator(color: primaryColor),
-                  ),
+                  child: Center(child: TridetaLoader(color: primaryColor)),
                 );
               }
 
@@ -748,7 +741,7 @@ class _AlertsScreenState extends State<AlertsScreen>
                                   vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: typeColor.withOpacity(0.1),
+                                  color: typeColor.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Row(
@@ -830,9 +823,7 @@ class _AlertsScreenState extends State<AlertsScreen>
             .limit(50),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
-            return Center(
-              child: CircularProgressIndicator(color: primaryColor),
-            );
+            return Center(child: TridetaLoader(color: primaryColor));
           }
           final txs = snapshot.data!;
           if (txs.isEmpty) {
@@ -863,7 +854,7 @@ class _AlertsScreenState extends State<AlertsScreen>
                 decoration: BoxDecoration(
                   color: isDark ? Colors.white10 : Colors.white,
                   borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: Colors.grey.withOpacity(0.1)),
+                  border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
                 ),
                 child: ListTile(
                   onTap: () => Navigator.push(

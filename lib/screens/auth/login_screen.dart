@@ -12,8 +12,10 @@ import 'package:trideta_v2/screens/shared/setup_wizard.dart';
 
 // 🚨 MODULAR IMPORTS
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:trideta_v2/screens/auth/password_recovery_screens.dart';
-import 'package:trideta_v2/main.dart'; // 🚨 Added to access appColorNotifier
+import 'package:trideta_v2/screens/auth/school_registration_screen.dart';
+import 'package:trideta_v2/main.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -307,7 +309,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
       setState(() => _isLoading = true);
       try {
         String? error = await _authService.login(
-          creds['email']!, // This now injects the phantom email smoothly!
+          creds['email']!,
           creds['password']!,
         );
         if (error == null) {
@@ -336,12 +338,62 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
       final user = _supabase.auth.currentUser;
       if (user == null) throw "Session error. Please try logging again.";
 
-      // 🚨 Added schools(brand_color) to your Supabase query
-      final profile = await _supabase
+      // 🚨 AUTO-HEALING PROFILE QUERY
+      Map<String, dynamic>? profile = await _supabase
           .from('profiles')
           .select('role, schools(brand_color)')
           .eq('id', user.id)
           .maybeSingle();
+
+      if (profile == null) {
+        // 🚨 AUTO-HEAL MISSING PROFILES (For Parents & Teachers)
+        bool profileCreated = false;
+
+        // 1. Check if they are a Parent
+        final childrenRes = await _supabase
+            .from('students')
+            .select('school_id, parent_name')
+            .eq('parent_email', user.email!)
+            .limit(1);
+
+        if (childrenRes.isNotEmpty) {
+          await _supabase.from('profiles').insert({
+            'id': user.id,
+            'role': 'parent',
+            'email': user.email,
+            'full_name': childrenRes.first['parent_name'] ?? 'Parent',
+            'school_id': childrenRes.first['school_id'],
+          });
+          profileCreated = true;
+        } else {
+          // 2. Check if they are a Teacher
+          final teacherRes = await _supabase
+              .from('teachers')
+              .select('school_id, name')
+              .eq('email', user.email!)
+              .limit(1);
+
+          if (teacherRes.isNotEmpty) {
+            await _supabase.from('profiles').insert({
+              'id': user.id,
+              'role': 'teacher',
+              'email': user.email,
+              'full_name': teacherRes.first['name'] ?? 'Teacher',
+              'school_id': teacherRes.first['school_id'],
+            });
+            profileCreated = true;
+          }
+        }
+
+        if (profileCreated) {
+          // Fetch the newly created profile so login can continue
+          profile = await _supabase
+              .from('profiles')
+              .select('role, schools(brand_color)')
+              .eq('id', user.id)
+              .maybeSingle();
+        }
+      }
 
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -382,7 +434,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
 
             // Backup to memory
             final prefs = await SharedPreferences.getInstance();
-            await prefs.setInt('app_primary_color', fetchedColor.value);
+            await prefs.setInt('app_primary_color', fetchedColor.toARGB32());
           } catch (e) {
             debugPrint("Failed to parse DB color: $e");
           }
@@ -484,7 +536,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
             const SizedBox(height: 20),
             ListTile(
               leading: CircleAvatar(
-                backgroundColor: primaryColor.withOpacity(0.1),
+                backgroundColor: primaryColor.withValues(alpha: 0.1),
                 child: Icon(Icons.admin_panel_settings, color: primaryColor),
               ),
               title: const Text(
@@ -510,7 +562,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
             const Divider(),
             ListTile(
               leading: CircleAvatar(
-                backgroundColor: Colors.green.withOpacity(0.1),
+                backgroundColor: Colors.green.withValues(alpha: 0.1),
                 child: const Icon(Icons.family_restroom, color: Colors.green),
               ),
               title: const Text(
@@ -558,7 +610,10 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
                   child: Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [primaryColor.withOpacity(0.8), primaryColor],
+                        colors: [
+                          primaryColor.withValues(alpha: 0.8),
+                          primaryColor,
+                        ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -587,7 +642,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
                             "Next-Generation School Management",
                             style: TextStyle(
                               fontSize: 18,
-                              color: Colors.white.withOpacity(0.8),
+                              color: Colors.white.withValues(alpha: 0.8),
                             ),
                           ),
                         ],
@@ -668,17 +723,13 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
         ),
         const SizedBox(height: 40),
 
-        // 🚨 UPDATED TO HANDLE BOTH EMAIL AND PHONE
         TextField(
           controller: _emailController,
           keyboardType: TextInputType.emailAddress,
           style: TextStyle(color: textColor),
           decoration: InputDecoration(
-            prefixIcon: Icon(
-              Icons.person_outline,
-              color: hintColor,
-            ), // 🚨 Updated Icon
-            labelText: "Email or Phone Number", // 🚨 Updated Label
+            prefixIcon: Icon(Icons.person_outline, color: hintColor),
+            labelText: "Email or Phone Number",
             labelStyle: TextStyle(color: hintColor),
             filled: true,
             fillColor: fieldColor,
@@ -757,10 +808,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
                 ? const SizedBox(
                     height: 24,
                     width: 24,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 3,
-                    ),
+                    child: TridetaLoader(color: Colors.white),
                   )
                 : const Text(
                     "SECURE LOGIN",
@@ -783,7 +831,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: primaryColor.withOpacity(0.1),
+                    color: primaryColor.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(Icons.fingerprint, size: 40, color: primaryColor),
@@ -800,6 +848,22 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
             ),
           ),
         ],
+
+        const SizedBox(height: 20),
+        TextButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const SchoolRegistrationScreen(),
+              ),
+            );
+          },
+          child: Text(
+            "Don't have an account? Register your School",
+            style: TextStyle(color: primaryColor, fontWeight: FontWeight.w600),
+          ),
+        ),
       ],
     );
   }

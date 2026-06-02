@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:trideta_v2/main.dart'; // To access isInteractingWithSystem
 
 class AddStaffScreen extends StatefulWidget {
@@ -255,7 +256,7 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 15,
                         offset: const Offset(0, 5),
                       ),
@@ -308,7 +309,7 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
                     onTap: _pickImage,
                     child: CircleAvatar(
                       radius: 60,
-                      backgroundColor: primaryColor.withOpacity(0.1),
+                      backgroundColor: primaryColor.withValues(alpha: 0.1),
                       backgroundImage: _webImage != null
                           ? MemoryImage(_webImage!)
                           : null,
@@ -342,7 +343,7 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
                 Expanded(
                   child: _buildDropdown(
                     "Role",
-                    ['Teacher', 'Admin', 'Bursar', 'Principal'],
+                    ['Teacher', 'Bursar'],
                     _selectedRole,
                     (v) => setState(() {
                       _selectedRole = v!;
@@ -431,7 +432,7 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
                 ),
                 filled: true,
                 fillColor: isDark
-                    ? Colors.white.withOpacity(0.05)
+                    ? Colors.white.withValues(alpha: 0.05)
                     : Colors.grey[50],
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(15),
@@ -477,7 +478,7 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
                 ),
                 filled: true,
                 fillColor: isDark
-                    ? Colors.white.withOpacity(0.05)
+                    ? Colors.white.withValues(alpha: 0.05)
                     : Colors.grey[50],
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(15),
@@ -519,7 +520,7 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
                 ),
                 onPressed: _isLoading ? null : _saveStaff,
                 child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
+                    ? const TridetaLoader(color: Colors.white)
                     : const Text(
                         "REGISTER STAFF",
                         style: TextStyle(
@@ -582,7 +583,9 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
         labelText: label,
         prefixIcon: icon != null ? Icon(icon, color: Colors.grey) : null,
         filled: true,
-        fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50],
+        fillColor: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.grey[50],
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
           borderSide: BorderSide.none,
@@ -607,7 +610,7 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
   ) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50],
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50],
         borderRadius: BorderRadius.circular(15),
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.grey.shade300,

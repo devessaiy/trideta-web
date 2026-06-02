@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/foundation.dart'; // 🚨 ADDED FOR kIsWeb
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -53,7 +54,7 @@ class _ReceiptViewScreenState extends State<ReceiptViewScreen>
     }
   }
 
-  // --- NEW BULLETPROOF ITEMIZED MATH FOR RECEIPTS ---
+  // --- 🚨 NEW BULLETPROOF ITEMIZED MATH FOR RECEIPTS (NATIVE UUID SYNCED) ---
   Future<void> _fetchReceiptData() async {
     try {
       final supabase = Supabase.instance.client;
@@ -92,39 +93,44 @@ class _ReceiptViewScreenState extends State<ReceiptViewScreen>
           _logoUrl = school['logo_url'];
         });
 
-        // 2. Calculate the TRUE balance using Itemized Math
+        // 2. Calculate the TRUE balance using Itemized Math (UUID)
         if (studentId != null && targetSession.isNotEmpty) {
           final studentData = await supabase
               .from('students')
-              .select('class_level, category')
+              .select('class_level, class_id, category') // 🚨 FETCH class_id
               .eq('id', studentId)
               .single();
 
           String sClass = (studentData['class_level'] ?? '').toString();
+          String sClassId = (studentData['class_id'] ?? '').toString();
           String sCategory = (studentData['category'] ?? '').toString();
 
           final rawFeeData = await supabase
               .from('fee_structures')
               .select(
-                'fee_name, amount, applicable_classes, applicable_categories, academic_session',
+                'id, fee_name, amount, applicable_classes, applicable_class_ids, applicable_categories, academic_session',
               )
               .eq('school_id', schoolId);
 
           final txData = await supabase
               .from('transactions')
-              .select('category, amount, academic_session')
+              .select('category, amount, academic_session, fee_id')
               .eq('student_id', studentId);
 
-          Map<String, double> categoryPayments = {};
+          Map<String, double> studentPayments = {};
           for (var tx in txData) {
             String existingTxSession = (tx['academic_session'] ?? '')
                 .toString();
             if (existingTxSession == targetSession ||
                 existingTxSession.isEmpty) {
-              String cat = (tx['category'] ?? '').toString();
-              categoryPayments[cat] =
-                  (categoryPayments[cat] ?? 0.0) +
-                  (tx['amount'] ?? 0).toDouble();
+              String txFeeId = (tx['fee_id'] ?? '').toString();
+              String txCategory = (tx['category'] ?? '').toString();
+              double amt = (tx['amount'] ?? 0).toDouble();
+
+              // Hybrid Matcher
+              String paymentKey = txFeeId.isNotEmpty ? txFeeId : txCategory;
+              studentPayments[paymentKey] =
+                  (studentPayments[paymentKey] ?? 0.0) + amt;
             }
           }
 
@@ -134,7 +140,22 @@ class _ReceiptViewScreenState extends State<ReceiptViewScreen>
             String feeSession = (fee['academic_session'] ?? '').toString();
 
             if (feeSession == targetSession || feeSession.isEmpty) {
-              bool classMatch = _doesItApply(fee['applicable_classes'], sClass);
+              String feeId = fee['id'].toString();
+              String feeName = fee['fee_name'].toString();
+              double expectedAmt = (fee['amount'] ?? 0).toDouble();
+
+              bool classMatch = false;
+
+              // Match by UUID first
+              final List<dynamic>? classIdsList = fee['applicable_class_ids'];
+              if (classIdsList != null &&
+                  classIdsList.isNotEmpty &&
+                  sClassId.isNotEmpty) {
+                classMatch = classIdsList.contains(sClassId);
+              } else {
+                classMatch = _doesItApply(fee['applicable_classes'], sClass);
+              }
+
               bool categoryMatch = _doesItApply(
                 fee['applicable_categories'],
                 sCategory,
@@ -142,9 +163,10 @@ class _ReceiptViewScreenState extends State<ReceiptViewScreen>
               );
 
               if (classMatch && categoryMatch) {
-                String feeName = fee['fee_name'].toString();
-                double expectedAmt = (fee['amount'] ?? 0).toDouble();
-                double paidAmt = categoryPayments[feeName] ?? 0.0;
+                // Native UUID Lookup
+                double paidAmt =
+                    (studentPayments[feeId] ?? 0.0) +
+                    (studentPayments[feeName] ?? 0.0);
 
                 double remaining = expectedAmt - paidAmt;
                 if (remaining > 0) {
@@ -421,7 +443,7 @@ class _ReceiptViewScreenState extends State<ReceiptViewScreen>
     if (_isLoadingData) {
       return Scaffold(
         backgroundColor: bgColor,
-        body: Center(child: CircularProgressIndicator(color: primaryColor)),
+        body: Center(child: TridetaLoader(color: primaryColor)),
       );
     }
 
@@ -490,10 +512,7 @@ class _ReceiptViewScreenState extends State<ReceiptViewScreen>
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
+                        child: TridetaLoader(color: Colors.white),
                       )
                     : const Icon(Icons.print_rounded, color: Colors.white),
                 label: Text(
@@ -562,10 +581,7 @@ class _ReceiptViewScreenState extends State<ReceiptViewScreen>
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
+                          child: TridetaLoader(color: Colors.white),
                         )
                       : const Icon(Icons.share_rounded, color: Colors.white),
                   label: Text(
@@ -651,7 +667,10 @@ class _ReceiptViewScreenState extends State<ReceiptViewScreen>
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+          ),
         ],
       ),
       child: Row(
@@ -659,7 +678,9 @@ class _ReceiptViewScreenState extends State<ReceiptViewScreen>
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: (_connected ? Colors.green : Colors.red).withOpacity(0.1),
+              color: (_connected ? Colors.green : Colors.red).withValues(
+                alpha: 0.1,
+              ),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -713,7 +734,7 @@ class _ReceiptViewScreenState extends State<ReceiptViewScreen>
         borderRadius: BorderRadius.circular(4),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -724,7 +745,7 @@ class _ReceiptViewScreenState extends State<ReceiptViewScreen>
           Container(
             height: 6,
             width: double.infinity,
-            color: primaryColor.withOpacity(0.8),
+            color: primaryColor.withValues(alpha: 0.8),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),

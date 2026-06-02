@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 
 // ============================================================================
 // 1. REQUEST OTP SCREEN
@@ -231,7 +232,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
             const SizedBox(height: 20),
             ListTile(
               leading: CircleAvatar(
-                backgroundColor: primaryColor.withOpacity(0.1),
+                backgroundColor: primaryColor.withValues(alpha: 0.1),
                 child: Icon(Icons.admin_panel_settings, color: primaryColor),
               ),
               title: const Text(
@@ -243,7 +244,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
             const Divider(),
             ListTile(
               leading: CircleAvatar(
-                backgroundColor: Colors.green.withOpacity(0.1),
+                backgroundColor: Colors.green.withValues(alpha: 0.1),
                 child: const Icon(Icons.family_restroom, color: Colors.green),
               ),
               title: const Text(
@@ -370,9 +371,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                           ? const SizedBox(
                               height: 24,
                               width: 24,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                              ),
+                              child: TridetaLoader(color: Colors.white),
                             )
                           : const Text(
                               "SEND RECOVERY CODE",
@@ -617,9 +616,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen>
                           ? const SizedBox(
                               height: 24,
                               width: 24,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                              ),
+                              child: TridetaLoader(color: Colors.white),
                             )
                           : const Text(
                               "VERIFY CODE",
@@ -891,9 +888,7 @@ class _SetNewPasswordScreenState extends State<SetNewPasswordScreen>
                           ? const SizedBox(
                               height: 24,
                               width: 24,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                              ),
+                              child: TridetaLoader(color: Colors.white),
                             )
                           : const Text(
                               "UPDATE PASSWORD",

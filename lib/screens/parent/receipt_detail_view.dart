@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
@@ -133,7 +134,7 @@ class _ReceiptDetailViewState extends State<ReceiptDetailView>
 
     if (_loading) {
       return Scaffold(
-        body: Center(child: CircularProgressIndicator(color: primaryColor)),
+        body: Center(child: TridetaLoader(color: primaryColor)),
       );
     }
 
@@ -163,7 +164,7 @@ class _ReceiptDetailViewState extends State<ReceiptDetailView>
                       borderRadius: BorderRadius.circular(4),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withValues(alpha: 0.1),
                           blurRadius: 15,
                           offset: const Offset(0, 5),
                         ),
@@ -370,14 +371,14 @@ class _ReceiptDetailViewState extends State<ReceiptDetailView>
               color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10,
                   offset: const Offset(0, -5),
                 ),
               ],
             ),
             child: _busy
-                ? Center(child: CircularProgressIndicator(color: primaryColor))
+                ? Center(child: TridetaLoader(color: primaryColor))
                 : Row(
                     children: [
                       Expanded(

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 // 🚨 MODULAR IMPORTS
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:trideta_v2/screens/auth/login_screen.dart';
 import 'package:trideta_v2/services/auth_service.dart';
 
@@ -126,7 +127,10 @@ class _SchoolRegistrationScreenState extends State<SchoolRegistrationScreen>
                   child: Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [primaryColor.withOpacity(0.8), primaryColor],
+                        colors: [
+                          primaryColor.withValues(alpha: 0.8),
+                          primaryColor,
+                        ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -155,7 +159,7 @@ class _SchoolRegistrationScreenState extends State<SchoolRegistrationScreen>
                             "Bring your entire school into the cloud today.",
                             style: TextStyle(
                               fontSize: 18,
-                              color: Colors.white.withOpacity(0.8),
+                              color: Colors.white.withValues(alpha: 0.8),
                             ),
                           ),
                         ],
@@ -455,10 +459,7 @@ class _SchoolRegistrationScreenState extends State<SchoolRegistrationScreen>
                   ? const SizedBox(
                       height: 24,
                       width: 24,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 3,
-                      ),
+                      child: TridetaLoader(color: Colors.white),
                     )
                   : const Text(
                       "REGISTER SCHOOL",

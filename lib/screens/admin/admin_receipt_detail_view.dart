@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/foundation.dart'; // 🚨 ADDED FOR kIsWeb
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -39,6 +40,7 @@ class _AdminReceiptDetailViewState extends State<AdminReceiptDetailView>
     _fetchAccounting();
   }
 
+  // --- 🚨 NATIVE UUID ACCOUNTING SYNCED WITH FINANCE DASHBOARD 🚨 ---
   Future<void> _fetchAccounting() async {
     try {
       final sId = widget.tx['school_id'];
@@ -65,35 +67,43 @@ class _AdminReceiptDetailViewState extends State<AdminReceiptDetailView>
         if (stuId != null && targetSession.isNotEmpty) {
           final studentData = await _supabase
               .from('students')
-              .select('class_level, category')
+              .select('class_level, class_id, category')
               .eq('id', stuId)
               .single();
 
           String sClass = (studentData['class_level'] ?? '').toString();
+          String sClassId = (studentData['class_id'] ?? '').toString();
           String sCategory = (studentData['category'] ?? '').toString();
 
+          // 🚨 NOW FETCHING id
           final rawFeeData = await _supabase
               .from('fee_structures')
               .select(
-                'fee_name, amount, applicable_classes, applicable_categories, academic_session',
+                'id, fee_name, amount, applicable_classes, applicable_class_ids, applicable_categories, academic_session',
               )
               .eq('school_id', sId);
 
+          // 🚨 NOW FETCHING fee_id
           final txData = await _supabase
               .from('transactions')
-              .select('category, amount, academic_session')
+              .select('category, amount, academic_session, fee_id')
               .eq('student_id', stuId);
 
-          Map<String, double> categoryPayments = {};
+          // 🚨 GROUP PAYMENTS NATIVELY BY fee_id
+          Map<String, double> studentPayments = {};
           for (var tx in txData) {
             String existingTxSession = (tx['academic_session'] ?? '')
                 .toString();
             if (existingTxSession == targetSession ||
                 existingTxSession.isEmpty) {
-              String cat = (tx['category'] ?? '').toString();
-              categoryPayments[cat] =
-                  (categoryPayments[cat] ?? 0.0) +
-                  (tx['amount'] ?? 0).toDouble();
+              String txFeeId = (tx['fee_id'] ?? '').toString();
+              String txCategory = (tx['category'] ?? '').toString();
+              double amt = (tx['amount'] ?? 0).toDouble();
+
+              // Hybrid Matcher
+              String paymentKey = txFeeId.isNotEmpty ? txFeeId : txCategory;
+              studentPayments[paymentKey] =
+                  (studentPayments[paymentKey] ?? 0.0) + amt;
             }
           }
 
@@ -102,7 +112,22 @@ class _AdminReceiptDetailViewState extends State<AdminReceiptDetailView>
           for (var fee in rawFeeData) {
             String feeSession = (fee['academic_session'] ?? '').toString();
             if (feeSession == targetSession || feeSession.isEmpty) {
-              bool classMatch = _doesItApply(fee['applicable_classes'], sClass);
+              String feeId = fee['id'].toString();
+              String feeName = fee['fee_name'].toString();
+              double expectedAmt = (fee['amount'] ?? 0).toDouble();
+
+              bool classMatch = false;
+
+              // Match by UUID first
+              final List<dynamic>? classIdsList = fee['applicable_class_ids'];
+              if (classIdsList != null &&
+                  classIdsList.isNotEmpty &&
+                  sClassId.isNotEmpty) {
+                classMatch = classIdsList.contains(sClassId);
+              } else {
+                classMatch = _doesItApply(fee['applicable_classes'], sClass);
+              }
+
               bool categoryMatch = _doesItApply(
                 fee['applicable_categories'],
                 sCategory,
@@ -110,9 +135,10 @@ class _AdminReceiptDetailViewState extends State<AdminReceiptDetailView>
               );
 
               if (classMatch && categoryMatch) {
-                String feeName = fee['fee_name'].toString();
-                double expectedAmt = (fee['amount'] ?? 0).toDouble();
-                double paidAmt = categoryPayments[feeName] ?? 0.0;
+                // 🚨 NATIVE UUID LOOKUP
+                double paidAmt =
+                    (studentPayments[feeId] ?? 0.0) +
+                    (studentPayments[feeName] ?? 0.0);
 
                 double remaining = expectedAmt - paidAmt;
                 if (remaining > 0) outstanding += remaining;
@@ -201,7 +227,7 @@ class _AdminReceiptDetailViewState extends State<AdminReceiptDetailView>
     }
   }
 
-  // 🚨 NEW: WEB-SPECIFIC PDF DOWNLOAD/PRINT
+  // 🚨 WEB-SPECIFIC PDF DOWNLOAD/PRINT
   Future<void> _downloadWebPdf() async {
     setState(() => _busy = true);
     try {
@@ -278,7 +304,7 @@ class _AdminReceiptDetailViewState extends State<AdminReceiptDetailView>
 
     if (_loading) {
       return Scaffold(
-        body: Center(child: CircularProgressIndicator(color: primaryColor)),
+        body: Center(child: TridetaLoader(color: primaryColor)),
       );
     }
 
@@ -304,11 +330,11 @@ class _AdminReceiptDetailViewState extends State<AdminReceiptDetailView>
                     color: bgColor,
                     border: Border(
                       left: BorderSide(
-                        color: Colors.grey.withOpacity(0.2),
+                        color: Colors.grey.withValues(alpha: 0.2),
                         width: 1,
                       ),
                       right: BorderSide(
-                        color: Colors.grey.withOpacity(0.2),
+                        color: Colors.grey.withValues(alpha: 0.2),
                         width: 1,
                       ),
                     ),
@@ -356,7 +382,7 @@ class _AdminReceiptDetailViewState extends State<AdminReceiptDetailView>
                     borderRadius: BorderRadius.circular(4),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 15,
                         offset: const Offset(0, 5),
                       ),
@@ -561,7 +587,6 @@ class _AdminReceiptDetailViewState extends State<AdminReceiptDetailView>
           ),
         ),
 
-        // 🚨 CONDITIONAL RENDER: Web gets one button, Mobile gets two!
         Container(
           margin: isDesktop
               ? const EdgeInsets.only(bottom: 20, left: 20, right: 20)
@@ -572,14 +597,14 @@ class _AdminReceiptDetailViewState extends State<AdminReceiptDetailView>
             borderRadius: isDesktop ? BorderRadius.circular(20) : null,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, -5),
               ),
             ],
           ),
           child: _busy
-              ? Center(child: CircularProgressIndicator(color: primaryColor))
+              ? Center(child: TridetaLoader(color: primaryColor))
               : kIsWeb
               ? SizedBox(
                   width: double.infinity,

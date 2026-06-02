@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -201,10 +202,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
                     ? const SizedBox(
                         height: 15,
                         width: 15,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
+                        child: TridetaLoader(color: Colors.white),
                       )
                     : const Text(
                         "Update",
@@ -280,12 +278,15 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
     return Scaffold(
       backgroundColor: bgColor,
       body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: primaryColor))
+          ? Center(child: TridetaLoader(color: primaryColor))
           : IndexedStack(index: _selectedIndex, children: pages),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+            ),
           ],
         ),
         child: NavigationBar(
@@ -293,7 +294,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
           onDestinationSelected: _onItemTapped,
           backgroundColor: navBarColor,
           elevation: 0,
-          indicatorColor: primaryColor.withOpacity(0.1),
+          indicatorColor: primaryColor.withValues(alpha: 0.1),
           height: 70,
           destinations:
               [
@@ -350,7 +351,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
                 "MY CLASSROOMS",
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
-                  color: primaryColor.withOpacity(0.8),
+                  color: primaryColor.withValues(alpha: 0.8),
                   fontSize: 13,
                   letterSpacing: 1.1,
                 ),
@@ -378,7 +379,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
                 "ACADEMIC TASKS",
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
-                  color: primaryColor.withOpacity(0.8),
+                  color: primaryColor.withValues(alpha: 0.8),
                   fontSize: 13,
                   letterSpacing: 1.1,
                 ),
@@ -493,10 +494,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
                     ? const SizedBox(
                         width: 15,
                         height: 15,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
+                        child: TridetaLoader(color: Colors.white),
                       )
                     : const Icon(Icons.check, color: Colors.white),
                 label: Text(
@@ -588,9 +586,15 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
             color: Colors.white,
             shape: BoxShape.circle,
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 8,
+              ),
             ],
-            border: Border.all(color: primaryColor.withOpacity(0.2), width: 2),
+            border: Border.all(
+              color: primaryColor.withValues(alpha: 0.2),
+              width: 2,
+            ),
             image: _schoolLogoUrl != null
                 ? DecorationImage(
                     image: NetworkImage(_schoolLogoUrl!),
@@ -640,12 +644,12 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [primaryColor, primaryColor.withOpacity(0.8)],
+          colors: [primaryColor, primaryColor.withValues(alpha: 0.8)],
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: primaryColor.withOpacity(0.3),
+            color: primaryColor.withValues(alpha: 0.3),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -686,7 +690,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(30),
             ),
             child: Text(
@@ -719,11 +723,13 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
         color: cardColor,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.05) : Colors.transparent,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.transparent,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -741,7 +747,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
+                    color: color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(15),
                   ),
                   child: Icon(icon, color: color, size: 28),

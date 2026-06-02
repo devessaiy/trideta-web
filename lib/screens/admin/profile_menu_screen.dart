@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -149,7 +150,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
           alignment: WrapAlignment.center,
           children: schoolColors.map((item) {
             Color c = item['color'];
-            bool isSelected = currentPrimary.value == c.value;
+            bool isSelected = currentPrimary.toARGB32() == c.toARGB32();
 
             return GestureDetector(
               onTap: () async {
@@ -158,12 +159,12 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
 
                 // 2. BACKUP TO MEMORY
                 final prefs = await SharedPreferences.getInstance();
-                await prefs.setInt('app_primary_color', c.value);
+                await prefs.setInt('app_primary_color', c.toARGB32());
 
                 // 3. PUSH HEX FORMAT TO DATABASE
                 try {
                   String hexColor =
-                      '#${c.value.toRadixString(16).substring(2, 8).toUpperCase()}';
+                      '#${c.toARGB32().toRadixString(16).substring(2, 8).toUpperCase()}';
                   final userId = Supabase.instance.client.auth.currentUser!.id;
                   final userData = await Supabase.instance.client
                       .from('profiles')
@@ -270,7 +271,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
             const SizedBox(height: 20),
             ListTile(
               leading: CircleAvatar(
-                backgroundColor: Colors.blue.withOpacity(0.1),
+                backgroundColor: Colors.blue.withValues(alpha: 0.1),
                 child: const Icon(Icons.email, color: Colors.blue),
               ),
               title: const Text(
@@ -292,7 +293,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
             const Divider(),
             ListTile(
               leading: CircleAvatar(
-                backgroundColor: Colors.green.withOpacity(0.1),
+                backgroundColor: Colors.green.withValues(alpha: 0.1),
                 child: const Icon(Icons.chat, color: Colors.green),
               ),
               title: const Text(
@@ -387,9 +388,8 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (ctx) => const Center(
-          child: CircularProgressIndicator(color: Colors.redAccent),
-        ),
+        builder: (ctx) =>
+            const Center(child: TridetaLoader(color: Colors.redAccent)),
       );
     }
 
@@ -465,7 +465,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                     const SizedBox(height: 20),
                     CircleAvatar(
                       radius: 40,
-                      backgroundColor: primaryColor.withOpacity(0.1),
+                      backgroundColor: primaryColor.withValues(alpha: 0.1),
                       child: Icon(
                         Icons.admin_panel_settings,
                         size: 40,
@@ -489,10 +489,10 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.1),
+                        color: Colors.green.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: Colors.green.withOpacity(0.3),
+                          color: Colors.green.withValues(alpha: 0.3),
                         ),
                       ),
                       child: const Text(
@@ -641,7 +641,9 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                 color: Colors.blueGrey,
                 isDark: isDark,
                 onTap: () async {
-                  final Uri url = Uri.parse('https://trideta.com/terms');
+                  final Uri url = Uri.parse(
+                    'https://trideta.vercel.app/terms.html',
+                  );
                   launchUrl(url);
                 },
               ),
@@ -651,7 +653,9 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                 color: Colors.blueGrey,
                 isDark: isDark,
                 onTap: () async {
-                  final Uri url = Uri.parse('https://trideta.com/privacy');
+                  final Uri url = Uri.parse(
+                    'https://trideta.vercel.app/privacy-policy.html',
+                  );
                   launchUrl(url);
                 },
               ),
@@ -684,13 +688,13 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                 height: 55,
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent.withOpacity(0.1),
+                    backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
                     foregroundColor: Colors.redAccent,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(15),
                       side: BorderSide(
-                        color: Colors.redAccent.withOpacity(0.3),
+                        color: Colors.redAccent.withValues(alpha: 0.3),
                       ),
                     ),
                   ),
@@ -792,11 +796,13 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(15),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade200,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.grey.shade200,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.01),
+            color: Colors.black.withValues(alpha: 0.01),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -808,7 +814,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
         leading: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
+            color: color.withValues(alpha: 0.12),
             shape: BoxShape.circle,
           ),
           child: Icon(icon, color: color, size: 24),
@@ -1149,7 +1155,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
                 borderRadius: BorderRadius.circular(15),
                 border: Border.all(
                   color: isDark
-                      ? Colors.white.withOpacity(0.05)
+                      ? Colors.white.withValues(alpha: 0.05)
                       : Colors.grey.shade200,
                 ),
               ),
@@ -1168,7 +1174,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
                 secondary: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
+                    color: Colors.green.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.fingerprint, color: Colors.green),
@@ -1199,11 +1205,13 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(15),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade200,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.grey.shade200,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.01),
+            color: Colors.black.withValues(alpha: 0.01),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -1215,7 +1223,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
         leading: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
+            color: color.withValues(alpha: 0.12),
             shape: BoxShape.circle,
           ),
           child: Icon(icon, color: color, size: 24),
@@ -1468,7 +1476,7 @@ class AdminDashboard extends StatelessWidget {
         borderRadius: BorderRadius.circular(15),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -1484,7 +1492,7 @@ class AdminDashboard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(Icons.trending_up, color: color, size: 16),
@@ -1528,13 +1536,15 @@ class AdminDashboard extends StatelessWidget {
           borderRadius: BorderRadius.circular(15),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
           ],
           border: Border.all(
-            color: isDark ? Colors.white.withOpacity(0.05) : Colors.transparent,
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.transparent,
           ),
         ),
         child: Column(
@@ -1543,7 +1553,7 @@ class AdminDashboard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: color, size: 32),
@@ -1579,7 +1589,9 @@ class AdminDashboard extends StatelessWidget {
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade200,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.grey.shade200,
         ),
       ),
       child: Row(
@@ -1587,7 +1599,7 @@ class AdminDashboard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.1),
+              color: iconColor.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: iconColor, size: 20),

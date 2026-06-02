@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/foundation.dart'; // Required for kIsWeb and Uint8List
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -179,7 +180,7 @@ class _SchoolProfileScreenState extends State<SchoolProfileScreen>
     if (_isLoading) {
       return Scaffold(
         backgroundColor: bgColor,
-        body: const Center(child: CircularProgressIndicator()),
+        body: const Center(child: TridetaLoader()),
       );
     }
 
@@ -213,14 +214,14 @@ class _SchoolProfileScreenState extends State<SchoolProfileScreen>
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
+                            color: Colors.black.withValues(alpha: 0.1),
                             blurRadius: 15,
                           ),
                         ],
                       ),
                       child: CircleAvatar(
                         radius: 60,
-                        backgroundColor: tridetaBlue.withOpacity(0.05),
+                        backgroundColor: tridetaBlue.withValues(alpha: 0.05),
                         backgroundImage: _webImage != null
                             ? MemoryImage(_webImage!)
                             : (_currentLogoUrl != null
@@ -230,7 +231,7 @@ class _SchoolProfileScreenState extends State<SchoolProfileScreen>
                         child: (_webImage == null && _currentLogoUrl == null)
                             ? Icon(
                                 Icons.school_rounded,
-                                color: tridetaBlue.withOpacity(0.5),
+                                color: tridetaBlue.withValues(alpha: 0.5),
                                 size: 50,
                               )
                             : null,
@@ -325,7 +326,7 @@ class _SchoolProfileScreenState extends State<SchoolProfileScreen>
                         color: Colors.white,
                       ),
                 label: _isSaving
-                    ? const CircularProgressIndicator(color: Colors.white)
+                    ? const TridetaLoader(color: Colors.white)
                     : const Text(
                         "SAVE PROFILE CHANGES",
                         style: TextStyle(
@@ -368,7 +369,9 @@ class _SchoolProfileScreenState extends State<SchoolProfileScreen>
       labelText: label,
       prefixIcon: Icon(icon, color: tridetaBlue, size: 20),
       filled: true,
-      fillColor: isDark ? Colors.white.withOpacity(0.03) : Colors.grey[50],
+      fillColor: isDark
+          ? Colors.white.withValues(alpha: 0.03)
+          : Colors.grey[50],
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: BorderSide.none,

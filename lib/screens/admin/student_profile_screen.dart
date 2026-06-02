@@ -1,8 +1,13 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
+
+// 🚨 NEW IMPORTS FOR EDITING
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 // 🚨 PDF PACKAGES FOR DOSSIER GENERATION
 import 'package:pdf/pdf.dart' show PdfColor, PdfColors, PdfPageFormat;
@@ -56,6 +61,28 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
   // --- PDF GENERATOR STATE ---
   bool _isGeneratingRecord = false;
 
+  // 🚨 FULL EDIT MODE STATE ---
+  bool _isEditing = false;
+  bool _isSaving = false;
+  final _firstNameController = TextEditingController();
+  final _middleNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _dobController = TextEditingController();
+  final _parentNameController = TextEditingController();
+  final _parentPhoneController = TextEditingController();
+  final _addressController = TextEditingController();
+
+  String _selectedGender = "Male";
+  String _selectedDepartment = "General";
+  String _studentCategory = "Regular";
+
+  String _currentNameDisplay = "";
+  String? _currentImagePath;
+
+  XFile? _pickedFile;
+  Uint8List? _webImage;
+  final ImagePicker _picker = ImagePicker();
+
   @override
   void initState() {
     super.initState();
@@ -69,7 +96,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
       final data = await _supabase
           .from('students')
           .select(
-            'school_id, parent_account_created, admission_no, parent_email, parent_phone',
+            'school_id, parent_account_created, admission_no, parent_email, parent_phone, first_name, middle_name, last_name, passport_url, dob, gender, department, category, parent_name, address',
           )
           .eq('id', widget.id)
           .single();
@@ -81,6 +108,23 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
           _admissionNo = data['admission_no']?.toString();
           _dbParentEmail = data['parent_email']?.toString();
           _dbParentPhone = data['parent_phone']?.toString();
+
+          // Pre-fill Edit Controllers
+          _firstNameController.text = data['first_name'] ?? '';
+          _middleNameController.text = data['middle_name'] ?? '';
+          _lastNameController.text = data['last_name'] ?? '';
+          _dobController.text = data['dob'] ?? '';
+          _parentNameController.text = data['parent_name'] ?? '';
+          _parentPhoneController.text = data['parent_phone'] ?? '';
+          _addressController.text = data['address'] ?? '';
+
+          _selectedGender = data['gender'] ?? 'Male';
+          _selectedDepartment = data['department'] ?? 'General';
+          _studentCategory = data['category'] ?? 'Regular';
+
+          _currentNameDisplay = widget.name;
+          _currentImagePath = widget.imagePath ?? data['passport_url'];
+
           _isCheckingStatus = false;
         });
       }
@@ -147,6 +191,103 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
       }
     } catch (e) {
       if (mounted) setState(() => _isFetchingAcademics = false);
+    }
+  }
+
+  // ============================================================================
+  // 🚨 FULL EDIT MODE LOGIC
+  // ============================================================================
+
+  Future<void> _pickImage() async {
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
+      maxWidth: 600,
+      maxHeight: 600,
+    );
+
+    if (image != null) {
+      final bytes = await image.readAsBytes();
+      setState(() {
+        _pickedFile = image;
+        _webImage = bytes;
+      });
+    }
+  }
+
+  Future<void> _saveProfileChanges() async {
+    if (_firstNameController.text.trim().isEmpty ||
+        _lastNameController.text.trim().isEmpty) {
+      showAuthErrorDialog("First Name and Surname cannot be empty.");
+      return;
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      String? newPassportUrl = _currentImagePath;
+
+      // 1. Upload new photo if picked
+      if (_pickedFile != null && _webImage != null && _schoolId != null) {
+        final fileExt = _pickedFile!.name.split('.').last;
+        final fileName =
+            '$_schoolId/${widget.id}_update_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+
+        await _supabase.storage
+            .from('student_passports')
+            .uploadBinary(
+              fileName,
+              _webImage!,
+              fileOptions: const FileOptions(upsert: true),
+            );
+
+        newPassportUrl = _supabase.storage
+            .from('student_passports')
+            .getPublicUrl(fileName);
+      }
+
+      // 2. Update DB with ALL Biodata
+      await _supabase
+          .from('students')
+          .update({
+            'first_name': _firstNameController.text.trim(),
+            'middle_name': _middleNameController.text.trim(),
+            'last_name': _lastNameController.text.trim(),
+            'dob': _dobController.text.trim(),
+            'gender': _selectedGender,
+            'department': _selectedDepartment,
+            'category': _studentCategory,
+            'parent_name': _parentNameController.text.trim(),
+            'parent_phone': _parentPhoneController.text.trim(),
+            'address': _addressController.text.trim(),
+            'passport_url': ?newPassportUrl,
+          })
+          .eq('id', widget.id);
+
+      // 3. Re-combine name for display
+      String updatedName =
+          "${_firstNameController.text.trim()} ${_middleNameController.text.trim()} ${_lastNameController.text.trim()}"
+              .replaceAll('  ', ' ')
+              .trim();
+
+      if (mounted) {
+        setState(() {
+          _currentNameDisplay = updatedName;
+          _currentImagePath = newPassportUrl;
+          _dbParentPhone = _parentPhoneController.text
+              .trim(); // Update calling feature
+          _isEditing = false;
+        });
+        showSuccessDialog(
+          "Profile Updated",
+          "Student biodata has been successfully updated.",
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showAuthErrorDialog("Failed to update profile: $e");
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -396,10 +537,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
   // ============================================================================
 
   void _handleActiveAccountTap(Color primaryColor) {
-    // Because the actual Login ID is ALWAYS saved in _dbParentEmail
-    // (whether it's a real email or a phantom phone email), we no longer
-    // need to ask the Admin to choose. We just pop the credentials straight up!
-
     if (_dbParentEmail == null || _dbParentEmail!.isEmpty) {
       showAuthErrorDialog("Error: Missing login credentials in database.");
       return;
@@ -766,10 +903,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
   void _showCredentialPopup(Color primaryColor, String createdPassword) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Because we updated the DB rules, the Email column IS ALWAYS the exact target ID!
     String targetLoginId = _dbParentEmail ?? "N/A";
-
-    // Clean up the display for the Admin so they don't see @trideta.com if it's a phone
     String displayedId = targetLoginId;
     if (displayedId.contains('@trideta.com')) {
       displayedId = displayedId.replaceAll('@trideta.com', '');
@@ -848,9 +982,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                 ),
                 onPressed: () {
                   Navigator.pop(ctx);
-                  _showAdminResetPasswordDialog(
-                    targetLoginId,
-                  ); // Sends the exact phantom email directly!
+                  _showAdminResetPasswordDialog(targetLoginId);
                 },
               ),
             ],
@@ -860,7 +992,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     );
   }
 
-  // 🚨 The dialog where the Admin types the new temporary password
   void _showAdminResetPasswordDialog(String targetLoginId) {
     final pwdController = TextEditingController();
     bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -930,7 +1061,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
 
                         setDialogState(() => isLoading = true);
                         try {
-                          // Call the Edge Function with the EXACT target ID
                           final response = await _supabase.functions.invoke(
                             'reset-parent-password',
                             body: {
@@ -939,7 +1069,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                             },
                           );
 
-                          // 🚨 NEW: Check if the Edge Function sent back an error inside the 200 OK response
                           if (response.data != null &&
                               response.data['error'] != null) {
                             setDialogState(() => isLoading = false);
@@ -965,10 +1094,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                     ? const SizedBox(
                         width: 15,
                         height: 15,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
+                        child: TridetaLoader(color: Colors.white),
                       )
                     : const Text(
                         "RESET",
@@ -996,9 +1122,9 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100],
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[100],
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: primaryColor.withOpacity(0.2)),
+        border: Border.all(color: primaryColor.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1054,51 +1180,71 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color primaryColor = Theme.of(context).primaryColor;
 
-    Widget mainContent = Column(
-      children: [
-        _buildHeroHeader(cardColor, isDark, primaryColor),
-        _buildActivationBar(isDark),
-        Container(
-          color: cardColor,
-          child: TabBar(
-            controller: _tabController,
-            labelColor: primaryColor,
-            unselectedLabelColor: Colors.grey,
-            indicatorColor: primaryColor,
-            indicatorWeight: 3,
-            tabs: const [
-              Tab(text: "ACADEMICS"),
-              Tab(text: "RECORDS"),
-            ],
-          ),
-        ),
-        Expanded(
-          child: TabBarView(
-            controller: _tabController,
+    // 🚨 CONDITIONAL RENDER: Edit Form vs Standard Profile
+    Widget mainContent = _isEditing
+        ? _buildEditForm(isDark, primaryColor)
+        : Column(
             children: [
-              _buildAcademicTab(isDark, primaryColor),
-              _buildRecordsTab(isDark, primaryColor),
+              _buildHeroHeader(cardColor, isDark, primaryColor),
+              _buildActivationBar(isDark),
+              Container(
+                color: cardColor,
+                child: TabBar(
+                  controller: _tabController,
+                  labelColor: primaryColor,
+                  unselectedLabelColor: Colors.grey,
+                  indicatorColor: primaryColor,
+                  indicatorWeight: 3,
+                  tabs: const [
+                    Tab(text: "ACADEMICS"),
+                    Tab(text: "RECORDS"),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildAcademicTab(isDark, primaryColor),
+                    _buildRecordsTab(isDark, primaryColor),
+                  ],
+                ),
+              ),
             ],
-          ),
-        ),
-      ],
-    );
+          );
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text(
-          "Student Profile",
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          _isEditing ? "Edit Profile" : "Student Profile",
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.delete_forever_rounded),
-            onPressed: () => _confirmDeletion(isDark),
-          ),
+          if (_isEditing)
+            IconButton(
+              icon: _isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: TridetaLoader(color: Colors.white),
+                    )
+                  : const Icon(Icons.check_circle_outline),
+              onPressed: _isSaving ? null : _saveProfileChanges,
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.edit_rounded),
+              onPressed: () => setState(() => _isEditing = true),
+            ),
+          if (!_isEditing)
+            IconButton(
+              icon: const Icon(Icons.delete_forever_rounded),
+              onPressed: () => _confirmDeletion(isDark),
+            ),
         ],
       ),
       body: LayoutBuilder(
@@ -1133,14 +1279,340 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     );
   }
 
+  // ============================================================================
+  // 🚨 THE NEW EDIT FORM WIDGET
+  // ============================================================================
+
+  Widget _buildEditForm(bool isDark, Color primaryColor) {
+    String displayImagePath = _currentImagePath ?? widget.imagePath ?? "";
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: GestureDetector(
+              onTap: _pickImage,
+              child: Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 55,
+                    backgroundColor: primaryColor.withValues(alpha: 0.1),
+                    backgroundImage: _webImage != null
+                        ? MemoryImage(_webImage!)
+                        : (displayImagePath.isNotEmpty)
+                        ? (displayImagePath.startsWith('http')
+                              ? NetworkImage(displayImagePath)
+                              : FileImage(File(displayImagePath))
+                                    as ImageProvider)
+                        : null,
+                    child: (_webImage == null && displayImagePath.isEmpty)
+                        ? Icon(
+                            Icons.person_rounded,
+                            size: 50,
+                            color: primaryColor,
+                          )
+                        : null,
+                  ),
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
+                        color: Colors.blue,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.camera_alt,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 30),
+
+          _buildSectionTitle(
+            "Student Biodata",
+            Icons.person_outline,
+            primaryColor,
+          ),
+          const SizedBox(height: 15),
+          Row(
+            children: [
+              Expanded(
+                child: _buildTextField(
+                  _firstNameController,
+                  "First Name",
+                  Icons.badge,
+                  isDark,
+                ),
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: _buildTextField(
+                  _middleNameController,
+                  "Middle Name",
+                  null,
+                  isDark,
+                  isRequired: false,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 15),
+          _buildTextField(
+            _lastNameController,
+            "Surname (Last Name)",
+            Icons.badge_outlined,
+            isDark,
+          ),
+          const SizedBox(height: 15),
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: _buildTextField(
+                  _dobController,
+                  "Date of Birth",
+                  Icons.cake,
+                  isDark,
+                  readOnly: true,
+                  onTap: () async {
+                    final DateTime? picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.now().subtract(
+                        const Duration(days: 365 * 3),
+                      ),
+                      firstDate: DateTime(1990),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        _dobController.text =
+                            "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}";
+                      });
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                flex: 2,
+                child: _buildDropdown(
+                  "Gender",
+                  ['Male', 'Female'],
+                  _selectedGender,
+                  (v) => setState(() => _selectedGender = v!),
+                  isDark,
+                  primaryColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 15),
+          Row(
+            children: [
+              Expanded(
+                child: _buildDropdown(
+                  "Department",
+                  ['General', 'Science', 'Art', 'Commercial'],
+                  _selectedDepartment,
+                  (v) => setState(() => _selectedDepartment = v!),
+                  isDark,
+                  primaryColor,
+                ),
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: _buildDropdown(
+                  "Category",
+                  [
+                    'Regular',
+                    'Transfer',
+                    'Scholarship',
+                    'Special',
+                    'Staff Child',
+                    'Orphan',
+                  ],
+                  _studentCategory,
+                  (v) => setState(() => _studentCategory = v!),
+                  isDark,
+                  primaryColor,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 30),
+          _buildSectionTitle(
+            "Parent / Guardian Details",
+            Icons.family_restroom_rounded,
+            primaryColor,
+          ),
+          const SizedBox(height: 15),
+          _buildTextField(
+            _parentNameController,
+            "Parent/Guardian Full Name",
+            Icons.person,
+            isDark,
+          ),
+          const SizedBox(height: 15),
+          _buildTextField(
+            _parentPhoneController,
+            "Contact Phone Number",
+            Icons.phone,
+            isDark,
+          ),
+          const SizedBox(height: 15),
+          _buildTextField(
+            _addressController,
+            "Home Address",
+            Icons.location_on,
+            isDark,
+            maxLines: 2,
+          ),
+          const SizedBox(height: 40),
+        ],
+      ),
+    );
+  }
+
+  // --- HELPER BUILDERS FOR EDIT FORM ---
+
+  Widget _buildSectionTitle(String title, IconData icon, Color primaryColor) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.grey, size: 20),
+        const SizedBox(width: 8),
+        Text(
+          title.toUpperCase(),
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.grey,
+            letterSpacing: 1.2,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTextField(
+    TextEditingController ctrl,
+    String label,
+    IconData? icon,
+    bool isDark, {
+    bool isRequired = true,
+    int maxLines = 1,
+    bool readOnly = false,
+    VoidCallback? onTap,
+  }) {
+    return TextFormField(
+      controller: ctrl,
+      maxLines: maxLines,
+      readOnly: readOnly,
+      onTap: onTap,
+      validator: isRequired
+          ? (v) => v!.trim().isEmpty ? "Required field" : null
+          : null,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: icon != null ? Icon(icon, color: Colors.grey) : null,
+        filled: true,
+        fillColor: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.grey[50],
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(
+            color: isDark ? Colors.white10 : Colors.grey.shade300,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDropdown(
+    String hint,
+    List<String> items,
+    String? value,
+    Function(String?) onChanged,
+    bool isDark,
+    Color primaryColor,
+  ) {
+    // Safety fallback if the DB contains a value not in the list
+    if (value != null && !items.contains(value)) {
+      items.add(value);
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50],
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.grey.shade300,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          isExpanded: true,
+          value: value,
+          hint: Padding(
+            padding: const EdgeInsets.only(left: 15),
+            child: Text(hint, style: const TextStyle(color: Colors.grey)),
+          ),
+          icon: Padding(
+            padding: const EdgeInsets.only(right: 15),
+            child: Icon(Icons.arrow_drop_down, color: primaryColor),
+          ),
+          items: items
+              .map(
+                (e) => DropdownMenuItem(
+                  value: e,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 15),
+                    child: Text(e),
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: onChanged,
+          dropdownColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        ),
+      ),
+    );
+  }
+
+  // ============================================================================
+  // 🚨 STANDARD PROFILE VIEW WIDGETS
+  // ============================================================================
+
   Widget _buildHeroHeader(Color cardColor, bool isDark, Color primaryColor) {
+    String displayImagePath = _currentImagePath ?? widget.imagePath ?? "";
+    String displayName = _currentNameDisplay.isEmpty
+        ? widget.name
+        : _currentNameDisplay;
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+          ),
         ],
       ),
       child: Row(
@@ -1149,14 +1621,13 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
             tag: widget.id,
             child: CircleAvatar(
               radius: 45,
-              backgroundColor: primaryColor.withOpacity(0.1),
-              backgroundImage:
-                  (widget.imagePath != null && widget.imagePath!.isNotEmpty)
-                  ? (widget.imagePath!.startsWith('http')
-                        ? NetworkImage(widget.imagePath!)
-                        : FileImage(File(widget.imagePath!)) as ImageProvider)
+              backgroundColor: primaryColor.withValues(alpha: 0.1),
+              backgroundImage: (displayImagePath.isNotEmpty)
+                  ? (displayImagePath.startsWith('http')
+                        ? NetworkImage(displayImagePath)
+                        : FileImage(File(displayImagePath)) as ImageProvider)
                   : null,
-              child: (widget.imagePath == null || widget.imagePath!.isEmpty)
+              child: (displayImagePath.isEmpty)
                   ? Icon(Icons.person_rounded, size: 40, color: primaryColor)
                   : null,
             ),
@@ -1167,7 +1638,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.name,
+                  displayName,
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
@@ -1180,7 +1651,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: primaryColor.withOpacity(0.1),
+                    color: primaryColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -1212,7 +1683,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
   }
 
   Widget _buildActivationBar(bool isDark) {
-    if (_isCheckingStatus) return const LinearProgressIndicator(minHeight: 2);
+    if (_isCheckingStatus) return const TridetaLoader();
     Color primaryColor = Theme.of(context).primaryColor;
     return GestureDetector(
       onTap: _accountExists
@@ -1224,13 +1695,13 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
         padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
           color: _accountExists
-              ? Colors.green.withOpacity(0.1)
-              : Colors.orange.withOpacity(0.1),
+              ? Colors.green.withValues(alpha: 0.1)
+              : Colors.orange.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(15),
           border: Border.all(
             color: _accountExists
-                ? Colors.green.withOpacity(0.3)
-                : Colors.orange.withOpacity(0.3),
+                ? Colors.green.withValues(alpha: 0.3)
+                : Colors.orange.withValues(alpha: 0.3),
           ),
         ),
         child: Row(
@@ -1277,10 +1748,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                     ? const SizedBox(
                         width: 15,
                         height: 15,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
+                        child: TridetaLoader(color: Colors.white),
                       )
                     : const Text(
                         "ACTIVATE",
@@ -1304,7 +1772,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
 
   Widget _buildAcademicTab(bool isDark, Color primaryColor) {
     if (_isFetchingAcademics) {
-      return Center(child: CircularProgressIndicator(color: primaryColor));
+      return Center(child: TridetaLoader(color: primaryColor));
     }
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
@@ -1370,7 +1838,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
           Icon(
             Icons.assignment_ind_rounded,
             size: 70,
-            color: primaryColor.withOpacity(0.3),
+            color: primaryColor.withValues(alpha: 0.3),
           ),
           const SizedBox(height: 20),
           const Text(
@@ -1402,10 +1870,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
+                      child: TridetaLoader(color: Colors.white),
                     )
                   : const Icon(
                       Icons.picture_as_pdf_rounded,
@@ -1432,9 +1897,9 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.grey.withOpacity(0.1)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,

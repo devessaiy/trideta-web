@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -192,7 +193,7 @@ class _ReportCardScreenState extends State<ReportCardScreen>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircularProgressIndicator(color: Theme.of(context).primaryColor),
+              TridetaLoader(color: Theme.of(context).primaryColor),
               const SizedBox(width: 20),
               const Text(
                 "Generating result...",
@@ -332,7 +333,7 @@ class _ReportCardScreenState extends State<ReportCardScreen>
             color: cardColor,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               ),
@@ -393,7 +394,7 @@ class _ReportCardScreenState extends State<ReportCardScreen>
 
         Expanded(
           child: _isLoading
-              ? Center(child: CircularProgressIndicator(color: primaryColor))
+              ? Center(child: TridetaLoader(color: primaryColor))
               : _selectedClass == null
               ? _buildPlaceholderState(isDark)
               : _students.isEmpty
@@ -471,10 +472,7 @@ class _ReportCardScreenState extends State<ReportCardScreen>
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
+                      child: TridetaLoader(color: Colors.white),
                     )
                   : const Icon(Icons.inventory_2_rounded, color: Colors.white),
               label: Text(
@@ -516,8 +514,8 @@ class _ReportCardScreenState extends State<ReportCardScreen>
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
           backgroundColor: hasResult
-              ? primaryColor.withOpacity(0.1)
-              : Colors.grey.withOpacity(0.1),
+              ? primaryColor.withValues(alpha: 0.1)
+              : Colors.grey.withValues(alpha: 0.1),
           child: Text(
             initial,
             style: TextStyle(
@@ -563,7 +561,7 @@ class _ReportCardScreenState extends State<ReportCardScreen>
   ) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50],
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.grey.shade300,

@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -259,7 +260,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
                       Container(
                         decoration: BoxDecoration(
                           color: isDark
-                              ? Colors.white.withOpacity(0.05)
+                              ? Colors.white.withValues(alpha: 0.05)
                               : Colors.grey[50],
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
@@ -315,7 +316,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
                           margin: const EdgeInsets.only(top: 10),
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.1),
+                            color: Colors.red.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
@@ -354,7 +355,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
                       Container(
                         decoration: BoxDecoration(
                           color: isDark
-                              ? Colors.white.withOpacity(0.05)
+                              ? Colors.white.withValues(alpha: 0.05)
                               : Colors.grey[50],
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
@@ -410,7 +411,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
                           ),
                           borderRadius: BorderRadius.circular(12),
                           color: isDark
-                              ? Colors.white.withOpacity(0.02)
+                              ? Colors.white.withValues(alpha: 0.02)
                               : Colors.white,
                         ),
                         child: selectedSubject == null
@@ -577,8 +578,10 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
           padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
             color: isSelected
-                ? primaryColor.withOpacity(0.1)
-                : (isDark ? Colors.white.withOpacity(0.02) : Colors.white),
+                ? primaryColor.withValues(alpha: 0.1)
+                : (isDark
+                      ? Colors.white.withValues(alpha: 0.02)
+                      : Colors.white),
             borderRadius: BorderRadius.circular(15),
             border: Border.all(
               color: isSelected
@@ -766,7 +769,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10,
                 ),
               ],
@@ -780,10 +783,10 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
                       width: 110,
                       height: 110,
                       decoration: BoxDecoration(
-                        color: roleBadgeColor.withOpacity(0.1),
+                        color: roleBadgeColor.withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: roleBadgeColor.withOpacity(0.2),
+                          color: roleBadgeColor.withValues(alpha: 0.2),
                           width: 3,
                         ),
                         image: passportUrl != null
@@ -832,10 +835,10 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: roleBadgeColor.withOpacity(0.1),
+                        color: roleBadgeColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: roleBadgeColor.withOpacity(0.3),
+                          color: roleBadgeColor.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Text(
@@ -870,10 +873,12 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   color: isDark
-                      ? Colors.green.withOpacity(0.1)
+                      ? Colors.green.withValues(alpha: 0.1)
                       : Colors.green[50],
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                  border: Border.all(
+                    color: Colors.green.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Row(
                   children: [
@@ -927,7 +932,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
                   ElevatedButton.icon(
                     onPressed: _showAddResponsibilityModal,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor.withOpacity(0.1),
+                      backgroundColor: primaryColor.withValues(alpha: 0.1),
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(20),
@@ -953,7 +958,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
             _isLoading
                 ? const Padding(
                     padding: EdgeInsets.all(30),
-                    child: CircularProgressIndicator(),
+                    child: TridetaLoader(),
                   )
                 : _myAssignments.isEmpty
                 ? Padding(
@@ -999,7 +1004,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.02),
+                              color: Colors.black.withValues(alpha: 0.02),
                               blurRadius: 10,
                             ),
                           ],
@@ -1013,8 +1018,8 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               color: isClassTeacher
-                                  ? Colors.orange.withOpacity(0.1)
-                                  : primaryColor.withOpacity(0.1),
+                                  ? Colors.orange.withValues(alpha: 0.1)
+                                  : primaryColor.withValues(alpha: 0.1),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(

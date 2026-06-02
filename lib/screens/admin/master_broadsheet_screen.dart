@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -430,7 +431,7 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
             color: cardColor,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               ),
@@ -492,7 +493,7 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
         // 2. DATATABLE SPREADSHEET
         Expanded(
           child: _isLoading
-              ? Center(child: CircularProgressIndicator(color: primaryColor))
+              ? Center(child: TridetaLoader(color: primaryColor))
               : _students.isEmpty
               ? _buildPlaceholderState(isDark)
               : _buildBroadsheetGrid(isDark, primaryColor, cardColor),
@@ -526,10 +527,10 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
                     ? null
                     : _computeAndSaveMasterBroadsheet,
                 icon: _isComputing
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: TridetaLoader(color: primaryColor),
                       )
                     : const Icon(Icons.calculate, size: 18),
                 label: Text(
@@ -557,7 +558,7 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -600,7 +601,7 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
             Set<WidgetState> states,
           ) {
             if (states.contains(WidgetState.selected)) {
-              return primaryColor.withOpacity(0.1);
+              return primaryColor.withValues(alpha: 0.1);
             }
             return cardColor;
           }),
@@ -760,7 +761,7 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
   ) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50],
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.grey.shade300,

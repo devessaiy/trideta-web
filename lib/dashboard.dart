@@ -219,7 +219,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: color),
@@ -285,14 +285,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                   unselectedIconTheme: const IconThemeData(color: Colors.grey),
                   unselectedLabelTextStyle: const TextStyle(color: Colors.grey),
-                  indicatorColor: primaryColor.withOpacity(0.1),
+                  indicatorColor: primaryColor.withValues(alpha: 0.1),
                   labelType: NavigationRailLabelType.all,
                   leading: Padding(
                     padding: const EdgeInsets.only(bottom: 20, top: 15),
                     child: _schoolLogoUrl != null
                         ? CircleAvatar(
                             radius: 24,
-                            backgroundColor: primaryColor.withOpacity(0.1),
+                            backgroundColor: primaryColor.withValues(
+                              alpha: 0.1,
+                            ),
                             backgroundImage: NetworkImage(_schoolLogoUrl!),
                           )
                         : Icon(
@@ -348,7 +350,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               decoration: BoxDecoration(
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 10,
                   ),
                 ],
@@ -358,7 +360,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 onDestinationSelected: _onItemTapped,
                 backgroundColor: navBarColor,
                 elevation: 0,
-                indicatorColor: primaryColor.withOpacity(0.1),
+                indicatorColor: primaryColor.withValues(alpha: 0.1),
                 height: 70,
                 destinations:
                     [
@@ -423,7 +425,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 "PEOPLE & ADMINISTRATION",
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
-                  color: primaryColor.withOpacity(0.8),
+                  color: primaryColor.withValues(alpha: 0.8),
                   fontSize: 13,
                   letterSpacing: 1.1,
                 ),
@@ -460,7 +462,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 "ACADEMICS & FINANCE",
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
-                  color: primaryColor.withOpacity(0.8),
+                  color: primaryColor.withValues(alpha: 0.8),
                   fontSize: 13,
                   letterSpacing: 1.1,
                 ),
@@ -516,9 +518,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
             color: Colors.white,
             shape: BoxShape.circle,
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 8,
+              ),
             ],
-            border: Border.all(color: primaryColor.withOpacity(0.2), width: 2),
+            border: Border.all(
+              color: primaryColor.withValues(alpha: 0.2),
+              width: 2,
+            ),
             image: _schoolLogoUrl != null
                 ? DecorationImage(
                     image: NetworkImage(_schoolLogoUrl!),
@@ -567,12 +575,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [primaryColor, primaryColor.withOpacity(0.8)],
+          colors: [primaryColor, primaryColor.withValues(alpha: 0.8)],
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: primaryColor.withOpacity(0.3),
+            color: primaryColor.withValues(alpha: 0.3),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -609,7 +617,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(30),
             ),
             child: Text(
@@ -643,11 +651,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         color: cardColor,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.05) : Colors.transparent,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.transparent,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -665,7 +675,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
+                    color: color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(15),
                   ),
                   child: Icon(icon, color: color, size: 28),
@@ -711,9 +721,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: primaryColor.withOpacity(0.08),
+        color: primaryColor.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: primaryColor.withOpacity(0.1)),
+        border: Border.all(color: primaryColor.withValues(alpha: 0.1)),
       ),
       child: Row(
         children: [

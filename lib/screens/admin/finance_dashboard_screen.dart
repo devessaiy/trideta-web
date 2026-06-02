@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -305,10 +306,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
                     ? const SizedBox(
                         height: 15,
                         width: 15,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
+                        child: TridetaLoader(color: Colors.white),
                       )
                     : const Text(
                         "Update",
@@ -391,13 +389,13 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
                   ),
                   unselectedIconTheme: const IconThemeData(color: Colors.grey),
                   unselectedLabelTextStyle: const TextStyle(color: Colors.grey),
-                  indicatorColor: primaryColor.withOpacity(0.1),
+                  indicatorColor: primaryColor.withValues(alpha: 0.1),
                   labelType: NavigationRailLabelType.all,
                   leading: Padding(
                     padding: const EdgeInsets.only(bottom: 20, top: 15),
                     child: CircleAvatar(
                       radius: 24,
-                      backgroundColor: primaryColor.withOpacity(0.1),
+                      backgroundColor: primaryColor.withValues(alpha: 0.1),
                       backgroundImage: _bursarAvatar != null
                           ? NetworkImage(_bursarAvatar!)
                           : null,
@@ -432,9 +430,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
                 const VerticalDivider(thickness: 1, width: 1),
                 Expanded(
                   child: _isLoading
-                      ? Center(
-                          child: CircularProgressIndicator(color: primaryColor),
-                        )
+                      ? Center(child: TridetaLoader(color: primaryColor))
                       : Center(
                           child: Container(
                             constraints: const BoxConstraints(maxWidth: 1100),
@@ -453,13 +449,13 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
           return Scaffold(
             backgroundColor: bgColor,
             body: _isLoading
-                ? Center(child: CircularProgressIndicator(color: primaryColor))
+                ? Center(child: TridetaLoader(color: primaryColor))
                 : IndexedStack(index: _currentIndex, children: pages),
             bottomNavigationBar: Container(
               decoration: BoxDecoration(
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 10,
                   ),
                 ],
@@ -469,7 +465,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
                 onDestinationSelected: _onTabTapped,
                 backgroundColor: navBarColor,
                 elevation: 0,
-                indicatorColor: primaryColor.withOpacity(0.1),
+                indicatorColor: primaryColor.withValues(alpha: 0.1),
                 height: 70,
                 destinations:
                     [
@@ -535,12 +531,12 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 8,
                       ),
                     ],
                     border: Border.all(
-                      color: primaryColor.withOpacity(0.2),
+                      color: primaryColor.withValues(alpha: 0.2),
                       width: 2,
                     ),
                     image: _schoolLogoUrl != null
@@ -613,7 +609,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
               "FINANCIAL ACTIONS",
               style: TextStyle(
                 fontWeight: FontWeight.w800,
-                color: primaryColor.withOpacity(0.8),
+                color: primaryColor.withValues(alpha: 0.8),
                 fontSize: 13,
                 letterSpacing: 1.1,
               ),
@@ -802,7 +798,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
               vertical: 8,
             ),
             leading: CircleAvatar(
-              backgroundColor: primaryColor.withOpacity(0.1),
+              backgroundColor: primaryColor.withValues(alpha: 0.1),
               backgroundImage: s['passport_url'] != null
                   ? NetworkImage(s['passport_url'])
                   : null,
@@ -921,9 +917,9 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
                     ? const SizedBox(
                         width: 15,
                         height: 15,
-                        child: CircularProgressIndicator(
+                        child: TridetaLoader(
                           color: Colors.white,
-                          strokeWidth: 2,
+                          size: 15,
                         ),
                       )
                     : const Icon(Icons.check, color: Colors.white),
@@ -1020,7 +1016,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
         border: Border.all(color: isDark ? Colors.white10 : Colors.transparent),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -1032,7 +1028,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
+              color: color.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: color, size: 24),
@@ -1081,11 +1077,13 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
         color: cardColor,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.05) : Colors.transparent,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.transparent,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -1103,7 +1101,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen>
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
+                    color: color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(15),
                   ),
                   child: Icon(icon, color: color, size: 28),

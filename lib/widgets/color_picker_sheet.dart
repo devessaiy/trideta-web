@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; // 🚨 Added for Database Sync
-import 'package:shared_preferences/shared_preferences.dart'; // 🚨 Added for Local Backup
 import 'package:trideta_v2/main.dart'; // 🚨 IMPORTED TO SYNC THE GLOBAL THEME
 
 class ColorPickerSheet extends StatelessWidget {
@@ -29,6 +28,16 @@ class ColorPickerSheet extends StatelessWidget {
       {'name': 'Slate Grey', 'color': const Color(0xFF64748B)},
       {'name': 'Midnight Black', 'color': const Color(0xFF0F172A)},
       {'name': 'Teal', 'color': const Color(0xFF14B8A6)},
+      {'name': 'Electric Blue', 'color': const Color(0xFF007BFF)},
+      {'name': 'Mint Green', 'color': const Color(0xFF36ADA3)},
+      {'name': 'Vivid Coral', 'color': const Color(0xFFFF6F61)},
+      {'name': 'Lavender Haze', 'color': const Color(0xFFB39DDB)},
+      {'name': 'Neon Wasabi', 'color': const Color(0xFFD1E231)},
+      {'name': 'Teal', 'color': const Color(0xFF008080)},
+      {'name': 'Sunset Peach', 'color': const Color(0xFFFFDAB9)},
+      {'name': 'Deep Berry', 'color': const Color(0xFF7D2C5E)},
+      {'name': 'Tangerine', 'color': const Color(0xFFFBAB60)},
+      {'name': 'Cyan', 'color': const Color(0xFF039FBE)},
     ];
 
     return Container(
@@ -70,7 +79,7 @@ class ColorPickerSheet extends StatelessWidget {
             spacing: 15,
             runSpacing: 15,
             children: themeColors.map((theme) {
-              bool isSelected = currentColor.value == theme['color'].value;
+              bool isSelected = currentColor.toARGB32() == theme['color'].value;
               return GestureDetector(
                 // 🚨 INJECTED GLOBAL SYNC & DB TRANSLATOR HERE
                 onTap: () async {
@@ -105,13 +114,6 @@ class ColorPickerSheet extends StatelessWidget {
                             'brand_color': hexColor,
                           }) // 👈 Saves the #HEX format
                           .eq('id', schoolId);
-
-                      // Save to local memory too
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setInt(
-                        'app_primary_color',
-                        theme['color'].value,
-                      );
                     }
                   } catch (e) {
                     debugPrint("Failed to save brand color: $e");

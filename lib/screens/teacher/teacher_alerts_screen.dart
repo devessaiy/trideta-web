@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 
 class TeacherAlertsScreen extends StatefulWidget {
   const TeacherAlertsScreen({super.key});
@@ -66,7 +67,7 @@ class _TeacherAlertsScreenState extends State<TeacherAlertsScreen> {
         elevation: 0,
       ),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: primaryColor))
+          ? Center(child: TridetaLoader(color: primaryColor))
           : _alerts.isEmpty
           ? _buildEmptyState(isDark)
           : ListView.builder(

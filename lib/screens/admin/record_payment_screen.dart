@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -61,16 +62,16 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
           .single();
       _currentSession = schoolData['current_session'] ?? "";
 
-      // Fetch ALL Fee Structures (We filter locally to protect legacy data)
+      // Fetch ALL Fee Structures
       final rawFeeData = await _supabase
           .from('fee_structures')
-          .select()
+          .select() // This inherently fetches the 'id' of the fee structure too!
           .eq('school_id', _schoolId!);
 
       List<Map<String, dynamic>> validFees = [];
       for (var fee in rawFeeData) {
         String feeSession = (fee['academic_session'] ?? '').toString();
-        // 🚨 LEGACY SAFEGUARD: Accept current session OR empty (old data)
+        // 🚨 LEGACY SAFEGUARD
         if (feeSession == _currentSession || feeSession.isEmpty) {
           validFees.add(fee);
         }
@@ -106,23 +107,36 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
     }
   }
 
-  // --- 🚨 BULLETPROOF MATH WITH LEGACY SAFEGUARDS 🚨 ---
+  // --- 🚨 BULLETPROOF MATH WITH UUID & LEGACY SAFEGUARDS 🚨 ---
   Future<void> _syncStudentFinancials(Map<String, dynamic> student) async {
     try {
-      // 1. Get student's specific class & category
+      // 1. Get student's specific class (Name & ID) & category
       final studentData = await _supabase
           .from('students')
-          .select('class_level, category')
+          .select('class_level, class_id, category')
           .eq('id', student['id'])
           .single();
 
       String sClass = (studentData['class_level'] ?? '').toString();
+      String sClassId = (studentData['class_id'] ?? '').toString();
       String sCategory = (studentData['category'] ?? '').toString();
 
       // 2. Filter Fee Structures that APPLY to this student
       List<Map<String, dynamic>> applicableFees = [];
       for (var rule in _allFeeRules) {
-        bool classMatch = _doesItApply(rule['applicable_classes'], sClass);
+        bool classMatch = false;
+
+        final List<dynamic>? classIdsList = rule['applicable_class_ids'];
+
+        // 🚨 CLASS UUID MATCHER
+        if (classIdsList != null &&
+            classIdsList.isNotEmpty &&
+            sClassId.isNotEmpty) {
+          classMatch = classIdsList.contains(sClassId);
+        } else {
+          classMatch = _doesItApply(rule['applicable_classes'], sClass);
+        }
+
         bool categoryMatch = _doesItApply(
           rule['applicable_categories'],
           sCategory,
@@ -134,38 +148,45 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
         }
       }
 
-      // 3. Get student's transactions
+      // 3. Get student's transactions (🚨 NOW FETCHING fee_id)
       final txData = await _supabase
           .from('transactions')
-          .select('category, amount, academic_session')
+          .select('category, amount, academic_session, fee_id')
           .eq('student_id', student['id'])
           .eq('school_id', _schoolId!);
 
-      // Group payments by Fee Category (Safely handling legacy data)
-      Map<String, double> paidPerCategory = {};
-      for (var tx in txData) {
-        String txSession = (tx['academic_session'] ?? '').toString();
-
-        // 🚨 LEGACY SAFEGUARD: Only count matching sessions or legacy empty sessions
-        if (txSession == _currentSession || txSession.isEmpty) {
-          String feeName = tx['category'].toString();
-          double amt = (tx['amount'] ?? 0).toDouble();
-          paidPerCategory[feeName] = (paidPerCategory[feeName] ?? 0.0) + amt;
-        }
-      }
-
-      // 4. Calculate true remaining balances (Itemized Math)
+      // 4. Calculate true remaining balances using UUIDs
       List<Map<String, dynamic>> options = [];
       double totalDebt = 0.0;
 
       for (var fee in applicableFees) {
-        String feeName = fee['fee_name'];
-        double expected = (fee['amount'] ?? 0).toDouble();
-        double paid = paidPerCategory[feeName] ?? 0.0;
-        double remaining = expected - paid;
+        String feeId = fee['id'].toString(); // 🚨 The Fee's UUID
+        String feeName = fee['fee_name'].toString();
+        double expectedAmt = (fee['amount'] ?? 0).toDouble();
+
+        // Tally up payments for this specific fee
+        double paidAmt = 0.0;
+        for (var tx in txData) {
+          String txSession = (tx['academic_session'] ?? '').toString();
+
+          if (txSession == _currentSession || txSession.isEmpty) {
+            String txFeeId = (tx['fee_id'] ?? '').toString();
+            String txCategory = (tx['category'] ?? '').toString();
+
+            // 🚨 THE FIX: Match by fee_id first! If it's a legacy transaction, fallback to text name.
+            if (txFeeId.isNotEmpty && txFeeId == feeId) {
+              paidAmt += (tx['amount'] ?? 0).toDouble();
+            } else if (txFeeId.isEmpty && txCategory == feeName) {
+              paidAmt += (tx['amount'] ?? 0).toDouble();
+            }
+          }
+        }
+
+        double remaining = expectedAmt - paidAmt;
 
         if (remaining > 0) {
           options.add({
+            'fee_id': feeId, // 🚨 Storing the UUID in the option for later
             'name': feeName,
             'display': '$feeName (Owes ₦${remaining.toStringAsFixed(0)})',
             'remaining': remaining,
@@ -295,21 +316,27 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
       return;
     }
 
+    // 🚨 Retrieve the exact UUID for the fee being paid
+    final selectedFeeOption = _availableFeeOptions.firstWhere(
+      (opt) => opt['name'] == _selectedCategory,
+    );
+    String targetFeeId = selectedFeeOption['fee_id'];
+
     setState(() => _isProcessing = true);
     try {
-      // 🚨 Ensure we attach the current session to the transaction!
       final txnData = await _supabase
           .from('transactions')
           .insert({
             'school_id': _schoolId,
             'student_id': _selectedStudent!['id'],
+            'fee_id': targetFeeId, // 🚨 SAVING THE UUID TO THE DATABASE
             'student_name':
                 "${_selectedStudent!['first_name']} ${_selectedStudent!['last_name']}",
             'amount': inputAmount,
             'category': _selectedCategory,
             'title': _selectedCategory,
             'payment_method': _paymentMethod,
-            'academic_session': _currentSession, // Saves to current term
+            'academic_session': _currentSession,
             'receipt_no':
                 "REC-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}",
           })
@@ -342,7 +369,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
     if (_isLoading) {
       return Scaffold(
         backgroundColor: bgColor,
-        body: Center(child: CircularProgressIndicator(color: primaryColor)),
+        body: Center(child: TridetaLoader(color: primaryColor)),
       );
     }
 
@@ -532,7 +559,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [primaryColor, primaryColor.withOpacity(0.7)],
+          colors: [primaryColor, primaryColor.withValues(alpha: 0.7)],
         ),
         borderRadius: BorderRadius.circular(20),
       ),
@@ -578,7 +605,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
     labelText: l,
     prefixIcon: Icon(i, color: primaryColor),
     filled: true,
-    fillColor: d ? Colors.white.withOpacity(0.03) : Colors.grey[50],
+    fillColor: d ? Colors.white.withValues(alpha: 0.03) : Colors.grey[50],
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(15),
       borderSide: BorderSide.none,

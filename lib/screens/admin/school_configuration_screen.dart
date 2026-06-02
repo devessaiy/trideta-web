@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -374,7 +375,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
             autofocus: true,
             decoration: InputDecoration(
               filled: true,
-              fillColor: Colors.grey.withOpacity(0.1),
+              fillColor: Colors.grey.withValues(alpha: 0.1),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
                 borderSide: BorderSide.none,
@@ -468,7 +469,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
             autofocus: true,
             decoration: InputDecoration(
               filled: true,
-              fillColor: Colors.grey.withOpacity(0.1),
+              fillColor: Colors.grey.withValues(alpha: 0.1),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
                 borderSide: BorderSide.none,
@@ -686,7 +687,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: Center(child: TridetaLoader()));
     }
 
     bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -774,7 +775,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -837,7 +838,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                         key: ValueKey(cls['name']),
                         margin: const EdgeInsets.only(bottom: 8),
                         color: isDark
-                            ? Colors.white.withOpacity(0.02)
+                            ? Colors.white.withValues(alpha: 0.02)
                             : Colors.grey[50],
                         elevation: 0,
                         shape: RoundedRectangleBorder(
@@ -905,7 +906,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -938,7 +939,9 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
           // Target Class Dropdown
           Container(
             decoration: BoxDecoration(
-              color: isDark ? Colors.white.withOpacity(0.03) : Colors.grey[50],
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.03)
+                  : Colors.grey[50],
               borderRadius: BorderRadius.circular(15),
             ),
             child: DropdownButtonFormField<String>(
@@ -1077,7 +1080,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                   ),
                 ),
                 backgroundColor: isDark
-                    ? Colors.white.withOpacity(0.05)
+                    ? Colors.white.withValues(alpha: 0.05)
                     : (type == 'Compulsory'
                           ? Colors.red[50]
                           : Colors.green[50]),
@@ -1099,7 +1102,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, -5),
           ),
@@ -1117,7 +1120,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
           ),
           onPressed: _isSaving ? null : _saveConfig,
           child: _isSaving
-              ? const CircularProgressIndicator(color: Colors.white)
+              ? const TridetaLoader(color: Colors.white)
               : const Text(
                   "SAVE CONFIGURATION",
                   style: TextStyle(
@@ -1140,7 +1143,9 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
       labelText: label,
       prefixIcon: Icon(icon, color: primaryColor, size: 20),
       filled: true,
-      fillColor: isDark ? Colors.white.withOpacity(0.03) : Colors.grey[50],
+      fillColor: isDark
+          ? Colors.white.withValues(alpha: 0.03)
+          : Colors.grey[50],
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: BorderSide.none,

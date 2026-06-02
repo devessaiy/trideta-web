@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/foundation.dart'; // Required for kIsWeb
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -300,7 +301,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
   @override
   Widget build(BuildContext context) {
     if (_isChecking) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: Center(child: TridetaLoader()));
     }
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color bgColor = isDark ? const Color(0xFF121212) : Colors.grey.shade50;
@@ -335,7 +336,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 20,
                       offset: const Offset(0, 10),
                     ),
@@ -559,7 +560,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
                     margin: const EdgeInsets.only(bottom: 8),
                     decoration: BoxDecoration(
                       color: isDark
-                          ? Colors.white.withOpacity(0.02)
+                          ? Colors.white.withValues(alpha: 0.02)
                           : Colors.grey.shade50, // Slight contrast for web
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
@@ -654,7 +655,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
             style: ButtonStyle(
               backgroundColor: WidgetStateProperty.resolveWith(
                 (states) => states.contains(WidgetState.selected)
-                    ? const Color(0xFF007ACC).withOpacity(0.1)
+                    ? const Color(0xFF007ACC).withValues(alpha: 0.1)
                     : Colors.transparent,
               ),
               foregroundColor: WidgetStateProperty.resolveWith(
@@ -772,7 +773,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
             onTap: _pickImage,
             child: CircleAvatar(
               radius: 65,
-              backgroundColor: const Color(0xFF007ACC).withOpacity(0.1),
+              backgroundColor: const Color(0xFF007ACC).withValues(alpha: 0.1),
               backgroundImage: _webImage != null
                   ? MemoryImage(_webImage!)
                   : null,
@@ -820,13 +821,13 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
       decoration: BoxDecoration(
         color: bgColor,
         border: isDesktop
-            ? Border(top: BorderSide(color: Colors.grey.withOpacity(0.2)))
+            ? Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.2)))
             : null,
         boxShadow: isDesktop
             ? null
             : [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10,
                   offset: const Offset(0, -5),
                 ),
@@ -863,10 +864,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen>
                   ? const SizedBox(
                       height: 20,
                       width: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
+                      child: TridetaLoader(color: Colors.white),
                     )
                   : Text(
                       _currentStep == _totalSteps ? "FINISH SETUP" : "CONTINUE",

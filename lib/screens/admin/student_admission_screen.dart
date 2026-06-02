@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -432,7 +433,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
   @override
   Widget build(BuildContext context) {
     if (_isLoading && _activeClasses.isEmpty) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: Center(child: TridetaLoader()));
     }
     if (!_hasClasses) {
       return _NoClassesView(
@@ -476,7 +477,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 15,
                         offset: const Offset(0, 5),
                       ),
@@ -512,7 +513,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
                     onTap: _pickImage,
                     child: CircleAvatar(
                       radius: 60,
-                      backgroundColor: primaryColor.withOpacity(0.1),
+                      backgroundColor: primaryColor.withValues(alpha: 0.1),
                       backgroundImage: _webImage != null
                           ? MemoryImage(_webImage!)
                           : null,
@@ -540,7 +541,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
                       vertical: 10,
                     ),
                     decoration: BoxDecoration(
-                      color: primaryColor.withOpacity(0.1),
+                      color: primaryColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(30),
                     ),
                     child: Text(
@@ -596,9 +597,26 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
                   flex: 3,
                   child: _buildTextField(
                     _dobController,
-                    "Date of Birth (DD/MM/YYYY)",
+                    "Date of Birth",
                     Icons.cake,
                     isDark,
+                    readOnly: true,
+                    onTap: () async {
+                      final DateTime? picked = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now().subtract(
+                          const Duration(days: 365 * 3),
+                        ),
+                        firstDate: DateTime(1990),
+                        lastDate: DateTime.now(), // 🚨 Locks out future dates
+                      );
+                      if (picked != null) {
+                        setState(() {
+                          _dobController.text =
+                              "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}";
+                        });
+                      }
+                    },
                   ),
                 ),
                 const SizedBox(width: 15),
@@ -684,7 +702,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
               padding: const EdgeInsets.all(5),
               decoration: BoxDecoration(
                 color: isDark
-                    ? Colors.white.withOpacity(0.05)
+                    ? Colors.white.withValues(alpha: 0.05)
                     : Colors.grey[200],
                 borderRadius: BorderRadius.circular(15),
               ),
@@ -808,7 +826,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
                 ),
                 onPressed: _isLoading ? null : _registerStudent,
                 child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
+                    ? const TridetaLoader(color: Colors.white)
                     : const Text(
                         "SUBMIT ENROLLMENT",
                         style: TextStyle(
@@ -852,10 +870,14 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     bool isDark, {
     bool isRequired = true,
     int maxLines = 1,
+    bool readOnly = false,
+    VoidCallback? onTap,
   }) {
     return TextFormField(
       controller: ctrl,
       maxLines: maxLines,
+      readOnly: readOnly,
+      onTap: onTap,
       validator: isRequired
           ? (v) => v!.trim().isEmpty ? "Required field" : null
           : null,
@@ -863,7 +885,9 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         labelText: label,
         prefixIcon: icon != null ? Icon(icon, color: Colors.grey) : null,
         filled: true,
-        fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50],
+        fillColor: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.grey[50],
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
           borderSide: BorderSide.none,
@@ -908,7 +932,9 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
           onPressed: () => onToggle(!isObscure),
         ),
         filled: true,
-        fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50],
+        fillColor: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.grey[50],
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
           borderSide: BorderSide.none,
@@ -933,7 +959,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
   ) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50],
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50],
         borderRadius: BorderRadius.circular(15),
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.grey.shade300,
@@ -1013,7 +1039,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
             ),
             filled: true,
             fillColor: isDark
-                ? Colors.white.withOpacity(0.05)
+                ? Colors.white.withValues(alpha: 0.05)
                 : Colors.grey[50],
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(15),

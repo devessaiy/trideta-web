@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -16,7 +17,11 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
   final _supabase = Supabase.instance.client;
 
   String? _schoolId;
-  List<String> _schoolClasses = [];
+  final List<String> _schoolClasses = [];
+
+  // 🚨 ADDED: Map to link class names to their UUIDs
+  final Map<String, String> _classNameToIdMap = {};
+
   bool _isLoading = true;
 
   // 🚨 NEW: RBAC TRACKER
@@ -45,17 +50,25 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
       _userRole = profile['role']?.toString().toLowerCase() ?? 'bursar';
 
       if (_schoolId != null) {
+        // 🚨 Fetch both name and id
         final classesData = await _supabase
             .from('classes')
-            .select('name')
+            .select('id, name')
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
 
         if (mounted) {
           setState(() {
-            _schoolClasses = classesData
-                .map((c) => c['name'].toString())
-                .toList();
+            _schoolClasses.clear();
+            _classNameToIdMap.clear();
+
+            for (var c in classesData) {
+              String name = c['name'].toString();
+              String id = c['id'].toString();
+              _schoolClasses.add(name);
+              _classNameToIdMap[name] = id;
+            }
+
             _isLoading = false;
           });
         }
@@ -145,7 +158,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
 
     // 🚨 MAIN CONTENT EXTRACTED FOR LAYOUT BUILDER
     Widget mainContent = _isLoading
-        ? Center(child: CircularProgressIndicator(color: primaryColor))
+        ? Center(child: TridetaLoader(color: primaryColor))
         : RefreshIndicator(
             onRefresh: _handleRefresh,
             color: primaryColor,
@@ -159,9 +172,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                   return const Center(child: Text("Connection error."));
                 }
                 if (!snapshot.hasData) {
-                  return Center(
-                    child: CircularProgressIndicator(color: primaryColor),
-                  );
+                  return Center(child: TridetaLoader(color: primaryColor));
                 }
                 final fees = snapshot.data!;
                 if (fees.isEmpty) {
@@ -273,7 +284,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -332,7 +343,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                     onPressed: () => _showAddFeeModal(primaryColor, rule),
                     icon: Icon(
                       Icons.edit_rounded,
-                      color: Colors.blue.withOpacity(0.7),
+                      color: Colors.blue.withValues(alpha: 0.7),
                       size: 22,
                     ),
                     constraints: const BoxConstraints(),
@@ -345,7 +356,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                     ),
                     icon: Icon(
                       Icons.delete_outline_rounded,
-                      color: Colors.red.withOpacity(0.7),
+                      color: Colors.red.withValues(alpha: 0.7),
                       size: 22,
                     ),
                     constraints: const BoxConstraints(),
@@ -359,7 +370,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.grey.withOpacity(0.1),
+                      color: Colors.grey.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(5),
                     ),
                     child: const Text(
@@ -397,9 +408,9 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Text(
         label,
@@ -427,6 +438,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
       builder: (context) => AddFeeForm(
         schoolId: _schoolId!,
         availableClasses: _schoolClasses,
+        classNameToIdMap: _classNameToIdMap, // 🚨 PASSING THE MAP TO FORM
         primaryColor: primaryColor,
         initialData: initialData,
         onSuccess: (name, isEdit) {
@@ -467,6 +479,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
 class AddFeeForm extends StatefulWidget {
   final String schoolId;
   final List<String> availableClasses;
+  final Map<String, String> classNameToIdMap; // 🚨 DICTIONARY RECEIVED
   final Function(String, bool) onSuccess;
   final Color primaryColor;
   final Map<String, dynamic>? initialData;
@@ -475,6 +488,7 @@ class AddFeeForm extends StatefulWidget {
     super.key,
     required this.schoolId,
     required this.availableClasses,
+    required this.classNameToIdMap,
     required this.onSuccess,
     required this.primaryColor,
     this.initialData,
@@ -490,7 +504,12 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
   final _amountController = TextEditingController();
 
   List<String> _selectedClasses = [];
-  final List<String> _allCategories = ["Regular", "Transfer", "Scholarship"];
+  final List<String> _allCategories = [
+    "Regular",
+    "Transfer",
+    "Scholarship",
+    "Special",
+  ];
   List<String> _selectedCategories = [];
 
   String _selectedSession = "2025/2026";
@@ -527,11 +546,21 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
     setState(() => _isSaving = true);
     try {
       final feeName = _titleController.text;
+
+      // 🚨 CONVERT SELECTED NAMES TO A LIST OF UUIDs
+      List<String> applicableClassIds = [];
+      for (String cName in _selectedClasses) {
+        if (widget.classNameToIdMap.containsKey(cName)) {
+          applicableClassIds.add(widget.classNameToIdMap[cName]!);
+        }
+      }
+
       final payload = {
         'school_id': widget.schoolId,
         'fee_name': feeName,
         'amount': double.parse(_amountController.text),
-        'applicable_classes': _selectedClasses,
+        'applicable_classes': _selectedClasses, // Retain names for UI
+        'applicable_class_ids': applicableClassIds, // 🚨 NEW: Saves UUID array
         'applicable_categories': _selectedCategories,
         'academic_session': _selectedSession,
         'class_level': _selectedClasses.join(', '),
@@ -664,7 +693,7 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
                 ),
                 onPressed: _isSaving ? null : _saveFeeRule,
                 child: _isSaving
-                    ? const CircularProgressIndicator(color: Colors.white)
+                    ? const TridetaLoader(color: Colors.white)
                     : Text(
                         isEdit ? "UPDATE RULE" : "AUTHORIZE RULE",
                         style: const TextStyle(
@@ -742,7 +771,9 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
       labelText: label,
       prefixIcon: Icon(icon, color: pColor, size: 20),
       filled: true,
-      fillColor: isDark ? Colors.white.withOpacity(0.03) : Colors.grey[50],
+      fillColor: isDark
+          ? Colors.white.withValues(alpha: 0.03)
+          : Colors.grey[50],
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: BorderSide.none,

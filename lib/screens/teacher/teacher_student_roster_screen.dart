@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -340,7 +341,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
               color: cardColor,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10,
                   offset: const Offset(0, 5),
                 ),
@@ -365,7 +366,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
           // TABS CONTENT
           Expanded(
             child: _isLoading
-                ? Center(child: CircularProgressIndicator(color: primaryColor))
+                ? Center(child: TridetaLoader(color: primaryColor))
                 : TabBarView(
                     controller: _tabController,
                     physics: const NeverScrollableScrollPhysics(),
@@ -404,8 +405,8 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 12),
           color: isDark
-              ? primaryColor.withOpacity(0.1)
-              : primaryColor.withOpacity(0.05),
+              ? primaryColor.withValues(alpha: 0.1)
+              : primaryColor.withValues(alpha: 0.05),
           child: Text(
             "Date: ${DateFormat('EEEE, MMM d, yyyy').format(DateTime.now())}",
             textAlign: TextAlign.center,
@@ -450,7 +451,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                       vertical: 4,
                     ),
                     leading: CircleAvatar(
-                      backgroundColor: primaryColor.withOpacity(0.1),
+                      backgroundColor: primaryColor.withValues(alpha: 0.1),
                       backgroundImage: passportUrl.isNotEmpty
                           ? NetworkImage(passportUrl)
                           : null,
@@ -489,7 +490,9 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: _getStatusColor(status).withOpacity(0.1),
+                              color: _getStatusColor(
+                                status,
+                              ).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -535,7 +538,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                                       selected: isSelected,
                                       selectedColor: _getStatusColor(
                                         s,
-                                      ).withOpacity(0.2),
+                                      ).withValues(alpha: 0.2),
                                       backgroundColor: isDark
                                           ? Colors.white10
                                           : Colors.grey[100],
@@ -591,7 +594,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
             color: cardColor,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, -5),
               ),
@@ -673,9 +676,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
         if (_isProcessingScan)
           Container(
             color: Colors.black54,
-            child: Center(
-              child: CircularProgressIndicator(color: primaryColor),
-            ),
+            child: Center(child: TridetaLoader(color: primaryColor)),
           ),
       ],
     );
@@ -707,7 +708,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
     if (items.isEmpty) return const SizedBox.shrink();
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50],
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.grey.shade300,

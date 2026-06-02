@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
@@ -58,7 +59,7 @@ class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen>
 
     // 🚨 EXTRACTED MAIN CONTENT FOR LAYOUT BUILDER
     Widget mainContent = transactionStream == null
-        ? Center(child: CircularProgressIndicator(color: primaryColor))
+        ? Center(child: TridetaLoader(color: primaryColor))
         : StreamBuilder<List<Map<String, dynamic>>>(
             stream: transactionStream,
             builder: (context, snapshot) {
@@ -67,9 +68,7 @@ class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen>
                 return _buildErrorState(isDark, primaryColor);
               }
               if (!snapshot.hasData) {
-                return Center(
-                  child: CircularProgressIndicator(color: primaryColor),
-                );
+                return Center(child: TridetaLoader(color: primaryColor));
               }
 
               final transactions = snapshot.data!;
@@ -183,11 +182,13 @@ class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen>
         color: cardColor,
         borderRadius: BorderRadius.circular(15),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade100,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.grey.shade100,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -198,7 +199,7 @@ class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen>
         leading: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: catColor.withOpacity(0.1),
+            color: catColor.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Icon(catIcon, color: catColor, size: 24),

@@ -102,7 +102,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         Container(
                           padding: const EdgeInsets.all(30),
                           decoration: BoxDecoration(
-                            color: _tridetaBlue.withOpacity(0.1),
+                            color: _tridetaBlue.withValues(alpha: 0.1),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(

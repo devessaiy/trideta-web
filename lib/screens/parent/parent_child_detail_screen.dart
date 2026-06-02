@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
@@ -553,7 +554,7 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
+                  color: Colors.black.withValues(alpha: 0.03),
                   blurRadius: 10,
                 ),
               ],
@@ -562,7 +563,7 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
               children: [
                 CircleAvatar(
                   radius: 45,
-                  backgroundColor: primaryColor.withOpacity(0.1),
+                  backgroundColor: primaryColor.withValues(alpha: 0.1),
                   backgroundImage:
                       widget.childData['passport_url'] != null &&
                           widget.childData['passport_url'].toString().isNotEmpty
@@ -597,7 +598,7 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: primaryColor.withOpacity(0.1),
+                          color: primaryColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
@@ -641,7 +642,7 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
           ),
           Expanded(
             child: _isLoading
-                ? Center(child: CircularProgressIndicator(color: primaryColor))
+                ? Center(child: TridetaLoader(color: primaryColor))
                 : TabBarView(
                     controller: _tabController,
                     children: [
@@ -749,16 +750,16 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
             borderRadius: BorderRadius.circular(15),
             side: BorderSide(
               color: isLocked
-                  ? Colors.red.withOpacity(0.3)
-                  : primaryColor.withOpacity(0.3),
+                  ? Colors.red.withValues(alpha: 0.3)
+                  : primaryColor.withValues(alpha: 0.3),
             ),
           ),
           child: ListTile(
             contentPadding: const EdgeInsets.all(15),
             leading: CircleAvatar(
               backgroundColor: isLocked
-                  ? Colors.red.withOpacity(0.1)
-                  : primaryColor.withOpacity(0.1),
+                  ? Colors.red.withValues(alpha: 0.1)
+                  : primaryColor.withValues(alpha: 0.1),
               child: Icon(
                 isLocked
                     ? Icons.lock_outline_rounded
@@ -788,10 +789,10 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
               ),
             ),
             trailing: _isGeneratingRecord
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: TridetaLoader(color: primaryColor),
                   )
                 : Icon(
                     isLocked ? Icons.lock_rounded : Icons.download_rounded,
@@ -827,9 +828,9 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
             margin: const EdgeInsets.only(bottom: 20),
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.1),
+              color: Colors.orange.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
             ),
             child: const Row(
               children: [
@@ -867,13 +868,13 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: balance > 0
-                ? Colors.red.withOpacity(0.1)
-                : Colors.green.withOpacity(0.1),
+                ? Colors.red.withValues(alpha: 0.1)
+                : Colors.green.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(15),
             border: Border.all(
               color: balance > 0
-                  ? Colors.red.withOpacity(0.3)
-                  : Colors.green.withOpacity(0.3),
+                  ? Colors.red.withValues(alpha: 0.3)
+                  : Colors.green.withValues(alpha: 0.3),
             ),
           ),
           child: Column(
@@ -943,7 +944,7 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
                 },
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: Colors.green.withOpacity(0.1),
+                    backgroundColor: Colors.green.withValues(alpha: 0.1),
                     child: const Icon(
                       Icons.receipt_long,
                       color: Colors.green,
@@ -981,9 +982,9 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.grey.withOpacity(0.1)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

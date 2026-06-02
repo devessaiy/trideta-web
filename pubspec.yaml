@@ -36,14 +36,13 @@ dependencies:
   path_provider: ^2.1.5
   share_plus: ^12.0.1
   pdf: ^3.11.3
+  flutter_native_splash: ^2.4.7
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_launcher_icons: ^0.14.4
   flutter_lints: ^6.0.0
-  flutter_native_splash: ^2.4.0
-
 flutter:
   uses-material-design: true
 
@@ -56,8 +55,13 @@ flutter_launcher_icons:
   adaptive_icon_foreground: "assets/icon/app_icon.png"
 
 flutter_native_splash:
-  color: "#007ACC"
-  image: "assets/icon/app_icon.png"
+  color: "#007ACC"       # Trideta Blue
+  color_dark: "#007ACC"  # Keeps it blue even in dark mode
+  
   android: true
   ios: true
   web: false
+  
+  android_12:
+    color: "#007ACC"
+    color_dark: "#007ACC"

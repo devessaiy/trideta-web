@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -308,7 +309,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -372,7 +373,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
             color: cardColor,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               ),
@@ -439,7 +440,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
         ),
         Expanded(
           child: _isLoading
-              ? Center(child: CircularProgressIndicator(color: primaryColor))
+              ? Center(child: TridetaLoader(color: primaryColor))
               : _students.isEmpty
               ? const Center(
                   child: Text(
@@ -483,8 +484,8 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
     return Container(
       decoration: BoxDecoration(
         color: isLocked
-            ? (isDark ? Colors.white.withOpacity(0.02) : Colors.grey[200])
-            : (isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50]),
+            ? (isDark ? Colors.white.withValues(alpha: 0.02) : Colors.grey[200])
+            : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50]),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.grey.shade300,
@@ -593,7 +594,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
                 labelStyle: const TextStyle(fontSize: 12),
                 filled: true,
                 fillColor: isDark
-                    ? Colors.white.withOpacity(0.05)
+                    ? Colors.white.withValues(alpha: 0.05)
                     : Colors.grey[100],
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
@@ -616,7 +617,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
                 labelStyle: const TextStyle(fontSize: 12),
                 filled: true,
                 fillColor: isDark
-                    ? Colors.white.withOpacity(0.05)
+                    ? Colors.white.withValues(alpha: 0.05)
                     : Colors.grey[100],
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),

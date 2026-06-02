@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:intl/intl.dart';
 
@@ -361,7 +362,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   }
 
   Widget _buildManualTab() {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_isLoading) return const Center(child: TridetaLoader());
     if (_selectedClass == null) {
       return const Center(child: Text("Please select a class."));
     }
@@ -431,7 +432,9 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                         return ChoiceChip(
                           label: Text(s),
                           selected: isSelected,
-                          selectedColor: _getStatusColor(s).withOpacity(0.2),
+                          selectedColor: _getStatusColor(
+                            s,
+                          ).withValues(alpha: 0.2),
                           labelStyle: TextStyle(
                             color: isSelected
                                 ? _getStatusColor(s)
@@ -509,9 +512,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         if (_isProcessingScan)
           Container(
             color: Colors.black54,
-            child: const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            ),
+            child: const Center(child: TridetaLoader(color: Colors.white)),
           ),
       ],
     );

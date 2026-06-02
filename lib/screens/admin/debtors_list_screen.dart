@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -28,7 +29,7 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
     _fetchDebtors();
   }
 
-  // --- 🚨 IRONCLAD FINANCIAL MATH ENGINE WITH LEGACY SAFEGUARDS 🚨 ---
+  // --- 🚨 IRONCLAD FINANCIAL MATH ENGINE WITH NATIVE UUID MATCHING 🚨 ---
   Future<void> _fetchDebtors() async {
     setState(() => _isLoading = true);
     try {
@@ -56,7 +57,7 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
         return;
       }
 
-      // 1.5 🚨 FETCH OFFICIAL CLASSES FROM RELATIONAL TABLE 🚨
+      // 1.5 🚨 FETCH OFFICIAL CLASSES FROM RELATIONAL TABLE
       final classesData = await _supabase
           .from('classes')
           .select('name')
@@ -65,43 +66,45 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
 
       _officialClasses = classesData.map((c) => c['name'].toString()).toList();
 
-      // 2. Get Fee Structure (SAFELY HANDLING LEGACY DATA)
+      // 2. Get Fee Structure (NOW FETCHING id)
       final rawFeeData = await _supabase
           .from('fee_structures')
           .select(
-            'fee_name, amount, applicable_classes, applicable_categories, academic_session',
+            'id, fee_name, amount, applicable_classes, applicable_class_ids, applicable_categories, academic_session',
           )
           .eq('school_id', schoolId);
 
       List<Map<String, dynamic>> feeData = [];
       for (var fee in rawFeeData) {
         String feeSession = (fee['academic_session'] ?? '').toString();
-        // 🚨 LEGACY SAFEGUARD: Accept current session OR empty (old data)
         if (feeSession == currentSession || feeSession.isEmpty) {
           feeData.add(fee);
         }
       }
 
-      // 3. Get Transactions (SAFELY HANDLING LEGACY DATA)
+      // 3. Get Transactions (NOW FETCHING fee_id)
       final txData = await _supabase
           .from('transactions')
-          .select('student_id, category, amount, academic_session')
+          .select('student_id, category, amount, academic_session, fee_id')
           .eq('school_id', schoolId);
 
-      // Group payments by Student AND Category
+      // 🚨 GROUP PAYMENTS NATIVELY BY fee_id
       Map<String, Map<String, double>> studentCategoryPayments = {};
       for (var tx in txData) {
         String txSession = (tx['academic_session'] ?? '').toString();
 
-        // 🚨 LEGACY SAFEGUARD: Only count matching sessions or legacy empty sessions
         if (txSession == currentSession || txSession.isEmpty) {
           String sId = tx['student_id'].toString();
-          String category = (tx['category'] ?? '').toString();
+          String txFeeId = (tx['fee_id'] ?? '').toString();
+          String txCategory = (tx['category'] ?? '').toString();
           double amt = (tx['amount'] ?? 0).toDouble();
 
+          // 🚨 HYBRID GROUPING: Uses UUID if available, falls back to text if the migration script missed it
+          String paymentKey = txFeeId.isNotEmpty ? txFeeId : txCategory;
+
           studentCategoryPayments.putIfAbsent(sId, () => {});
-          studentCategoryPayments[sId]![category] =
-              (studentCategoryPayments[sId]![category] ?? 0) + amt;
+          studentCategoryPayments[sId]![paymentKey] =
+              (studentCategoryPayments[sId]![paymentKey] ?? 0) + amt;
         }
       }
 
@@ -116,21 +119,32 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
       for (var student in studentsData) {
         String sId = student['id'].toString();
         String cClass = (student['class_level'] ?? '').toString();
+        String sClassId = (student['class_id'] ?? '').toString();
         String cCategory = (student['category'] ?? '').toString();
 
         double totalStudentDebt = 0.0;
 
-        // 🚨 SQUASHED PHANTOM CREDIT BUG: Check debt item by item!
         for (var fee in feeData) {
+          String feeId = fee['id'].toString();
           String feeName = fee['fee_name'].toString();
           double expectedAmt = (fee['amount'] ?? 0).toDouble();
 
-          // 🚨 Passing _officialClasses to _doesItApply for dynamic 'All' resolution
-          bool classMatch = _doesItApply(
-            fee['applicable_classes'],
-            cClass,
-            officialList: _officialClasses,
-          );
+          bool classMatch = false;
+
+          // Match by UUID first
+          final List<dynamic>? classIdsList = fee['applicable_class_ids'];
+          if (classIdsList != null &&
+              classIdsList.isNotEmpty &&
+              sClassId.isNotEmpty) {
+            classMatch = classIdsList.contains(sClassId);
+          } else {
+            classMatch = _doesItApply(
+              fee['applicable_classes'],
+              cClass,
+              officialList: _officialClasses,
+            );
+          }
+
           bool categoryMatch = _doesItApply(
             fee['applicable_categories'],
             cCategory,
@@ -138,7 +152,11 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
           );
 
           if (classMatch && categoryMatch) {
-            double paidAmt = studentCategoryPayments[sId]?[feeName] ?? 0.0;
+            // 🚨 NATIVE UUID LOOKUP: Checks for payments under the UUID, falls back to text name lookup
+            double paidAmt =
+                (studentCategoryPayments[sId]?[feeId] ?? 0.0) +
+                (studentCategoryPayments[sId]?[feeName] ?? 0.0);
+
             double remaining = expectedAmt - paidAmt;
             if (remaining > 0) {
               totalStudentDebt += remaining;
@@ -198,7 +216,6 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
   }
 
   // --- THE SMART MATCHER ---
-  // 🚨 ADDED optional officialList parameter
   bool _doesItApply(
     dynamic columnData,
     String studentData, {
@@ -223,7 +240,6 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
         ? columnData.toString().replaceAll(' ', '').toLowerCase()
         : _standardizeClass(columnData.toString());
 
-    // 🚨 If 'all', instantly approve
     if (colStr.isEmpty ||
         colStr == 'all' ||
         colStr == '[]' ||
@@ -298,7 +314,7 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
             children: [
               CircleAvatar(
                 radius: 35,
-                backgroundColor: Colors.redAccent.withOpacity(0.1),
+                backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
                 child: const Icon(
                   Icons.person,
                   color: Colors.redAccent,
@@ -335,10 +351,12 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
                   horizontal: 10,
                 ),
                 decoration: BoxDecoration(
-                  color: primaryColor.withOpacity(0.05), // 🚨 Dynamic color
+                  color: primaryColor.withValues(
+                    alpha: 0.05,
+                  ), // 🚨 Dynamic color
                   borderRadius: BorderRadius.circular(15),
                   border: Border.all(
-                    color: primaryColor.withOpacity(0.2),
+                    color: primaryColor.withValues(alpha: 0.2),
                   ), // 🚨 Dynamic color
                 ),
                 child: Column(
@@ -439,9 +457,7 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
       body: LayoutBuilder(
         builder: (context, constraints) {
           Widget mainContent = _isLoading
-              ? const Center(
-                  child: CircularProgressIndicator(color: Colors.redAccent),
-                )
+              ? const Center(child: TridetaLoader(color: Colors.redAccent))
               : _debtors.isEmpty
               ? _buildEmptyState()
               : ListView.separated(
@@ -511,7 +527,7 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.03),
+              color: Colors.black.withValues(alpha: 0.03),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -520,7 +536,7 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
         child: Row(
           children: [
             CircleAvatar(
-              backgroundColor: Colors.redAccent.withOpacity(0.1),
+              backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
               child: const Icon(Icons.warning_rounded, color: Colors.redAccent),
             ),
             const SizedBox(width: 15),
@@ -573,7 +589,7 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
           Icon(
             Icons.check_circle_outline,
             size: 80,
-            color: Colors.green.withOpacity(0.5),
+            color: Colors.green.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 20),
           const Text(

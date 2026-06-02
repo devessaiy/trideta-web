@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 
 // --- MODELS --- //
 class StudentScore {
@@ -422,7 +423,7 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
               color: cardColor,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10,
                   offset: const Offset(0, 5),
                 ),
@@ -526,7 +527,7 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           // --- STUDENTS LIST ---
           Expanded(
             child: _isLoading
-                ? Center(child: CircularProgressIndicator(color: primaryColor))
+                ? Center(child: TridetaLoader(color: primaryColor))
                 : _selectedClassId == null || _selectedSubjectId == null
                 ? const Center(
                     child: Text(
@@ -563,7 +564,7 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
                 color: cardColor,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 10,
                     offset: const Offset(0, -5),
                   ),
@@ -583,10 +584,7 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
+                          child: TridetaLoader(color: Colors.white),
                         )
                       : const Text(
                           "SAVE SCORES",
@@ -615,8 +613,8 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     return Container(
       decoration: BoxDecoration(
         color: isLocked
-            ? (isDark ? Colors.white.withOpacity(0.02) : Colors.grey[200])
-            : (isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50]),
+            ? (isDark ? Colors.white.withValues(alpha: 0.02) : Colors.grey[200])
+            : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50]),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.grey.shade300,
@@ -677,7 +675,7 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50],
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50],
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.grey.shade300,
@@ -734,8 +732,8 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     return Container(
       decoration: BoxDecoration(
         color: items.isEmpty
-            ? (isDark ? Colors.white.withOpacity(0.02) : Colors.grey[200])
-            : (isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50]),
+            ? (isDark ? Colors.white.withValues(alpha: 0.02) : Colors.grey[200])
+            : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50]),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.grey.shade300,
@@ -863,7 +861,7 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
                     vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: _getGradeColor(s.grade).withOpacity(0.1),
+                    color: _getGradeColor(s.grade).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(

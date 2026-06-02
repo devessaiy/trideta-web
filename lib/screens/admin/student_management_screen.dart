@@ -1,3 +1,4 @@
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb; // 🚨 Added for Web Checks
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -5,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 // 🚨 UPDATED ABSOLUTE IMPORTS
 import 'package:trideta_v2/screens/admin/student_admission_screen.dart';
 import 'package:trideta_v2/screens/admin/student_profile_screen.dart';
+import 'package:trideta_v2/screens/admin/id_card_generator_screen.dart';
 
 class StudentManagementScreen extends StatefulWidget {
   const StudentManagementScreen({super.key});
@@ -131,6 +133,76 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         // --- HEADER STATS ---
         _buildTopHeader(isDark, primaryColor),
 
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+          child: InkWell(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const IdCardGeneratorScreen()),
+            ),
+            borderRadius: BorderRadius.circular(15),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [primaryColor, primaryColor.withValues(alpha: 0.8)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(15),
+                boxShadow: [
+                  BoxShadow(
+                    color: primaryColor.withValues(alpha: 0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.badge_rounded,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 15),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Smart ID Generator",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          "Bulk generate printable QR Code ID cards",
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    color: Colors.white,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
         // --- SEARCH BAR ---
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
@@ -163,7 +235,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         // --- LIST AREA ---
         Expanded(
           child: studentStream == null
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(child: TridetaLoader())
               : StreamBuilder<List<Map<String, dynamic>>>(
                   stream: studentStream,
                   builder: (context, snapshot) {
@@ -171,7 +243,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                       return _buildErrorState(isDark, primaryColor);
                     }
                     if (!snapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator());
+                      return const Center(child: TridetaLoader());
                     }
 
                     final allStudents = snapshot.data!;
@@ -436,14 +508,14 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         borderRadius: BorderRadius.circular(15),
         border: Border.all(
           color: isLegacy
-              ? Colors.red.withOpacity(0.3)
+              ? Colors.red.withValues(alpha: 0.3)
               : (isDark
-                    ? Colors.white.withOpacity(0.05)
+                    ? Colors.white.withValues(alpha: 0.05)
                     : Colors.grey.shade200),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -456,7 +528,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         ),
         leading: CircleAvatar(
           radius: 25,
-          backgroundColor: iconColor.withOpacity(0.1),
+          backgroundColor: iconColor.withValues(alpha: 0.1),
           child: Icon(
             isLegacy ? Icons.warning_rounded : Icons.class_rounded,
             color: iconColor,
@@ -507,7 +579,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         trailing: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.grey.withOpacity(0.1),
+            color: Colors.grey.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -553,11 +625,13 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         color: cardColor,
         borderRadius: BorderRadius.circular(15),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade100,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.grey.shade100,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -569,7 +643,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           tag: student['id'],
           child: CircleAvatar(
             radius: 25,
-            backgroundColor: primaryColor.withOpacity(0.1),
+            backgroundColor: primaryColor.withValues(alpha: 0.1),
             backgroundImage: student['passport_url'] != null
                 ? NetworkImage(student['passport_url'])
                 : null,
@@ -820,7 +894,7 @@ class _ClassListScreenState extends State<_ClassListScreen> {
                   Container(
                     decoration: BoxDecoration(
                       color: widget.isDark
-                          ? Colors.white.withOpacity(0.05)
+                          ? Colors.white.withValues(alpha: 0.05)
                           : Colors.grey[50],
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
@@ -925,10 +999,7 @@ class _ClassListScreenState extends State<_ClassListScreen> {
                       ? const SizedBox(
                           height: 16,
                           width: 16,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
+                          child: TridetaLoader(color: Colors.white),
                         )
                       : const Text(
                           "Confirm",
@@ -971,14 +1042,14 @@ class _ClassListScreenState extends State<_ClassListScreen> {
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? primaryColor.withOpacity(0.1)
+                      ? primaryColor.withValues(alpha: 0.1)
                       : widget.cardColor,
                   borderRadius: BorderRadius.circular(15),
                   border: Border.all(
                     color: isSelected
-                        ? primaryColor.withOpacity(0.5)
+                        ? primaryColor.withValues(alpha: 0.5)
                         : (widget.isDark
-                              ? Colors.white.withOpacity(0.05)
+                              ? Colors.white.withValues(alpha: 0.05)
                               : Colors.grey.shade100),
                   ),
                 ),
@@ -992,7 +1063,9 @@ class _ClassListScreenState extends State<_ClassListScreen> {
                       : Hero(
                           tag: student['id'],
                           child: CircleAvatar(
-                            backgroundColor: primaryColor.withOpacity(0.1),
+                            backgroundColor: primaryColor.withValues(
+                              alpha: 0.1,
+                            ),
                             backgroundImage: student['passport_url'] != null
                                 ? NetworkImage(student['passport_url'])
                                 : null,

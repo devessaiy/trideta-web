@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'add_staff_screen.dart';
@@ -116,7 +117,7 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen>
               ), // Dynamic!
               filled: true,
               fillColor: isDark
-                  ? Colors.white.withOpacity(0.05)
+                  ? Colors.white.withValues(alpha: 0.05)
                   : Colors.grey[100],
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(15),
@@ -130,7 +131,7 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen>
         // --- LIST AREA ---
         Expanded(
           child: _isLoading
-              ? Center(child: CircularProgressIndicator(color: primaryColor))
+              ? Center(child: TridetaLoader(color: primaryColor))
               : RefreshIndicator(
                   onRefresh: _handleRefresh,
                   color: primaryColor, // Dynamic!
@@ -273,11 +274,13 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen>
         color: cardColor,
         borderRadius: BorderRadius.circular(15),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade100,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.grey.shade100,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -311,7 +314,7 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen>
                     width: 50,
                     height: 50,
                     decoration: BoxDecoration(
-                      color: roleColor.withOpacity(0.1),
+                      color: roleColor.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                       image: passportUrl != null
                           ? DecorationImage(
@@ -365,16 +368,18 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen>
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: roleColor.withOpacity(0.1),
+                    color: roleColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: roleColor.withOpacity(0.3)),
+                    border: Border.all(color: roleColor.withValues(alpha: 0.3)),
                   ),
                   child: Text(
                     role,
                     style: TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.bold,
-                      color: isDark ? roleColor.withOpacity(0.8) : roleColor,
+                      color: isDark
+                          ? roleColor.withValues(alpha: 0.8)
+                          : roleColor,
                     ),
                   ),
                 ),

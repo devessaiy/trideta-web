@@ -441,7 +441,6 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
         }
       }
       // ==========================================
-
       if (role == 'admin') {
         bool isConfigured = await _authService.isSchoolConfigured();
         final childrenRes = await _supabase
@@ -464,6 +463,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
           );
         }
       } else if (role == 'parent') {
+        // 🚨 ROUTES DIRECTLY TO THE PARENT DASHBOARD
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const ParentDashboardScreen()),
@@ -575,6 +575,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
               ),
               onTap: () {
                 Navigator.pop(ctx);
+                // 🚨 ROUTES DIRECTLY TO THE PARENT DASHBOARD
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(

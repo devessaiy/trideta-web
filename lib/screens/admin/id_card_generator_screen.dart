@@ -7,6 +7,7 @@ import 'package:trideta_v2/main.dart'; // To access the global appColorNotifier
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
 
 class IdCardGeneratorScreen extends StatefulWidget {
   const IdCardGeneratorScreen({super.key});
@@ -338,10 +339,14 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
 
     final schoolColorVal = appColorNotifier.value;
     final hsv = HSVColor.fromColor(schoolColorVal);
-    
+
     // Create lighter/darker variations for depth and geometric styling
-    final lightColor = PdfColor.fromInt(hsv.withAlpha(0.2).toColor().toARGB32());
-    final fadedColor = PdfColor.fromInt(hsv.withAlpha(0.6).toColor().toARGB32());
+    final lightColor = PdfColor.fromInt(
+      hsv.withAlpha(0.2).toColor().toARGB32(),
+    );
+    final fadedColor = PdfColor.fromInt(
+      hsv.withAlpha(0.6).toColor().toARGB32(),
+    );
     final darkColor = PdfColor.fromInt(hsv.withValue(0.4).toColor().toARGB32());
 
     const textPrimary = PdfColor.fromInt(0xFF212121); // Charcoal for info
@@ -371,7 +376,7 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
               ),
             ),
           ),
-          
+
           // Stylized central wave background layer (light tone)
           pw.Positioned(
             top: height * 0.25,
@@ -385,7 +390,7 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
               ),
             ),
           ),
-          
+
           // Small decorative geometric accent shapes
           pw.Positioned(
             top: 20,
@@ -397,7 +402,7 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
             left: width * 0.05,
             child: pw.Container(width: 12, height: 12, color: lightColor),
           ),
-          
+
           // ─── 2. SCHOOL HEADER ───
           pw.Positioned(
             top: 10,
@@ -428,16 +433,22 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
                 pw.SizedBox(height: 1),
                 pw.Text(
                   "STUDENT ID",
-                  style: pw.TextStyle(color: brandAccent, fontSize: 5.5, fontWeight: pw.FontWeight.bold),
+                  style: pw.TextStyle(
+                    color: brandAccent,
+                    fontSize: 5.5,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
                   textAlign: pw.TextAlign.center,
                 ),
               ],
             ),
           ),
-          
+
           // ─── 3. CENTRAL STYLIZED PHOTO ───
           pw.Positioned(
-            top: (height - photoD) / 2.3, // Centered vertically, slight offset up
+            top:
+                (height - photoD) /
+                2.3, // Centered vertically, slight offset up
             left: (width - photoD) / 2,
             child: pw.Container(
               width: photoD,
@@ -448,11 +459,13 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
                 border: pw.Border.all(color: fadedColor, width: 2.5),
                 boxShadow: [
                   pw.BoxShadow(
-                    color: PdfColor.fromInt(hsv.withAlpha(0.25).toColor().toARGB32()),
+                    color: PdfColor.fromInt(
+                      hsv.withAlpha(0.25).toColor().toARGB32(),
+                    ),
                     blurRadius: 10,
                     spreadRadius: 2,
                     offset: const PdfPoint(0, 5),
-                  )
+                  ),
                 ],
               ),
               child: pw.ClipOval(
@@ -463,26 +476,37 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
                         child: pw.Center(
                           child: pw.Text(
                             "${firstName.isNotEmpty ? firstName[0] : ''}${lastName.isNotEmpty ? lastName[0] : ''}",
-                            style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.grey500),
+                            style: pw.TextStyle(
+                              fontSize: 20,
+                              fontWeight: pw.FontWeight.bold,
+                              color: PdfColors.grey500,
+                            ),
                           ),
                         ),
                       ),
               ),
             ),
           ),
-          
+
           // Small decorative geometric accent shapes next to photo
           pw.Positioned(
             top: (height - photoD) / 2.3 - 5,
             left: (width - photoD) / 2 - 5,
-            child: pw.Container(width: 8, height: 8, decoration: pw.BoxDecoration(color: darkColor, shape: pw.BoxShape.circle)),
+            child: pw.Container(
+              width: 8,
+              height: 8,
+              decoration: pw.BoxDecoration(
+                color: darkColor,
+                shape: pw.BoxShape.circle,
+              ),
+            ),
           ),
           pw.Positioned(
             top: (height - photoD) / 2.3 + photoD - 5,
             left: (width - photoD) / 2 + photoD - 5,
             child: pw.Container(width: 10, height: 10, color: fadedColor),
           ),
-          
+
           // ─── 4. STUDENT NAME + ID ROW ───
           pw.Positioned(
             bottom: 25,
@@ -505,7 +529,7 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
                   ),
                 ),
                 pw.SizedBox(height: 1.5),
-                
+
                 // Class and ID number row
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.center,
@@ -515,17 +539,29 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
                       _selectedClass ?? "",
                       style: pw.TextStyle(fontSize: 7.5, color: fadedColor),
                     ),
-                    pw.Container(width: 4, height: 4, margin: const pw.EdgeInsets.symmetric(horizontal: 6), decoration: pw.BoxDecoration(color: fadedColor, shape: pw.BoxShape.circle)),
+                    pw.Container(
+                      width: 4,
+                      height: 4,
+                      margin: const pw.EdgeInsets.symmetric(horizontal: 6),
+                      decoration: pw.BoxDecoration(
+                        color: fadedColor,
+                        shape: pw.BoxShape.circle,
+                      ),
+                    ),
                     pw.Text(
                       "ID: $admissionNo",
-                      style: pw.TextStyle(fontSize: 7.5, color: darkColor, fontWeight: pw.FontWeight.bold),
+                      style: pw.TextStyle(
+                        fontSize: 7.5,
+                        color: darkColor,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
                     ),
                   ],
                 ),
               ],
             ),
           ),
-          
+
           // ─── 5. FOOTER Dynamic Pattern Accent ───
           pw.Positioned(
             bottom: 0,
@@ -752,6 +788,7 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
       ],
     );
   }
+
   // ============================================================================
   // 🚨 UI LAYOUT (UNTOUCHED)
   // ============================================================================
@@ -764,7 +801,7 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
     if (_isLoadingConfig) {
       return Scaffold(
         backgroundColor: bgColor,
-        body: Center(child: CircularProgressIndicator(color: primaryColor)),
+        body: Center(child: TridetaLoader(color: primaryColor)),
       );
     }
 
@@ -828,16 +865,14 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color:
-                                  isDark
-                                      ? Colors.white10
-                                      : Colors.grey.shade50,
+                              color: isDark
+                                  ? Colors.white10
+                                  : Colors.grey.shade50,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color:
-                                    isDark
-                                        ? Colors.white10
-                                        : Colors.grey.shade300,
+                                color: isDark
+                                    ? Colors.white10
+                                    : Colors.grey.shade300,
                               ),
                             ),
                             child: DropdownButtonHideUnderline(
@@ -845,29 +880,26 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
                                 isExpanded: true,
                                 value: _selectedClass,
                                 icon: Icon(Icons.class_, color: primaryColor),
-                                items:
-                                    _activeClasses.map((String c) {
-                                      return DropdownMenuItem<String>(
-                                        value: c,
-                                        child: Text(
-                                          c,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      );
-                                    }).toList(),
-                                onChanged:
-                                    (_isGenerating || _isLoadingStudents)
-                                        ? null
-                                        : (String? v) {
-                                            if (v != null &&
-                                                v != _selectedClass) {
-                                              setState(() {
-                                                _selectedClass = v;
-                                              });
-                                              _fetchStudentsForClass(v);
-                                            }
-                                          },
+                                items: _activeClasses.map((String c) {
+                                  return DropdownMenuItem<String>(
+                                    value: c,
+                                    child: Text(
+                                      c,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  );
+                                }).toList(),
+                                onChanged: (_isGenerating || _isLoadingStudents)
+                                    ? null
+                                    : (String? v) {
+                                        if (v != null && v != _selectedClass) {
+                                          setState(() {
+                                            _selectedClass = v;
+                                          });
+                                          _fetchStudentsForClass(v);
+                                        }
+                                      },
                               ),
                             ),
                           ),
@@ -885,8 +917,9 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            onPressed:
-                                _isGenerating ? null : _generateBulkIdCards,
+                            onPressed: _isGenerating
+                                ? null
+                                : _generateBulkIdCards,
                             icon: const Icon(Icons.file_download, size: 18),
                             label: const Text(
                               "BULK A4",
@@ -902,121 +935,107 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
 
               // ─── STUDENT LIST ───
               Expanded(
-                child:
-                    _isLoadingStudents
-                        ? Center(
-                            child: CircularProgressIndicator(
-                              color: primaryColor,
+                child: _isLoadingStudents
+                    ? Center(child: TridetaLoader(color: primaryColor))
+                    : _students.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.search_off,
+                              size: 60,
+                              color: Colors.grey[400],
                             ),
-                          )
-                        : _students.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.search_off,
-                                  size: 60,
-                                  color: Colors.grey[400],
-                                ),
-                                const SizedBox(height: 10),
-                                const Text(
-                                  "No students found in this class.",
-                                  style: TextStyle(color: Colors.grey),
-                                ),
-                              ],
+                            const SizedBox(height: 10),
+                            const Text(
+                              "No students found in this class.",
+                              style: TextStyle(color: Colors.grey),
                             ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
-                            ),
-                            itemCount: _students.length,
-                            itemBuilder: (context, index) {
-                              final student = _students[index];
-                              final String fullName =
-                                  "${student['first_name']} ${student['last_name']}";
-                              final String? photoUrl = student['passport_url'];
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        itemCount: _students.length,
+                        itemBuilder: (context, index) {
+                          final student = _students[index];
+                          final String fullName =
+                              "${student['first_name']} ${student['last_name']}";
+                          final String? photoUrl = student['passport_url'];
 
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 12),
-                                decoration: BoxDecoration(
-                                  color:
-                                      isDark
-                                          ? const Color(0xFF1E1E1E)
-                                          : Colors.white,
-                                  borderRadius: BorderRadius.circular(15),
-                                  border: Border.all(
-                                    color:
-                                        isDark
-                                            ? Colors.white10
-                                            : Colors.grey.shade200,
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? const Color(0xFF1E1E1E)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(15),
+                              border: Border.all(
+                                color: isDark
+                                    ? Colors.white10
+                                    : Colors.grey.shade200,
+                              ),
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              leading: CircleAvatar(
+                                backgroundColor: primaryColor.withValues(
+                                  alpha: 0.1,
+                                ),
+                                backgroundImage:
+                                    photoUrl != null && photoUrl.isNotEmpty
+                                    ? NetworkImage(photoUrl)
+                                    : null,
+                                child: photoUrl == null || photoUrl.isEmpty
+                                    ? Icon(Icons.person, color: primaryColor)
+                                    : null,
+                              ),
+                              title: Text(
+                                fullName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                "ID: ${student['admission_no'] ?? 'N/A'}",
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              // 🚨 PRIMARY ACTION BUTTON
+                              trailing: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: primaryColor,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
                                 ),
-                                child: ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 8,
-                                  ),
-                                  leading: CircleAvatar(
-                                    backgroundColor: primaryColor.withValues(
-                                      alpha: 0.1,
-                                    ),
-                                    backgroundImage:
-                                        photoUrl != null && photoUrl.isNotEmpty
-                                            ? NetworkImage(photoUrl)
-                                            : null,
-                                    child:
-                                        photoUrl == null || photoUrl.isEmpty
-                                            ? Icon(
-                                                Icons.person,
-                                                color: primaryColor,
-                                              )
-                                            : null,
-                                  ),
-                                  title: Text(
-                                    fullName,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  subtitle: Text(
-                                    "ID: ${student['admission_no'] ?? 'N/A'}",
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  // 🚨 PRIMARY ACTION BUTTON
-                                  trailing: ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: primaryColor,
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                    onPressed:
-                                        _isGenerating
-                                            ? null
-                                            : () => _generateIndividualId(
-                                                student,
-                                              ),
-                                    icon: const Icon(
-                                      Icons.download_rounded,
-                                      size: 16,
-                                    ),
-                                    label: const Text("DOWNLOAD"),
-                                  ),
+                                onPressed: _isGenerating
+                                    ? null
+                                    : () => _generateIndividualId(student),
+                                icon: const Icon(
+                                  Icons.download_rounded,
+                                  size: 16,
                                 ),
-                              );
-                            },
-                          ),
+                                label: const Text("DOWNLOAD"),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
               ),
             ],
           ),

@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// 🚨 UPDATED ABSOLUTE IMPORTS
 import 'package:trideta_v2/main.dart';
 import 'package:trideta_v2/screens/admin/school_configuration_screen.dart';
 
@@ -66,6 +65,9 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     _fetchSchoolConfig();
   }
 
+  // ===========================================================================
+  // 🚨 LOGIC ENGINE: STRICTLY UNTOUCHED
+  // ===========================================================================
   Future<void> _fetchSchoolConfig() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -191,7 +193,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         return;
       }
 
-      // 🚨 THE FIX: Strips the leading zero so Flutter matches the Edge Function EXACTLY
       String cleanPhone = rawLoginPhone.replaceAll(' ', '');
       if (cleanPhone.startsWith('0')) {
         cleanPhone = '+234${cleanPhone.substring(1)}';
@@ -271,18 +272,45 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
             await showDialog(
               context: context,
               builder: (ctx) => AlertDialog(
-                title: const Text("Sibling Detected"),
+                backgroundColor: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF1E1E1E)
+                    : Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                title: const Row(
+                  children: [
+                    Icon(Icons.family_restroom_rounded, color: Colors.blue),
+                    SizedBox(width: 10),
+                    Text(
+                      "Sibling Detected",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
                 content: Text(
                   "We found an existing parent profile matching this ${_usePhoneAsLogin ? 'phone number' : 'email address'} (Child: $siblingName).\n\nDo you want to link this new student to the same parent account?",
+                  style: const TextStyle(height: 1.4),
                 ),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text("Cancel"),
+                    child: const Text(
+                      "Cancel",
+                      style: TextStyle(color: Colors.grey),
+                    ),
                   ),
-                  ElevatedButton(
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
                     onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text("Yes, Link Sibling"),
+                    child: const Text(
+                      "Yes, Link Sibling",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ],
               ),
@@ -325,7 +353,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
               : exactLoginId;
         }
       } else {
-        // NOT A SIBLING, CREATE NEW
         try {
           await _supabase.functions.invoke(
             'create-parent-account',
@@ -355,7 +382,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         }
       }
 
-      // --- SAVE PASSPORT & STUDENT DATA ---
       String finalID = _generatedID.replaceAll(
         'XXX',
         DateTime.now().millisecondsSinceEpoch.toString().substring(9),
@@ -370,7 +396,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
           .from('student_passports')
           .getPublicUrl(fileName);
 
-      // 🚨 INSERT NEW STUDENT
       await _supabase.from('students').insert({
         'school_id': schoolId,
         'first_name': _firstNameController.text.trim(),
@@ -430,6 +455,9 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     });
   }
 
+  // ===========================================================================
+  // 🚨 PREMIUM UI (REFINED FORM AND SCALING)
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     if (_isLoading && _activeClasses.isEmpty) {
@@ -448,16 +476,17 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     Color primaryColor = Theme.of(context).primaryColor;
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
         title: const Text(
           "Admit New Student",
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
+        backgroundColor: bgColor,
+        foregroundColor: textColor,
         elevation: 0,
         centerTitle: true,
       ),
@@ -468,41 +497,55 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 800),
                 child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 20),
+                  margin: const EdgeInsets.symmetric(
+                    vertical: 24,
+                    horizontal: 24,
+                  ),
                   decoration: BoxDecoration(
                     color: cardColor,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(24),
                     border: Border.all(
                       color: isDark ? Colors.white10 : Colors.grey.shade200,
+                      width: 1.5,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 15,
-                        offset: const Offset(0, 5),
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
                       ),
                     ],
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: _buildFormContent(isDark, primaryColor),
+                    borderRadius: BorderRadius.circular(24),
+                    child: _buildFormContent(
+                      isDark,
+                      primaryColor,
+                      cardColor,
+                      textColor,
+                    ),
                   ),
                 ),
               ),
             );
           } else {
-            return _buildFormContent(isDark, primaryColor);
+            return _buildFormContent(isDark, primaryColor, bgColor, textColor);
           }
         },
       ),
     );
   }
 
-  Widget _buildFormContent(bool isDark, Color primaryColor) {
+  Widget _buildFormContent(
+    bool isDark,
+    Color primaryColor,
+    Color cardColor,
+    Color textColor,
+  ) {
     return Form(
       key: _formKey,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(30),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -511,47 +554,85 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
                 children: [
                   GestureDetector(
                     onTap: _pickImage,
-                    child: CircleAvatar(
-                      radius: 60,
-                      backgroundColor: primaryColor.withValues(alpha: 0.1),
-                      backgroundImage: _webImage != null
-                          ? MemoryImage(_webImage!)
-                          : null,
-                      child: _webImage == null
-                          ? Icon(
-                              Icons.add_a_photo,
-                              size: 40,
-                              color: primaryColor,
-                            )
-                          : null,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withValues(alpha: 0.05),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: primaryColor.withValues(alpha: 0.2),
+                          width: 2,
+                          style: BorderStyle.solid,
+                        ),
+                      ),
+                      child: CircleAvatar(
+                        radius: 65,
+                        backgroundColor: isDark
+                            ? Colors.white.withValues(alpha: 0.05)
+                            : Colors.white,
+                        backgroundImage: _webImage != null
+                            ? MemoryImage(_webImage!)
+                            : null,
+                        child: _webImage == null
+                            ? Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.add_a_photo_rounded,
+                                    size: 32,
+                                    color: primaryColor.withValues(alpha: 0.7),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    "Upload",
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: primaryColor.withValues(
+                                        alpha: 0.7,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : null,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    "Student Passport",
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey,
-                    ),
-                  ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 25),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 10,
+                      horizontal: 24,
+                      vertical: 12,
                     ),
                     decoration: BoxDecoration(
-                      color: primaryColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    child: Text(
-                      _generatedID,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: primaryColor,
-                        letterSpacing: 1.5,
+                      color: isDark
+                          ? const Color(0xFF2C2C2C)
+                          : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isDark ? Colors.white10 : Colors.grey.shade300,
                       ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.tag_rounded,
+                          size: 16,
+                          color: Colors.grey.shade500,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _generatedID,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: textColor,
+                            letterSpacing: 2.0,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -559,84 +640,12 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
             ),
             const SizedBox(height: 40),
 
-            _buildSectionTitle("Student Details", Icons.person_outline),
-            const SizedBox(height: 15),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildTextField(
-                    _firstNameController,
-                    "First Name",
-                    Icons.badge,
-                    isDark,
-                  ),
-                ),
-                const SizedBox(width: 15),
-                Expanded(
-                  child: _buildTextField(
-                    _middleNameController,
-                    "Middle Name",
-                    null,
-                    isDark,
-                    isRequired: false,
-                  ),
-                ),
-              ],
+            _buildSectionTitle(
+              "Academic Setup",
+              Icons.school_rounded,
+              primaryColor,
             ),
-            const SizedBox(height: 15),
-            _buildTextField(
-              _lastNameController,
-              "Surname (Last Name)",
-              Icons.badge_outlined,
-              isDark,
-            ),
-            const SizedBox(height: 15),
-            Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: _buildTextField(
-                    _dobController,
-                    "Date of Birth",
-                    Icons.cake,
-                    isDark,
-                    readOnly: true,
-                    onTap: () async {
-                      final DateTime? picked = await showDatePicker(
-                        context: context,
-                        initialDate: DateTime.now().subtract(
-                          const Duration(days: 365 * 3),
-                        ),
-                        firstDate: DateTime(1990),
-                        lastDate: DateTime.now(), // 🚨 Locks out future dates
-                      );
-                      if (picked != null) {
-                        setState(() {
-                          _dobController.text =
-                              "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}";
-                        });
-                      }
-                    },
-                  ),
-                ),
-                const SizedBox(width: 15),
-                Expanded(
-                  flex: 2,
-                  child: _buildDropdown(
-                    "Gender",
-                    ['Male', 'Female'],
-                    _selectedGender,
-                    (v) => setState(() => _selectedGender = v!),
-                    isDark,
-                    primaryColor,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 30),
-
-            _buildSectionTitle("Academic Setup", Icons.school_outlined),
-            const SizedBox(height: 15),
+            const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
@@ -651,13 +660,14 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
                     }),
                     isDark,
                     primaryColor,
+                    cardColor,
                   ),
                 ),
-                const SizedBox(width: 15),
+                const SizedBox(width: 16),
                 Expanded(
                   flex: 4,
                   child: _buildDropdown(
-                    "Class",
+                    "Class Designation",
                     _activeClasses,
                     _selectedClass,
                     (v) => setState(() {
@@ -666,12 +676,13 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
                     }),
                     isDark,
                     primaryColor,
+                    cardColor,
                   ),
                 ),
               ],
             ),
             if ((_selectedClass ?? "").contains("SS")) ...[
-              const SizedBox(height: 15),
+              const SizedBox(height: 16),
               _buildDropdown(
                 "Department (Optional)",
                 ['Science', 'Art', 'Commercial'],
@@ -679,9 +690,10 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
                 (v) => setState(() => _selectedDepartment = v),
                 isDark,
                 primaryColor,
+                cardColor,
               ),
             ],
-            const SizedBox(height: 15),
+            const SizedBox(height: 16),
             _buildDropdown(
               "Admission Type",
               ['Regular', 'Transfer', 'Scholarship', 'Special'],
@@ -689,22 +701,110 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
               (v) => setState(() => _studentCategory = v!),
               isDark,
               primaryColor,
+              cardColor,
             ),
             const SizedBox(height: 40),
 
             _buildSectionTitle(
-              "Parent/Guardian Profile",
-              Icons.family_restroom_rounded,
+              "Student Biodata",
+              Icons.badge_rounded,
+              Colors.orange,
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTextField(
+                    _firstNameController,
+                    "First Name",
+                    Icons.person_outline_rounded,
+                    isDark,
+                    primaryColor,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildTextField(
+                    _middleNameController,
+                    "Middle Name",
+                    null,
+                    isDark,
+                    primaryColor,
+                    isRequired: false,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              _lastNameController,
+              "Surname (Last Name)",
+              Icons.badge_outlined,
+              isDark,
+              primaryColor,
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: _buildTextField(
+                    _dobController,
+                    "Date of Birth",
+                    Icons.cake_rounded,
+                    isDark,
+                    primaryColor,
+                    readOnly: true,
+                    onTap: () async {
+                      final DateTime? picked = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now().subtract(
+                          const Duration(days: 365 * 3),
+                        ),
+                        firstDate: DateTime(1990),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked != null) {
+                        setState(() {
+                          _dobController.text =
+                              "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}";
+                        });
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 2,
+                  child: _buildDropdown(
+                    "Gender",
+                    ['Male', 'Female'],
+                    _selectedGender,
+                    (v) => setState(() => _selectedGender = v!),
+                    isDark,
+                    primaryColor,
+                    cardColor,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 40),
 
+            _buildSectionTitle(
+              "Parent / Guardian Routing",
+              Icons.family_restroom_rounded,
+              Colors.green,
+            ),
+            const SizedBox(height: 20),
+
+            // 🚨 POLISHED SEGMENTED CONTROL FOR EMAIL/PHONE TOGGLE
             Container(
-              padding: const EdgeInsets.all(5),
+              padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
                 color: isDark
                     ? Colors.white.withValues(alpha: 0.05)
-                    : Colors.grey[200],
-                borderRadius: BorderRadius.circular(15),
+                    : Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(16),
               ),
               child: Row(
                 children: [
@@ -714,22 +814,33 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
                         _usePhoneAsLogin = false;
                         _loginPhoneController.clear();
                       }),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                         decoration: BoxDecoration(
                           color: !_usePhoneAsLogin
-                              ? primaryColor
+                              ? cardColor
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(12),
+                          boxShadow: !_usePhoneAsLogin
+                              ? [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.05),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ]
+                              : [],
                         ),
                         child: Center(
                           child: Text(
-                            "Use Email to Login",
+                            "Email Login",
                             style: TextStyle(
                               color: !_usePhoneAsLogin
-                                  ? Colors.white
-                                  : Colors.grey,
+                                  ? textColor
+                                  : Colors.grey.shade500,
                               fontWeight: FontWeight.bold,
+                              fontSize: 13,
                             ),
                           ),
                         ),
@@ -742,22 +853,33 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
                         _usePhoneAsLogin = true;
                         _parentEmailController.clear();
                       }),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                         decoration: BoxDecoration(
                           color: _usePhoneAsLogin
-                              ? primaryColor
+                              ? cardColor
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(12),
+                          boxShadow: _usePhoneAsLogin
+                              ? [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.05),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ]
+                              : [],
                         ),
                         child: Center(
                           child: Text(
-                            "Use Phone to Login",
+                            "Phone Login",
                             style: TextStyle(
                               color: _usePhoneAsLogin
-                                  ? Colors.white
-                                  : Colors.grey,
+                                  ? textColor
+                                  : Colors.grey.shade500,
                               fontWeight: FontWeight.bold,
+                              fontSize: 13,
                             ),
                           ),
                         ),
@@ -771,71 +893,92 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
 
             _buildTextField(
               _parentNameController,
-              "Parent/Guardian Full Name",
-              Icons.person,
+              "Parent Full Name",
+              Icons.account_circle_rounded,
               isDark,
+              primaryColor,
             ),
-            const SizedBox(height: 15),
+            const SizedBox(height: 16),
 
             AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
+              duration: const Duration(milliseconds: 400),
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SizeTransition(sizeFactor: animation, child: child),
+              ),
               child: _usePhoneAsLogin
                   ? _buildPhoneLoginFields(isDark, primaryColor)
                   : _buildEmailLoginFields(isDark, primaryColor),
             ),
 
-            const SizedBox(height: 15),
+            const SizedBox(height: 16),
             _buildTextField(
               _addressController,
               "Home Address",
-              Icons.location_on,
+              Icons.location_on_rounded,
               isDark,
+              primaryColor,
               maxLines: 2,
             ),
 
-            const SizedBox(height: 30),
-            _buildSectionTitle("Parent Login Setup", Icons.security_outlined),
-            const SizedBox(height: 15),
+            const SizedBox(height: 35),
+            _buildSectionTitle(
+              "Security & Authorization",
+              Icons.security_rounded,
+              Colors.redAccent,
+            ),
+            const SizedBox(height: 20),
             _buildPasswordField(
               _parentPasswordController,
               "Create Parent Password",
               _isObscure1,
               (v) => setState(() => _isObscure1 = v),
               isDark,
+              primaryColor,
             ),
-            const SizedBox(height: 15),
+            const SizedBox(height: 16),
             _buildPasswordField(
               _parentConfirmPasswordController,
               "Confirm Password",
               _isObscure2,
               (v) => setState(() => _isObscure2 = v),
               isDark,
+              primaryColor,
             ),
 
             const SizedBox(height: 50),
 
             SizedBox(
               width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
+              height: 60,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
                   backgroundColor: primaryColor,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+                    borderRadius: BorderRadius.circular(16),
                   ),
+                  elevation: 0,
                 ),
                 onPressed: _isLoading ? null : _registerStudent,
-                child: _isLoading
-                    ? const TridetaLoader(color: Colors.white)
-                    : const Text(
-                        "SUBMIT ENROLLMENT",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                          letterSpacing: 1,
-                        ),
+                icon: _isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: TridetaLoader(color: Colors.white),
+                      )
+                    : const Icon(
+                        Icons.check_circle_rounded,
+                        color: Colors.white,
                       ),
+                label: Text(
+                  _isLoading ? "AUTHORIZING..." : "SUBMIT ENROLLMENT",
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 1.0,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 50),
@@ -845,20 +988,34 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     );
   }
 
-  Widget _buildSectionTitle(String title, IconData icon) {
-    return Row(
+  Widget _buildSectionTitle(String title, IconData icon, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: Colors.grey, size: 20),
-        const SizedBox(width: 8),
-        Text(
-          title.toUpperCase(),
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.grey,
-            letterSpacing: 1.2,
-            fontSize: 12,
-          ),
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: color, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              title.toUpperCase(),
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                color: color,
+                letterSpacing: 1.5,
+                fontSize: 11,
+              ),
+            ),
+          ],
         ),
+        const SizedBox(height: 10),
+        Divider(height: 1, color: Colors.grey.withValues(alpha: 0.2)),
       ],
     );
   }
@@ -867,7 +1024,8 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     TextEditingController ctrl,
     String label,
     IconData? icon,
-    bool isDark, {
+    bool isDark,
+    Color primaryColor, {
     bool isRequired = true,
     int maxLines = 1,
     bool readOnly = false,
@@ -883,19 +1041,29 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
           : null,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: icon != null ? Icon(icon, color: Colors.grey) : null,
+        labelStyle: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+        prefixIcon: icon != null
+            ? Icon(icon, color: primaryColor, size: 20)
+            : null,
         filled: true,
         fillColor: isDark
-            ? Colors.white.withValues(alpha: 0.05)
-            : Colors.grey[50],
+            ? Colors.white.withValues(alpha: 0.03)
+            : Colors.grey.shade50,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(
-            color: isDark ? Colors.white10 : Colors.grey.shade300,
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(
+            color: primaryColor.withValues(alpha: 0.5),
+            width: 2,
           ),
         ),
       ),
@@ -908,6 +1076,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     bool isObscure,
     Function(bool) onToggle,
     bool isDark,
+    Color primaryColor,
   ) {
     return TextFormField(
       controller: ctrl,
@@ -916,33 +1085,41 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         if (v!.isEmpty) return "Password required";
         if (v.length < 6) return "Must be at least 6 chars";
         if (ctrl == _parentConfirmPasswordController &&
-            v != _parentPasswordController.text) {
+            v != _parentPasswordController.text)
           return "Passwords do not match";
-        }
         return null;
       },
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: const Icon(Icons.lock_outline, color: Colors.grey),
+        labelStyle: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+        prefixIcon: Icon(Icons.lock_rounded, color: primaryColor, size: 20),
         suffixIcon: IconButton(
           icon: Icon(
-            isObscure ? Icons.visibility_off : Icons.visibility,
-            color: Colors.grey,
+            isObscure ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+            color: Colors.grey.shade400,
+            size: 20,
           ),
           onPressed: () => onToggle(!isObscure),
         ),
         filled: true,
         fillColor: isDark
-            ? Colors.white.withValues(alpha: 0.05)
-            : Colors.grey[50],
+            ? Colors.white.withValues(alpha: 0.03)
+            : Colors.grey.shade50,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(
-            color: isDark ? Colors.white10 : Colors.grey.shade300,
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(
+            color: primaryColor.withValues(alpha: 0.5),
+            width: 2,
           ),
         ),
       ),
@@ -956,13 +1133,16 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     Function(String?) onChanged,
     bool isDark,
     Color primaryColor,
+    Color dropdownColor,
   ) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50],
-        borderRadius: BorderRadius.circular(15),
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.03)
+            : Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade300,
+          color: isDark ? Colors.white10 : Colors.grey.shade200,
         ),
       ),
       child: DropdownButtonHideUnderline(
@@ -970,26 +1150,35 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
           isExpanded: true,
           value: value,
           hint: Padding(
-            padding: const EdgeInsets.only(left: 15),
-            child: Text(hint, style: const TextStyle(color: Colors.grey)),
+            padding: const EdgeInsets.only(left: 16),
+            child: Text(
+              hint,
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+            ),
           ),
           icon: Padding(
-            padding: const EdgeInsets.only(right: 15),
-            child: Icon(Icons.arrow_drop_down, color: primaryColor),
+            padding: const EdgeInsets.only(right: 16),
+            child: Icon(Icons.keyboard_arrow_down_rounded, color: primaryColor),
           ),
           items: items
               .map(
                 (e) => DropdownMenuItem(
                   value: e,
                   child: Padding(
-                    padding: const EdgeInsets.only(left: 15),
-                    child: Text(e),
+                    padding: const EdgeInsets.only(left: 16),
+                    child: Text(
+                      e,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
                   ),
                 ),
               )
               .toList(),
           onChanged: onChanged,
-          dropdownColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          dropdownColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
         ),
       ),
     );
@@ -1002,15 +1191,17 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         _buildTextField(
           _parentEmailController,
           "Parent Login Email",
-          Icons.email_outlined,
+          Icons.email_rounded,
           isDark,
+          primaryColor,
         ),
-        const SizedBox(height: 15),
+        const SizedBox(height: 16),
         _buildTextField(
           _parentPhoneController,
           "Contact Phone Number (Optional)",
-          Icons.phone,
+          Icons.phone_rounded,
           isDark,
+          primaryColor,
           isRequired: false,
         ),
       ],
@@ -1020,6 +1211,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
   Widget _buildPhoneLoginFields(bool isDark, Color primaryColor) {
     return Column(
       key: const ValueKey('phone_login'),
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextFormField(
           controller: _loginPhoneController,
@@ -1029,34 +1221,70 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
               v!.trim().isEmpty ? "Phone required for login" : null,
           decoration: InputDecoration(
             labelText: "Login Phone Number",
+            labelStyle: TextStyle(color: Colors.grey.shade500, fontSize: 13),
             hintText: "08012345678",
-            prefixIcon: const Padding(
-              padding: EdgeInsets.all(15),
+            hintStyle: TextStyle(color: Colors.grey.shade400),
+            prefixIcon: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
               child: Text(
                 "🇳🇬 +234",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 15,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
               ),
             ),
             filled: true,
             fillColor: isDark
-                ? Colors.white.withValues(alpha: 0.05)
-                : Colors.grey[50],
+                ? Colors.white.withValues(alpha: 0.03)
+                : Colors.grey.shade50,
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(15),
+              borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide.none,
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(15),
+              borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide(
-                color: isDark ? Colors.white10 : Colors.grey.shade300,
+                color: isDark ? Colors.white10 : Colors.grey.shade200,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(
+                color: primaryColor.withValues(alpha: 0.5),
+                width: 2,
               ),
             ),
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          "Parents will log in using this number exactly as entered.",
-          style: TextStyle(color: Colors.orange[700], fontSize: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.orange.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.info_outline_rounded,
+                color: Colors.orange,
+                size: 14,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  "Parents will log in using this number exactly as entered.",
+                  style: TextStyle(
+                    color: Colors.orange.shade700,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -1070,11 +1298,20 @@ class _NoClassesView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Color primaryColor = Theme.of(context).primaryColor;
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
+      backgroundColor: isDark
+          ? const Color(0xFF121212)
+          : const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text("System Check"),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
+        title: const Text(
+          "System Check",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.transparent,
+        foregroundColor: isDark ? Colors.white : Colors.black87,
+        elevation: 0,
       ),
       body: Center(
         child: Padding(
@@ -1082,44 +1319,57 @@ class _NoClassesView extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.warning_amber_rounded, size: 80, color: Colors.orange),
-              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.warning_amber_rounded,
+                  size: 60,
+                  color: Colors.orange,
+                ),
+              ),
+              const SizedBox(height: 24),
               const Text(
                 "Configuration Required",
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 10),
-              const Text(
-                "Please define active classes in the Setup Wizard.",
+              Text(
+                "Please define active classes in the Setup Wizard before admitting students.",
                 textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade500, height: 1.4),
               ),
               const SizedBox(height: 40),
-              SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 16,
                   ),
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const SchoolConfigurationScreen(),
-                    ),
-                  ).then((_) => onRefresh()),
-                  icon: const Icon(
-                    Icons.settings_suggest_rounded,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const SchoolConfigurationScreen(),
+                  ),
+                ).then((_) => onRefresh()),
+                icon: const Icon(
+                  Icons.settings_suggest_rounded,
+                  color: Colors.white,
+                ),
+                label: const Text(
+                  "OPEN SETUP WIZARD",
+                  style: TextStyle(
                     color: Colors.white,
-                  ),
-                  label: const Text(
-                    "OPEN SETUP WIZARD",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.0,
                   ),
                 ),
               ),

@@ -9,6 +9,7 @@ import 'fee_structure_screen.dart';
 import 'receipt_history_screen.dart';
 import 'record_payment_screen.dart';
 import 'debtors_list_screen.dart';
+import 'session_archive_screen.dart' show SessionArchiveScreen;
 
 class FinanceCentreScreen extends StatefulWidget {
   const FinanceCentreScreen({super.key});
@@ -39,7 +40,9 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
     _fetchFinanceData();
   }
 
-  // --- 🚨 IRONCLAD FINANCIAL MATH ENGINE WITH NATIVE UUID MATCHING 🚨 ---
+  // ===========================================================================
+  // 🚨 LOGIC ENGINE: STRICTLY UNTOUCHED
+  // ===========================================================================
   Future<void> _fetchFinanceData() async {
     setState(() => _isLoading = true);
     try {
@@ -276,10 +279,14 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
     }
   }
 
+  // ===========================================================================
+  // 🚨 PREMIUM UI (REFINED)
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
     final currencyFormat = NumberFormat.currency(symbol: '₦', decimalDigits: 2);
 
     Color primaryColor = Theme.of(context).primaryColor;
@@ -297,23 +304,26 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                 children: [
                   _buildFinanceSnapshot(isDark, currencyFormat, primaryColor),
                   const SizedBox(height: 30),
-                  if (!_isFeesActivated) _buildSetupWarning(),
+
+                  if (!_isFeesActivated) _buildSetupWarning(isDark),
+
                   Text(
-                    "ADMINISTRATIVE ACTIONS",
+                    "FINANCIAL OPERATIONS",
                     style: TextStyle(
                       fontWeight: FontWeight.w800,
-                      color: primaryColor.withValues(alpha: 0.8),
+                      color: Colors.grey.shade500,
                       fontSize: 12,
-                      letterSpacing: 1.1,
+                      letterSpacing: 1.2,
                     ),
                   ),
                   const SizedBox(height: 15),
+
                   GridView.count(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     crossAxisCount: 2,
-                    crossAxisSpacing: 15,
-                    mainAxisSpacing: 15,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
                     childAspectRatio: 1.1,
                     children: [
                       _buildActionCard(
@@ -323,7 +333,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                             ? "Post payments"
                             : "Setup needed",
                         icon: Icons.account_balance_wallet_rounded,
-                        color: Colors.green,
+                        color: Colors.green.shade600,
                         isLocked: !_isFeesActivated,
                         onTap: () => Navigator.push(
                           context,
@@ -337,7 +347,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                         title: "Fee Structure",
                         subtitle: "Manage pricing",
                         icon: Icons.settings_applications_rounded,
-                        color: Colors.orange,
+                        color: Colors.orange.shade600,
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -350,7 +360,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                         title: "History",
                         subtitle: "Receipt logs",
                         icon: Icons.receipt_long_rounded,
-                        color: Colors.blue,
+                        color: Colors.blue.shade600,
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -371,6 +381,22 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                           ),
                         ),
                       ),
+                      _buildActionCard(
+                        context,
+                        title: "Close Session",
+                        subtitle: "Archive & Reset",
+                        icon: Icons.archive_rounded,
+                        color: Colors.deepPurple,
+                        onTap: () =>
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const SessionArchiveScreen(),
+                              ),
+                            ).then(
+                              (_) => _fetchFinanceData(),
+                            ), // Refreshes dashboard if session changed
+                      ),
                     ],
                   ),
                 ],
@@ -383,10 +409,10 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
       appBar: AppBar(
         title: const Text(
           "Finance Centre",
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
+        backgroundColor: bgColor,
+        foregroundColor: textColor,
         elevation: 0,
         centerTitle: true,
       ),
@@ -429,70 +455,99 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
   ) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         gradient: LinearGradient(
+          colors: [primaryColor.withValues(alpha: 0.85), primaryColor],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [primaryColor, primaryColor.withValues(alpha: 0.8)],
         ),
-        borderRadius: BorderRadius.circular(25),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
             color: primaryColor.withValues(alpha: 0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
         ],
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.2),
+          width: 1.5,
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                "TOTAL COLLECTED ($_activeSessionLabel)",
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const Icon(
-                Icons.download_rounded,
-                color: Colors.white54,
-                size: 18,
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          FittedBox(
-            child: Text(
-              f.format(_rawCollected),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 32,
-                fontWeight: FontWeight.w900,
-              ),
+          Positioned(
+            right: -30,
+            top: -30,
+            child: CircleAvatar(
+              radius: 70,
+              backgroundColor: Colors.white.withValues(alpha: 0.1),
             ),
           ),
-          const SizedBox(height: 25),
-          Row(
-            children: [
-              _snapshotMiniItem(
-                "Outstanding",
-                f.format(_rawDebt),
-                Icons.arrow_downward_rounded,
-              ),
-              const SizedBox(width: 30),
-              _snapshotMiniItem(
-                "Transactions",
-                _invoiceCount.toString(),
-                Icons.description_rounded,
-              ),
-            ],
+          Positioned(
+            left: -20,
+            bottom: -40,
+            child: CircleAvatar(
+              radius: 60,
+              backgroundColor: Colors.white.withValues(alpha: 0.05),
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "TOTAL COLLECTED ($_activeSessionLabel)",
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const Icon(
+                      Icons.account_balance_rounded,
+                      color: Colors.white54,
+                      size: 18,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                FittedBox(
+                  child: Text(
+                    f.format(_rawCollected),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 36,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 25),
+                Row(
+                  children: [
+                    _snapshotMiniItem(
+                      "Outstanding",
+                      f.format(_rawDebt),
+                      Icons.arrow_downward_rounded,
+                    ),
+                    const SizedBox(width: 30),
+                    _snapshotMiniItem(
+                      "Transactions",
+                      _invoiceCount.toString(),
+                      Icons.receipt_long_rounded,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -517,6 +572,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                const SizedBox(height: 2),
                 Text(
                   val,
                   overflow: TextOverflow.ellipsis,
@@ -544,13 +600,24 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
     bool isLocked = false,
   }) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.grey.shade100,
+          width: 1.5,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
@@ -571,7 +638,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    isLocked ? Icons.lock_outline : icon,
+                    isLocked ? Icons.lock_outline_rounded : icon,
                     color: isLocked ? Colors.grey : color,
                     size: 28,
                   ),
@@ -579,15 +646,22 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                 const SizedBox(height: 12),
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
+                    color: textColor,
                   ),
                 ),
+                const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: const TextStyle(color: Colors.grey, fontSize: 10),
+                  style: TextStyle(
+                    color: isDark ? Colors.white54 : Colors.grey.shade500,
+                    fontSize: 10,
+                  ),
                   textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -597,23 +671,41 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
     );
   }
 
-  Widget _buildSetupWarning() {
+  Widget _buildSetupWarning(bool isDark) {
     return Container(
       margin: const EdgeInsets.only(bottom: 25),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.orange.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.orange.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.info_outline_rounded, color: Colors.orange),
-          SizedBox(width: 15),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.info_outline_rounded,
+              color: Colors.orange,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 15),
           Expanded(
             child: Text(
-              "Bursary inactive. Add items to the Fee Structure to begin.",
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+              "Bursary inactive. Add items to the Fee Structure to begin receiving payments.",
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
             ),
           ),
         ],

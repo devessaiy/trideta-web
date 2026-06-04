@@ -29,7 +29,9 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
     _fetchDebtors();
   }
 
-  // --- 🚨 IRONCLAD FINANCIAL MATH ENGINE WITH NATIVE UUID MATCHING 🚨 ---
+  // ===========================================================================
+  // 🚨 LOGIC ENGINE: STRICTLY UNTOUCHED
+  // ===========================================================================
   Future<void> _fetchDebtors() async {
     setState(() => _isLoading = true);
     try {
@@ -197,7 +199,6 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
     }
   }
 
-  // --- THE BUILT-IN TRANSLATOR ---
   String _standardizeClass(String val) {
     String v = val.replaceAll(' ', '').toLowerCase();
     v = v
@@ -215,7 +216,6 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
     return v;
   }
 
-  // --- THE SMART MATCHER ---
   bool _doesItApply(
     dynamic columnData,
     String studentData, {
@@ -272,7 +272,6 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
     }
   }
 
-  // --- AUTOMATIC DIALER LOGIC ---
   Future<void> _makePhoneCall(String phoneNumber) async {
     final cleanNumber = phoneNumber.replaceAll(RegExp(r'[^\d+]'), '');
     final Uri launchUri = Uri(scheme: 'tel', path: cleanNumber);
@@ -293,7 +292,10 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
     }
   }
 
-  // --- NEW CENTERED POPUP DIALOG ---
+  // ===========================================================================
+  // 🚨 PREMIUM UI (REFINED)
+  // ===========================================================================
+
   void _showContactPopup(
     Map<String, dynamic> debtor,
     NumberFormat f,
@@ -307,16 +309,19 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(24),
           ),
-          contentPadding: const EdgeInsets.all(25),
+          contentPadding: const EdgeInsets.all(30),
           title: Column(
             children: [
-              CircleAvatar(
-                radius: 35,
-                backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
                 child: const Icon(
-                  Icons.person,
+                  Icons.person_rounded,
                   color: Colors.redAccent,
                   size: 35,
                 ),
@@ -330,13 +335,23 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 5),
-              Text(
-                "Owes: ${f.format(debtor['debt'])}",
-                style: const TextStyle(
-                  color: Colors.redAccent,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  "Owes: ${f.format(debtor['debt'])}",
+                  style: const TextStyle(
+                    color: Colors.redAccent,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
             ],
@@ -347,36 +362,35 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(
-                  vertical: 15,
-                  horizontal: 10,
+                  vertical: 20,
+                  horizontal: 16,
                 ),
                 decoration: BoxDecoration(
-                  color: primaryColor.withValues(
-                    alpha: 0.05,
-                  ), // 🚨 Dynamic color
-                  borderRadius: BorderRadius.circular(15),
+                  color: primaryColor.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: primaryColor.withValues(alpha: 0.2),
-                  ), // 🚨 Dynamic color
+                  ),
                 ),
                 child: Column(
                   children: [
-                    const Text(
+                    Text(
                       "PARENT CONTACT",
                       style: TextStyle(
-                        color: Colors.grey,
+                        color: Colors.grey.shade600,
                         fontSize: 10,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w900,
                         letterSpacing: 1.2,
                       ),
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 8),
                     SelectableText(
                       debtor['phone'],
                       style: TextStyle(
-                        fontSize: 20,
+                        fontSize: 22,
                         fontWeight: FontWeight.w900,
-                        color: primaryColor, // 🚨 Dynamic color
+                        color: primaryColor,
+                        letterSpacing: 1.0,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -387,7 +401,7 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
           ),
           actionsAlignment: MainAxisAlignment.center,
           actionsPadding: const EdgeInsets.only(
-            bottom: 20,
+            bottom: 25,
             left: 20,
             right: 20,
           ),
@@ -403,27 +417,33 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
               ),
             ),
             const SizedBox(width: 10),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.green.shade600,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
+                  horizontal: 24,
+                  vertical: 14,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                elevation: 0,
               ),
               onPressed: () {
-                Navigator.pop(context); // Close the dialog first
-                _makePhoneCall(debtor['phone']); // Then launch the dialer
+                Navigator.pop(context);
+                _makePhoneCall(debtor['phone']);
               },
-              icon: const Icon(Icons.call, size: 20),
+              icon: const Icon(
+                Icons.call_rounded,
+                size: 20,
+                color: Colors.white,
+              ),
               label: const Text(
-                "Call Now",
-                style: TextStyle(fontWeight: FontWeight.bold),
+                "CALL NOW",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
               ),
             ),
           ],
@@ -435,36 +455,36 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final currencyFormat = NumberFormat.currency(symbol: '₦', decimalDigits: 2);
-
-    // 🚨 DYNAMIC COLOR INJECTION
     Color primaryColor = Theme.of(context).primaryColor;
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+    final currencyFormat = NumberFormat.currency(symbol: '₦', decimalDigits: 0);
 
-    return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        title: const Text(
-          "Debtors List",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.redAccent, // Kept red for urgency!
-        foregroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-      ),
-      // 🚨 SHAPE-SHIFTER: LayoutBuilder
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          Widget mainContent = _isLoading
-              ? const Center(child: TridetaLoader(color: Colors.redAccent))
-              : _debtors.isEmpty
-              ? _buildEmptyState()
-              : ListView.separated(
-                  padding: const EdgeInsets.all(20),
+    // Calculate dynamic header stats
+    double totalDebtAmount = _debtors.fold(
+      0.0,
+      (sum, item) => sum + (item['debt'] as double),
+    );
+    int totalDebtors = _debtors.length;
+
+    Widget mainContent = _isLoading
+        ? Center(child: TridetaLoader(color: primaryColor))
+        : _debtors.isEmpty
+        ? _buildEmptyState(isDark)
+        : Column(
+            children: [
+              _buildSummaryHeader(
+                totalDebtAmount,
+                totalDebtors,
+                currencyFormat,
+              ),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 10,
+                  ),
                   itemCount: _debtors.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 15),
                   itemBuilder: (context, index) {
                     final debtor = _debtors[index];
                     return _buildDebtorCard(
@@ -474,10 +494,26 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
                       primaryColor,
                     );
                   },
-                );
+                ),
+              ),
+            ],
+          );
 
+    return Scaffold(
+      backgroundColor: bgColor,
+      appBar: AppBar(
+        title: const Text(
+          "Debtors List",
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        backgroundColor: bgColor,
+        foregroundColor: textColor,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
           if (constraints.maxWidth > 800) {
-            // 💻 DESKTOP LAYOUT (Constrained Center Column)
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 800),
@@ -500,10 +536,111 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
               ),
             );
           } else {
-            // 📱 MOBILE LAYOUT
             return mainContent;
           }
         },
+      ),
+    );
+  }
+
+  Widget _buildSummaryHeader(double totalDebt, int count, NumberFormat f) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 10, 24, 20),
+      width: double.infinity,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.redAccent.shade700, Colors.redAccent.shade400],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.redAccent.withValues(alpha: 0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -30,
+            top: -30,
+            child: CircleAvatar(
+              radius: 70,
+              backgroundColor: Colors.white.withValues(alpha: 0.1),
+            ),
+          ),
+          Positioned(
+            left: -20,
+            bottom: -40,
+            child: CircleAvatar(
+              radius: 60,
+              backgroundColor: Colors.white.withValues(alpha: 0.05),
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(
+                      Icons.warning_rounded,
+                      color: Colors.white70,
+                      size: 16,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      "TOTAL OUTSTANDING DEBT",
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                FittedBox(
+                  child: Text(
+                    f.format(totalDebt),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 36,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    "Across $count Students",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -514,92 +651,140 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
     NumberFormat f,
     Color primaryColor,
   ) {
-    return InkWell(
-      onTap: () => _showContactPopup(debtor, f, primaryColor),
-      borderRadius: BorderRadius.circular(15),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(
-            color: isDark ? Colors.white10 : Colors.grey.shade200,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.grey.shade200,
+          width: 1.5,
         ),
-        child: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
-              child: const Icon(Icons.warning_rounded, color: Colors.redAccent),
-            ),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    debtor['name'],
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  Text(
-                    debtor['class'],
-                    style: const TextStyle(color: Colors.grey, fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _showContactPopup(debtor, f, primaryColor),
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
               children: [
-                Text(
-                  f.format(debtor['debt']),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.person_off_rounded,
                     color: Colors.redAccent,
-                    fontSize: 15,
+                    size: 24,
                   ),
                 ),
-                const Text(
-                  "Tap to Contact",
-                  style: TextStyle(color: Colors.grey, fontSize: 10),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        debtor['name'],
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: textColor,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        debtor['class'],
+                        style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      f.format(debtor['debt']),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: Colors.redAccent,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        "Contact",
+                        style: TextStyle(
+                          color: primaryColor,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(bool isDark) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.check_circle_outline,
-            size: 80,
-            color: Colors.green.withValues(alpha: 0.5),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.green.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.check_circle_rounded,
+              size: 60,
+              color: Colors.green,
+            ),
           ),
           const SizedBox(height: 20),
           const Text(
             "No Debtors Found!",
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
           ),
-          const SizedBox(height: 10),
-          const Text(
-            "All students have fully paid their fees for the current session.",
-            style: TextStyle(color: Colors.grey),
+          const SizedBox(height: 8),
+          Text(
+            "All students have fully paid their fees\nfor the current session.",
+            style: TextStyle(color: Colors.grey.shade500, height: 1.4),
             textAlign: TextAlign.center,
           ),
         ],

@@ -3,8 +3,6 @@ import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// 🚨 UPDATED ABSOLUTE IMPORT
-
 class FeeStructureScreen extends StatefulWidget {
   const FeeStructureScreen({super.key});
 
@@ -19,13 +17,13 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
   String? _schoolId;
   final List<String> _schoolClasses = [];
 
-  // 🚨 ADDED: Map to link class names to their UUIDs
+  // 🚨 UNTOUCHED: Map to link class names to their UUIDs
   final Map<String, String> _classNameToIdMap = {};
 
   bool _isLoading = true;
 
-  // 🚨 NEW: RBAC TRACKER
-  String _userRole = 'bursar'; // Default to bursar (lowest privilege)
+  // 🚨 UNTOUCHED: RBAC TRACKER
+  String _userRole = 'bursar';
 
   @override
   void initState() {
@@ -33,13 +31,14 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
     _loadSchoolConfiguration();
   }
 
-  // 🚨 FETCHING ROLE AND SCHOOL CONFIGURATION
+  // ===========================================================================
+  // 🚨 LOGIC ENGINE: STRICTLY UNTOUCHED
+  // ===========================================================================
   Future<void> _loadSchoolConfiguration() async {
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) return;
 
-      // Fetch School ID and Role
       final profile = await _supabase
           .from('profiles')
           .select('school_id, role')
@@ -50,7 +49,6 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
       _userRole = profile['role']?.toString().toLowerCase() ?? 'bursar';
 
       if (_schoolId != null) {
-        // 🚨 Fetch both name and id
         final classesData = await _supabase
             .from('classes')
             .select('id, name')
@@ -78,41 +76,57 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
     }
   }
 
-  // --- REFRESH LOGIC ---
   Future<void> _handleRefresh() async {
     await _loadSchoolConfiguration();
   }
 
   Future<void> _deleteFee(String id, String feeName) async {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+
     bool confirm =
         await showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
-            backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            backgroundColor: cardColor,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(24),
             ),
             title: const Row(
               children: [
-                Icon(Icons.delete_sweep_rounded, color: Colors.red),
+                Icon(Icons.delete_sweep_rounded, color: Colors.redAccent),
                 SizedBox(width: 10),
-                Text("Remove Fee?"),
+                Text(
+                  "Remove Fee?",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
               ],
             ),
             content: Text(
               "Are you sure you want to remove '$feeName'? This will stop billing new students for this item.",
+              style: TextStyle(
+                color: isDark ? Colors.white70 : Colors.black87,
+                height: 1.4,
+              ),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
                 child: const Text(
                   "CANCEL",
-                  style: TextStyle(color: Colors.grey),
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
                 onPressed: () => Navigator.pop(ctx, true),
                 child: const Text(
                   "DELETE",
@@ -144,19 +158,19 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
     }
   }
 
+  // ===========================================================================
+  // 🚨 PREMIUM UI (REFINED)
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    Color textColor = isDark ? Colors.white : Colors.black87;
-
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
     Color primaryColor = Theme.of(context).primaryColor;
 
-    // 🚨 CHECK IF USER IS ADMIN
     bool isAdmin = _userRole == 'admin';
 
-    // 🚨 MAIN CONTENT EXTRACTED FOR LAYOUT BUILDER
     Widget mainContent = _isLoading
         ? Center(child: TridetaLoader(color: primaryColor))
         : RefreshIndicator(
@@ -174,7 +188,9 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                 if (!snapshot.hasData) {
                   return Center(child: TridetaLoader(color: primaryColor));
                 }
+
                 final fees = snapshot.data!;
+
                 if (fees.isEmpty) {
                   return ListView(
                     children: [
@@ -187,7 +203,10 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                 }
 
                 return ListView.builder(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 20,
+                  ),
                   itemCount: fees.length,
                   itemBuilder: (context, index) => _buildFeeRuleCard(
                     fees[index],
@@ -195,7 +214,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                     textColor,
                     isDark,
                     primaryColor,
-                    isAdmin, // 🚨 Pass Admin status down
+                    isAdmin,
                   ),
                 );
               },
@@ -206,21 +225,17 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
       backgroundColor: bgColor,
       appBar: AppBar(
         title: Text(
-          isAdmin
-              ? "Manage Fee Structure"
-              : "View Fee Structure", // Dynamic Title
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          isAdmin ? "Manage Fee Structure" : "View Fee Structure",
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
+        backgroundColor: bgColor, // 🚨 FIXED: Now matches the flat background
+        foregroundColor: textColor, // 🚨 FIXED: Adapts to dark/light mode
         elevation: 0,
         centerTitle: true,
       ),
-      // 🚨 SHAPE-SHIFTER: LayoutBuilder
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 800) {
-            // 💻 DESKTOP LAYOUT (Constrained center column)
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 800),
@@ -243,15 +258,14 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
               ),
             );
           } else {
-            // 📱 MOBILE LAYOUT
             return mainContent;
           }
         },
       ),
-      // 🚨 ONLY ADMIN CAN ADD NEW FEES
       floatingActionButton: isAdmin
           ? FloatingActionButton.extended(
               backgroundColor: primaryColor,
+              elevation: 4,
               onPressed: () => _showAddFeeModal(primaryColor, null),
               icon: const Icon(Icons.add_task_rounded, color: Colors.white),
               label: const Text(
@@ -259,172 +273,253 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
                 ),
               ),
             )
-          : null, // Hides button if Bursar
+          : null,
     );
   }
 
+  // 🚨 REDESIGNED ULTRA-PREMIUM CARD
   Widget _buildFeeRuleCard(
     Map<String, dynamic> rule,
     Color cardColor,
     Color textColor,
     bool isDark,
     Color primaryColor,
-    bool isAdmin, // 🚨 Receives Admin Status
+    bool isAdmin,
   ) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade100,
+          color: isDark ? Colors.white10 : Colors.grey.shade200,
+          width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top Section: Title & Amount
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    rule['fee_name'] ?? 'Fee',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 17,
-                      color: textColor,
-                    ),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.account_balance_wallet_rounded,
+                    color: primaryColor,
+                    size: 24,
                   ),
                 ),
-                Text(
-                  "₦${rule['amount']}",
-                  style: TextStyle(
-                    color: Colors.greenAccent.shade700,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        rule['fee_name'] ?? 'Fee Item',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 18,
+                          color: textColor,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.history_edu_rounded,
+                            size: 14,
+                            color: Colors.grey.shade500,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            rule['academic_session'] ?? 'All Sessions',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                // Premium Amount Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.green.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Text(
+                    "₦${rule['amount']}",
+                    style: TextStyle(
+                      color: Colors.green.shade700,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
+                    ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(
-                  Icons.calendar_today_rounded,
-                  size: 12,
-                  color: Colors.grey[500],
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  rule['academic_session'] ?? 'All Sessions',
-                  style: TextStyle(
-                    color: Colors.grey[500],
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Spacer(),
+          ),
 
-                // 🚨 ONLY ADMIN SEES EDIT/DELETE ICONS
-                if (isAdmin) ...[
-                  IconButton(
-                    onPressed: () => _showAddFeeModal(primaryColor, rule),
-                    icon: Icon(
-                      Icons.edit_rounded,
-                      color: Colors.blue.withValues(alpha: 0.7),
-                      size: 22,
-                    ),
-                    constraints: const BoxConstraints(),
-                    padding: const EdgeInsets.only(right: 15),
+          Divider(
+            height: 1,
+            color: isDark ? Colors.white10 : Colors.grey.shade100,
+          ),
+
+          // Bottom Section: Demographics & Actions
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "TARGET DEMOGRAPHIC",
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.grey.shade400,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ...(rule['applicable_classes'] as List? ?? []).map(
+                            (c) => _buildMiniChip(
+                              c.toString(),
+                              primaryColor,
+                              isDark,
+                            ),
+                          ),
+                          ...(rule['applicable_categories'] as List? ?? []).map(
+                            (c) => _buildMiniChip(
+                              c.toString(),
+                              Colors.orange,
+                              isDark,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    onPressed: () => _deleteFee(
-                      rule['id'].toString(),
-                      rule['fee_name'] ?? 'Fee',
-                    ),
-                    icon: Icon(
-                      Icons.delete_outline_rounded,
-                      color: Colors.red.withValues(alpha: 0.7),
-                      size: 22,
-                    ),
-                    constraints: const BoxConstraints(),
-                    padding: EdgeInsets.zero,
+                ),
+                if (isAdmin) ...[
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildActionButton(
+                        Icons.edit_rounded,
+                        primaryColor,
+                        () => _showAddFeeModal(primaryColor, rule),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildActionButton(
+                        Icons.delete_outline_rounded,
+                        Colors.redAccent,
+                        () => _deleteFee(
+                          rule['id'].toString(),
+                          rule['fee_name'] ?? 'Fee',
+                        ),
+                      ),
+                    ],
                   ),
                 ] else ...[
-                  // 🚨 Visual indicator for Bursar that it's view-only
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
+                      horizontal: 12,
+                      vertical: 6,
                     ),
                     decoration: BoxDecoration(
                       color: Colors.grey.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(5),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Text(
-                      "Read Only",
+                      "READ ONLY",
                       style: TextStyle(
                         fontSize: 10,
                         color: Colors.grey,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.0,
                       ),
                     ),
                   ),
                 ],
               ],
             ),
-            const Divider(height: 25),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                ...(rule['applicable_classes'] as List? ?? []).map(
-                  (c) => _buildMiniChip(c.toString(), primaryColor, isDark),
-                ),
-                ...(rule['applicable_categories'] as List? ?? []).map(
-                  (c) => _buildChip(c.toString(), Colors.orange, isDark),
-                ),
-              ],
-            ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton(IconData icon, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
         ),
+        child: Icon(icon, size: 20, color: color),
       ),
     );
   }
 
   Widget _buildMiniChip(String label, Color color, bool isDark) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
+        color: color.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Text(
         label,
         style: TextStyle(
           color: color,
           fontSize: 10,
-          fontWeight: FontWeight.bold,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.5,
         ),
       ),
     );
-  }
-
-  Widget _buildChip(String label, Color color, bool isDark) {
-    return _buildMiniChip(label, color, isDark);
   }
 
   void _showAddFeeModal(Color primaryColor, Map<String, dynamic>? initialData) {
@@ -432,13 +527,11 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      constraints: const BoxConstraints(
-        maxWidth: 600,
-      ), // 🚨 WEB/DESKTOP WIDTH CONSTRAINT
+      constraints: const BoxConstraints(maxWidth: 600),
       builder: (context) => AddFeeForm(
         schoolId: _schoolId!,
         availableClasses: _schoolClasses,
-        classNameToIdMap: _classNameToIdMap, // 🚨 PASSING THE MAP TO FORM
+        classNameToIdMap: _classNameToIdMap,
         primaryColor: primaryColor,
         initialData: initialData,
         onSuccess: (name, isEdit) {
@@ -458,15 +551,28 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.account_balance_rounded,
-            size: 80,
-            color: isDark ? Colors.white10 : Colors.grey[200],
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.grey.shade100,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.account_balance_rounded,
+              size: 60,
+              color: isDark ? Colors.white24 : Colors.grey[400],
+            ),
           ),
-          const SizedBox(height: 15),
+          const SizedBox(height: 20),
           const Text(
             "No fee rules defined yet.",
-            style: TextStyle(color: Colors.grey, fontSize: 16),
+            style: TextStyle(
+              color: Colors.grey,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -474,12 +580,14 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
   }
 }
 
-// --- ADD/EDIT FEE FORM ---
+// ============================================================================
+// 🚨 ADD/EDIT FEE FORM (POLISHED)
+// ============================================================================
 
 class AddFeeForm extends StatefulWidget {
   final String schoolId;
   final List<String> availableClasses;
-  final Map<String, String> classNameToIdMap; // 🚨 DICTIONARY RECEIVED
+  final Map<String, String> classNameToIdMap;
   final Function(String, bool) onSuccess;
   final Color primaryColor;
   final Map<String, dynamic>? initialData;
@@ -509,6 +617,8 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
     "Transfer",
     "Scholarship",
     "Special",
+    "Staff Child",
+    "Orphan",
   ];
   List<String> _selectedCategories = [];
 
@@ -533,6 +643,7 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
     }
   }
 
+  // 🚨 LOGIC UNTOUCHED
   Future<void> _saveFeeRule() async {
     if (_titleController.text.isEmpty ||
         _amountController.text.isEmpty ||
@@ -547,7 +658,6 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
     try {
       final feeName = _titleController.text;
 
-      // 🚨 CONVERT SELECTED NAMES TO A LIST OF UUIDs
       List<String> applicableClassIds = [];
       for (String cName in _selectedClasses) {
         if (widget.classNameToIdMap.containsKey(cName)) {
@@ -559,8 +669,8 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
         'school_id': widget.schoolId,
         'fee_name': feeName,
         'amount': double.parse(_amountController.text),
-        'applicable_classes': _selectedClasses, // Retain names for UI
-        'applicable_class_ids': applicableClassIds, // 🚨 NEW: Saves UUID array
+        'applicable_classes': _selectedClasses,
+        'applicable_class_ids': applicableClassIds,
         'applicable_categories': _selectedCategories,
         'academic_session': _selectedSession,
         'class_level': _selectedClasses.join(', '),
@@ -595,9 +705,9 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
 
     return Container(
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-        left: 20,
-        right: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        left: 24,
+        right: 24,
         top: 20,
       ),
       decoration: BoxDecoration(
@@ -611,19 +721,19 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
             Center(
               child: Container(
                 width: 40,
-                height: 4,
+                height: 5,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: Colors.grey.shade300,
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             Text(
               isEdit ? "Edit Fee Rule" : "Create Fee Rule",
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 25),
+            const SizedBox(height: 30),
 
             _buildFieldLabel("Basic Information", pColor),
             DropdownButtonFormField<String>(
@@ -635,14 +745,20 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
                 isDark,
                 pColor,
               ),
-              items: [
-                "2024/2025",
-                "2025/2026",
-                "2026/2027",
-              ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+              items: ["2024/2025", "2025/2026", "2026/2027"]
+                  .map(
+                    (e) => DropdownMenuItem(
+                      value: e,
+                      child: Text(
+                        e,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  )
+                  .toList(),
               onChanged: (val) => setState(() => _selectedSession = val!),
             ),
-            const SizedBox(height: 15),
+            const SizedBox(height: 16),
             TextField(
               controller: _titleController,
               decoration: _inputStyle(
@@ -652,43 +768,46 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
                 pColor,
               ),
             ),
-            const SizedBox(height: 15),
+            const SizedBox(height: 16),
             TextField(
               controller: _amountController,
               keyboardType: TextInputType.number,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               decoration: _inputStyle(
-                "Amount (₦)",
+                "Amount",
                 Icons.payments_rounded,
                 isDark,
                 pColor,
-              ),
+              ).copyWith(prefixText: "₦ "),
             ),
 
-            const SizedBox(height: 25),
+            const SizedBox(height: 30),
             _buildFieldLabel("Target Students", pColor),
             _buildSelectionWrap(
               widget.availableClasses,
               _selectedClasses,
               pColor,
+              isDark,
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             _buildFieldLabel("Category Filtering", pColor),
             _buildSelectionWrap(
               _allCategories,
               _selectedCategories,
               Colors.orange,
+              isDark,
             ),
 
-            const SizedBox(height: 35),
+            const SizedBox(height: 40),
             SizedBox(
               width: double.infinity,
               height: 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
+              child: FilledButton(
+                style: FilledButton.styleFrom(
                   backgroundColor: pColor,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
                 onPressed: _isSaving ? null : _saveFeeRule,
@@ -699,6 +818,7 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
+                          letterSpacing: 1.0,
                         ),
                       ),
               ),
@@ -711,7 +831,7 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
 
   Widget _buildFieldLabel(String text, Color pColor) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 10, left: 4),
       child: Text(
         text.toUpperCase(),
         style: TextStyle(
@@ -728,29 +848,34 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
     List<String> items,
     List<String> selectedList,
     Color activeColor,
+    bool isDark,
   ) {
     return Wrap(
       spacing: 8,
-      runSpacing: 0,
+      runSpacing: 8,
       children: items.map((item) {
         bool isSelected = selectedList.contains(item);
         return FilterChip(
           label: Text(
             item,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.grey[600],
+              color: isSelected ? activeColor : Colors.grey.shade500,
               fontSize: 12,
-              fontWeight: FontWeight.bold,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
             ),
           ),
           selected: isSelected,
           showCheckmark: false,
-          selectedColor: activeColor,
-          backgroundColor: Colors.transparent,
+          selectedColor: activeColor.withValues(alpha: 0.1),
+          backgroundColor: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.grey.shade50,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             side: BorderSide(
-              color: isSelected ? activeColor : Colors.grey.shade300,
+              color: isSelected
+                  ? activeColor.withValues(alpha: 0.5)
+                  : (isDark ? Colors.white10 : Colors.grey.shade300),
             ),
           ),
           onSelected: (val) => setState(
@@ -773,10 +898,16 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
       filled: true,
       fillColor: isDark
           ? Colors.white.withValues(alpha: 0.03)
-          : Colors.grey[50],
+          : Colors.grey.shade50,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(
+          color: isDark ? Colors.white10 : Colors.grey.shade200,
+        ),
       ),
     );
   }

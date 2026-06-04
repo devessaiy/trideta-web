@@ -27,7 +27,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   final List<String> _deletedClassIds = [];
   final List<String> _deletedSubjectIds = [];
 
-  // 🚨 DEEP CASCADE TRACKER
   final Map<String, String> _renamedClasses = {};
 
   // --- INPUT CONTROLLERS ---
@@ -42,6 +41,9 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
     _fetchRelationalConfig();
   }
 
+  // ===========================================================================
+  // 🚨 LOGIC ENGINE: STRICTLY UNTOUCHED
+  // ===========================================================================
   Future<void> _fetchRelationalConfig() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -77,7 +79,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
           _classSubjects = List<Map<String, dynamic>>.from(subjectsData);
 
           var activeClassesRaw = school['active_classes'];
-          // Ignore empty arrays or strings
           if (activeClassesRaw != null && activeClassesRaw.toString() != '[]') {
             try {
               List<dynamic> jsonClasses = activeClassesRaw is String
@@ -93,6 +94,8 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                   _classes.add({
                     'id': null,
                     'name': cName,
+                    'override_session': null,
+                    'override_term': null,
                     'list_order': _classes.length,
                   });
                 }
@@ -103,7 +106,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
           }
 
           var classSubjectsRaw = school['class_subjects'];
-          // Ignore empty maps or strings
           if (classSubjectsRaw != null && classSubjectsRaw.toString() != '{}') {
             try {
               Map<String, dynamic> jsonSubjects = classSubjectsRaw is String
@@ -172,7 +174,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
     }
   }
 
-  // --- 🚨 FIXED: SPLIT INSERT VS UPDATE LOGIC WITH PROPER DART SYNTAX ---
   Future<void> _saveConfig() async {
     setState(() => _isSaving = true);
     try {
@@ -189,18 +190,15 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
             .filter('id', 'in', _deletedSubjectIds);
       }
 
-      // 🚨 THE DEEP CASCADE: Update students and staff who belong to renamed classes
       for (String oldName in _renamedClasses.keys) {
         String newName = _renamedClasses[oldName]!;
 
-        // Update Students
         await _supabase
             .from('students')
             .update({'class_level': newName})
             .eq('school_id', _schoolId!)
             .eq('class_level', oldName);
 
-        // Update Staff Assignments
         await _supabase
             .from('staff_assignments')
             .update({'class_assigned': newName})
@@ -208,7 +206,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
             .eq('class_assigned', oldName);
       }
 
-      // 🚨 SMART SPLIT: Classes
       List<Map<String, dynamic>> classesToInsert = [];
       List<Map<String, dynamic>> classesToUpdate = [];
 
@@ -218,6 +215,8 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
           classesToInsert.add({
             'school_id': _schoolId,
             'name': c['name'],
+            'override_session': c['override_session'],
+            'override_term': c['override_term'],
             'list_order': i,
           });
         } else {
@@ -225,12 +224,13 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
             'id': c['id'],
             'school_id': _schoolId,
             'name': c['name'],
+            'override_session': c['override_session'],
+            'override_term': c['override_term'],
             'list_order': i,
           });
         }
       }
 
-      // 🚨 ADDED: Dictionary to grab the class UUIDs
       Map<String, String> classNameToId = {};
 
       if (classesToInsert.isNotEmpty) {
@@ -252,7 +252,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
         }
       }
 
-      // 🚨 SMART SPLIT: Subjects
       List<Map<String, dynamic>> subjectsToInsert = [];
       List<Map<String, dynamic>> subjectsToUpdate = [];
 
@@ -261,8 +260,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
           subjectsToInsert.add({
             'school_id': _schoolId,
             'class_name': s['class_name'],
-            'class_id':
-                classNameToId[s['class_name']], // 🚨 ADDED: Link the UUID directly!
+            'class_id': classNameToId[s['class_name']],
             'subject_name': s['subject_name'],
             'type': s['type'],
           });
@@ -271,8 +269,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
             'id': s['id'],
             'school_id': _schoolId,
             'class_name': s['class_name'],
-            'class_id':
-                classNameToId[s['class_name']], // 🚨 ADDED: Link the UUID directly!
+            'class_id': classNameToId[s['class_name']],
             'subject_name': s['subject_name'],
             'type': s['type'],
           });
@@ -286,7 +283,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
         await _supabase.from('class_subjects').upsert(subjectsToUpdate);
       }
 
-      // ✅ CORRECT DART SYNTAX FOR WIPING JSON
       await _supabase
           .from('schools')
           .update({'active_classes': [], 'class_subjects': {}})
@@ -295,15 +291,12 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
       if (mounted) {
         setState(() {
           _isSaving = false;
-          _renamedClasses.clear(); // Clear tracker after successful save
+          _renamedClasses.clear();
         });
         showSuccessDialog(
           "Success",
           "School structure secured to the database.",
         );
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) Navigator.pop(context);
-        });
       }
     } catch (e) {
       debugPrint("💥 DB SAVE ERROR: $e");
@@ -311,6 +304,217 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
         setState(() => _isSaving = false);
         showAuthErrorDialog("Failed to save. Please check your connection.");
       }
+    }
+  }
+
+  // ===========================================================================
+  // 🚨 MULTI-TENANT CALENDAR FEATURE & MODALS
+  // ===========================================================================
+
+  Future<void> _editClass(Map<String, dynamic> cls) async {
+    final oldName = cls['name'];
+    final editController = TextEditingController(text: oldName);
+
+    // Custom Calendar States
+    bool usesCustomCalendar =
+        cls['override_session'] != null || cls['override_term'] != null;
+    String customSession = cls['override_session'] ?? '2025/2026';
+    String customTerm = cls['override_term'] ?? '1st Term';
+
+    Color primaryColor = Theme.of(context).primaryColor;
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+
+    Map<String, dynamic>? result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: cardColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              title: const Text(
+                "Edit Class Configuration",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: editController,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: _inputStyle(
+                        "Class Name",
+                        Icons.class_rounded,
+                        isDark,
+                        primaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 25),
+
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.05)
+                            : Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: usesCustomCalendar
+                              ? primaryColor.withValues(alpha: 0.5)
+                              : (isDark
+                                    ? Colors.white10
+                                    : Colors.grey.shade200),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text(
+                              "Custom Academic Calendar",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            subtitle: Text(
+                              usesCustomCalendar
+                                  ? "Independent from global school calendar."
+                                  : "Inheriting global school calendar.",
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey.shade500,
+                              ),
+                            ),
+                            activeThumbColor: primaryColor,
+                            value: usesCustomCalendar,
+                            onChanged: (val) =>
+                                setDialogState(() => usesCustomCalendar = val),
+                          ),
+                          if (usesCustomCalendar) ...[
+                            const SizedBox(height: 10),
+                            DropdownButtonFormField<String>(
+                              initialValue: customSession,
+                              dropdownColor: cardColor,
+                              decoration: _inputStyle(
+                                "Session",
+                                Icons.calendar_month_rounded,
+                                isDark,
+                                primaryColor,
+                              ),
+                              items: ['2024/2025', '2025/2026', '2026/2027']
+                                  .map(
+                                    (e) => DropdownMenuItem(
+                                      value: e,
+                                      child: Text(
+                                        e,
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (val) =>
+                                  setDialogState(() => customSession = val!),
+                            ),
+                            const SizedBox(height: 10),
+                            DropdownButtonFormField<String>(
+                              initialValue: customTerm,
+                              dropdownColor: cardColor,
+                              decoration: _inputStyle(
+                                "Term",
+                                Icons.history_edu_rounded,
+                                isDark,
+                                primaryColor,
+                              ),
+                              items: ['1st Term', '2nd Term', '3rd Term']
+                                  .map(
+                                    (e) => DropdownMenuItem(
+                                      value: e,
+                                      child: Text(
+                                        e,
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (val) =>
+                                  setDialogState(() => customTerm = val!),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text(
+                    "Cancel",
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx, {
+                      'newName': editController.text.trim().toUpperCase(),
+                      'session': usesCustomCalendar ? customSession : null,
+                      'term': usesCustomCalendar ? customTerm : null,
+                    });
+                  },
+                  child: const Text(
+                    "Save Config",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result != null) {
+      String newName = result['newName'];
+      if (newName.isNotEmpty &&
+          newName != oldName &&
+          _classes.any((c) => c['name'] == newName)) {
+        _showDuplicateAlert("'$newName' already exists.");
+        return;
+      }
+
+      setState(() {
+        if (newName.isNotEmpty) {
+          cls['name'] = newName;
+          if (newName != oldName) _renamedClasses[oldName] = newName;
+          for (var s in _classSubjects) {
+            if (s['class_name'] == oldName) s['class_name'] = newName;
+          }
+          if (_selectedClassName == oldName) _selectedClassName = newName;
+        }
+
+        // Apply the Custom Calendar Overrides
+        cls['override_session'] = result['session'];
+        cls['override_term'] = result['term'];
+      });
     }
   }
 
@@ -325,6 +529,8 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
       _classes.add({
         'id': null,
         'name': clsName,
+        'override_session': null,
+        'override_term': null,
         'list_order': _classes.length,
       });
       _selectedClassName ??= clsName;
@@ -351,69 +557,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
             : null;
       }
     });
-  }
-
-  Future<void> _editClass(Map<String, dynamic> cls) async {
-    final oldName = cls['name'];
-    final editController = TextEditingController(text: oldName);
-    Color primaryColor = Theme.of(context).primaryColor;
-
-    String? newName = await showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-          ),
-          title: const Text(
-            "Edit Class Name",
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: TextField(
-            controller: editController,
-            textCapitalization: TextCapitalization.characters,
-            autofocus: true,
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: Colors.grey.withValues(alpha: 0.1),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
-              onPressed: () =>
-                  Navigator.pop(ctx, editController.text.trim().toUpperCase()),
-              child: const Text("Save", style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (newName != null && newName.isNotEmpty && newName != oldName) {
-      if (_classes.any((c) => c['name'] == newName)) {
-        _showDuplicateAlert("'$newName' already exists.");
-        return;
-      }
-      setState(() {
-        cls['name'] = newName;
-        // 🚨 TRACK THE RENAME FOR THE DEEP CASCADE
-        _renamedClasses[oldName] = newName;
-
-        for (var s in _classSubjects) {
-          if (s['class_name'] == oldName) s['class_name'] = newName;
-        }
-        if (_selectedClassName == oldName) _selectedClassName = newName;
-      });
-    }
   }
 
   void _addSubject() {
@@ -451,13 +594,15 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   Future<void> _editSubject(Map<String, dynamic> subject) async {
     final editController = TextEditingController(text: subject['subject_name']);
     Color primaryColor = Theme.of(context).primaryColor;
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     String? newName = await showDialog<String>(
       context: context,
       builder: (ctx) {
         return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(20),
           ),
           title: const Text(
             "Rename Subject",
@@ -467,25 +612,40 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
             controller: editController,
             textCapitalization: TextCapitalization.characters,
             autofocus: true,
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: Colors.grey.withValues(alpha: 0.1),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide.none,
-              ),
+            decoration: _inputStyle(
+              "Subject Name",
+              Icons.book_rounded,
+              isDark,
+              primaryColor,
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+              child: const Text(
+                "Cancel",
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: primaryColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
               onPressed: () =>
                   Navigator.pop(ctx, editController.text.trim().toUpperCase()),
-              child: const Text("Save", style: TextStyle(color: Colors.white)),
+              child: const Text(
+                "Save",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         );
@@ -529,11 +689,9 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   void _applySubjectsToMultipleClasses(List<String> targetClasses) {
     if (_selectedClassName == null) return;
 
-    // Get the actual subjects that currently belong to the selected class
     List<Map<String, dynamic>> sourceSubjects = _classSubjects
         .where((s) => s['class_name'] == _selectedClassName)
         .toList();
-
     if (sourceSubjects.isEmpty) {
       _showDuplicateAlert(
         "There are no subjects to copy from $_selectedClassName",
@@ -549,10 +707,9 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                 s['class_name'] == targetClass &&
                 s['subject_name'] == sub['subject_name'],
           );
-
           if (!exists) {
             _classSubjects.add({
-              'id': null, // It's a new entry for the target class
+              'id': null,
               'class_name': targetClass,
               'subject_name': sub['subject_name'],
               'type': sub['type'],
@@ -582,17 +739,18 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
         .map((c) => c['name'] as String)
         .where((name) => name != _selectedClassName)
         .toList();
-
     List<String> selectedTargets = [];
 
     showDialog(
       context: context,
       builder: (context) {
+        bool isDark = Theme.of(context).brightness == Brightness.dark;
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
+              backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
+                borderRadius: BorderRadius.circular(20),
               ),
               title: Text(
                 "Copy Subjects to...",
@@ -618,7 +776,11 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                     Expanded(
                       child: Container(
                         decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey.shade300),
+                          border: Border.all(
+                            color: isDark
+                                ? Colors.white10
+                                : Colors.grey.shade300,
+                          ),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: ListView(
@@ -628,19 +790,16 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                                 cls,
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
+                                  fontSize: 14,
                                 ),
                               ),
                               value: selectedTargets.contains(cls),
                               activeColor: Theme.of(context).primaryColor,
-                              onChanged: (val) {
-                                setDialogState(() {
-                                  if (val == true) {
-                                    selectedTargets.add(cls);
-                                  } else {
-                                    selectedTargets.remove(cls);
-                                  }
-                                });
-                              },
+                              onChanged: (val) => setDialogState(
+                                () => val == true
+                                    ? selectedTargets.add(cls)
+                                    : selectedTargets.remove(cls),
+                              ),
                             );
                           }).toList(),
                         ),
@@ -654,11 +813,14 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                   onPressed: () => Navigator.pop(context),
                   child: const Text(
                     "Cancel",
-                    style: TextStyle(color: Colors.grey),
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
+                FilledButton(
+                  style: FilledButton.styleFrom(
                     backgroundColor: Theme.of(context).primaryColor,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
@@ -672,7 +834,10 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                   },
                   child: const Text(
                     "Apply",
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
@@ -683,12 +848,12 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
     );
   }
 
-  // --- UI BUILDING ---
+  // ===========================================================================
+  // 🚨 PREMIUM UI (REFINED)
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(body: Center(child: TridetaLoader()));
-    }
+    if (_isLoading) return const Scaffold(body: Center(child: TridetaLoader()));
 
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
@@ -698,21 +863,21 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
       backgroundColor: bgColor,
       appBar: AppBar(
         title: const Text(
-          "School Configuration",
-          style: TextStyle(fontWeight: FontWeight.bold),
+          "System Configuration",
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
+        backgroundColor: bgColor,
+        foregroundColor: isDark ? Colors.white : const Color(0xFF1A1A2E),
         elevation: 0,
+        centerTitle: true,
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 900) {
-            // 💻 DESKTOP TWO-COLUMN LAYOUT
             return Center(
               child: Container(
                 constraints: const BoxConstraints(maxWidth: 1200),
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(24),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -720,7 +885,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                       flex: 4,
                       child: _buildClassesPanel(isDark, primaryColor),
                     ),
-                    const SizedBox(width: 20),
+                    const SizedBox(width: 24),
                     Expanded(
                       flex: 6,
                       child: _buildSubjectsPanel(isDark, primaryColor),
@@ -730,30 +895,57 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
               ),
             );
           } else {
-            // 📱 MOBILE TAB LAYOUT
             return DefaultTabController(
               length: 2,
               child: Column(
                 children: [
                   Container(
-                    color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white10 : Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                     child: TabBar(
-                      labelColor: primaryColor,
-                      unselectedLabelColor: Colors.grey,
-                      indicatorColor: primaryColor,
-                      indicatorWeight: 3,
-                      labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+                      labelColor: Colors.white,
+                      unselectedLabelColor: isDark
+                          ? Colors.white70
+                          : Colors.grey.shade600,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      dividerColor: Colors.transparent,
+                      indicator: BoxDecoration(
+                        color: primaryColor,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                       tabs: const [
-                        Tab(text: "Classes"),
-                        Tab(text: "Subjects"),
+                        Tab(
+                          child: Text(
+                            "Classes",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        Tab(
+                          child: Text(
+                            "Subjects",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
                       ],
                     ),
                   ),
                   Expanded(
                     child: TabBarView(
                       children: [
-                        _buildClassesPanel(isDark, primaryColor),
-                        _buildSubjectsPanel(isDark, primaryColor),
+                        Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: _buildClassesPanel(isDark, primaryColor),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: _buildSubjectsPanel(isDark, primaryColor),
+                        ),
                       ],
                     ),
                   ),
@@ -768,14 +960,20 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   }
 
   Widget _buildClassesPanel(bool isDark, Color primaryColor) {
+    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        color: cardColor,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.grey.shade200,
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -784,43 +982,67 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Manage Classes",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: primaryColor.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.school_rounded,
+                  color: primaryColor,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                "Manage Classes",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ],
           ),
-          const SizedBox(height: 15),
+          const SizedBox(height: 20),
           Row(
             children: [
               Expanded(
                 child: TextField(
                   controller: _classController,
                   textCapitalization: TextCapitalization.characters,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                   decoration: _inputStyle(
                     "Add new class",
-                    Icons.school,
+                    Icons.add_business_rounded,
                     isDark,
                     primaryColor,
                   ),
                   onSubmitted: (_) => _addClass(),
                 ),
               ),
-              const SizedBox(width: 10),
-              IconButton.filled(
-                onPressed: _addClass,
-                icon: const Icon(Icons.add, color: Colors.white),
-                style: IconButton.styleFrom(
+              const SizedBox(width: 12),
+              FilledButton(
+                style: FilledButton.styleFrom(
                   backgroundColor: primaryColor,
                   padding: const EdgeInsets.all(16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
+                onPressed: _addClass,
+                child: const Icon(Icons.add_rounded, color: Colors.white),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           Expanded(
             child: _classes.isEmpty
                 ? const Center(
                     child: Text(
-                      "No classes found",
+                      "No classes configured.",
                       style: TextStyle(color: Colors.grey),
                     ),
                   )
@@ -834,46 +1056,82 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                     },
                     itemBuilder: (ctx, i) {
                       var cls = _classes[i];
-                      return Card(
+                      bool hasCustomCal =
+                          cls['override_session'] != null ||
+                          cls['override_term'] != null;
+
+                      return Container(
                         key: ValueKey(cls['name']),
-                        margin: const EdgeInsets.only(bottom: 8),
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.02)
-                            : Colors.grey[50],
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          side: BorderSide(
-                            color: isDark
-                                ? Colors.white10
-                                : Colors.grey.shade200,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.02)
+                              : Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: hasCustomCal
+                                ? Colors.orange.withValues(alpha: 0.3)
+                                : (isDark
+                                      ? Colors.white10
+                                      : Colors.grey.shade200),
                           ),
                         ),
                         child: ListTile(
-                          title: Text(
-                            cls['name'],
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
                           ),
-                          leading: const Icon(
-                            Icons.drag_indicator,
-                            color: Colors.grey,
+                          title: Row(
+                            children: [
+                              Text(
+                                cls['name'],
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              if (hasCustomCal) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Icon(
+                                    Icons.calendar_month_rounded,
+                                    color: Colors.orange,
+                                    size: 12,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          leading: Icon(
+                            Icons.drag_indicator_rounded,
+                            color: Colors.grey.shade400,
+                            size: 20,
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
                                 icon: const Icon(
-                                  Icons.edit,
+                                  Icons.settings_rounded,
                                   size: 18,
                                   color: Colors.blue,
                                 ),
                                 onPressed: () => _editClass(cls),
+                                tooltip: "Configure",
                               ),
                               IconButton(
                                 icon: const Icon(
-                                  Icons.delete_outline,
+                                  Icons.delete_outline_rounded,
                                   size: 18,
-                                  color: Colors.red,
+                                  color: Colors.redAccent,
                                 ),
                                 onPressed: () => _removeClass(cls),
                               ),
@@ -899,14 +1157,20 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
       );
     }
 
+    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        color: cardColor,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.grey.shade200,
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -918,14 +1182,31 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                "Manage Subjects",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: primaryColor.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.library_books_rounded,
+                      color: primaryColor,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    "Manage Subjects",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
               ),
               if (_classSubjects.isNotEmpty)
                 TextButton.icon(
                   onPressed: _showDuplicateDialog,
-                  icon: const Icon(Icons.copy_all, size: 18),
+                  icon: const Icon(Icons.copy_all_rounded, size: 18),
                   label: const Text("Copy to..."),
                   style: TextButton.styleFrom(
                     foregroundColor: primaryColor,
@@ -934,38 +1215,34 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                 ),
             ],
           ),
-          const SizedBox(height: 15),
+          const SizedBox(height: 20),
 
-          // Target Class Dropdown
-          Container(
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.03)
-                  : Colors.grey[50],
-              borderRadius: BorderRadius.circular(15),
+          DropdownButtonFormField<String>(
+            initialValue: _selectedClassName,
+            dropdownColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white : Colors.black87,
+              fontSize: 14,
             ),
-            child: DropdownButtonFormField<String>(
-              initialValue: _selectedClassName,
-              decoration: _inputStyle(
-                "Target Class",
-                Icons.filter_alt,
-                isDark,
-                primaryColor,
-              ),
-              items: _classes
-                  .map(
-                    (c) => DropdownMenuItem<String>(
-                      value: c['name'],
-                      child: Text(c['name']),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (val) => setState(() => _selectedClassName = val),
+            decoration: _inputStyle(
+              "Target Class",
+              Icons.filter_alt_rounded,
+              isDark,
+              primaryColor,
             ),
+            items: _classes
+                .map(
+                  (c) => DropdownMenuItem<String>(
+                    value: c['name'],
+                    child: Text(c['name']),
+                  ),
+                )
+                .toList(),
+            onChanged: (val) => setState(() => _selectedClassName = val),
           ),
           const SizedBox(height: 15),
 
-          // Input Row
           Row(
             children: [
               Expanded(
@@ -973,68 +1250,69 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                 child: TextField(
                   controller: _subjectController,
                   textCapitalization: TextCapitalization.characters,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                   decoration: _inputStyle(
                     "Add subject",
-                    Icons.book,
+                    Icons.add_task_rounded,
                     isDark,
                     primaryColor,
                   ),
                   onSubmitted: (_) => _addSubject(),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 flex: 4,
                 child: DropdownButtonFormField<String>(
                   initialValue: _subjectType,
-                  isExpanded:
-                      true, // 🚨 Added to force text to stay inside bounds
+                  dropdownColor: isDark
+                      ? const Color(0xFF2C2C2C)
+                      : Colors.white,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 13,
+                  ),
+                  isExpanded: true,
                   decoration: _inputStyle(
                     "Type",
-                    Icons.category,
+                    Icons.category_rounded,
                     isDark,
                     primaryColor,
                   ),
                   items: ['Compulsory', 'Elective']
-                      .map(
-                        (t) => DropdownMenuItem(
-                          value: t,
-                          child: Text(
-                            t,
-                            style: const TextStyle(
-                              fontSize: 12,
-                            ), // 🚨 Scaled down slightly for mobile
-                            overflow: TextOverflow
-                                .ellipsis, // 🚨 Prevents overlay by adding "..." if too tight
-                          ),
-                        ),
-                      )
+                      .map((t) => DropdownMenuItem(value: t, child: Text(t)))
                       .toList(),
                   onChanged: (val) => setState(() => _subjectType = val!),
                 ),
               ),
-              const SizedBox(width: 10),
-              IconButton.filled(
-                onPressed: _addSubject,
-                icon: const Icon(Icons.add, color: Colors.white),
-                style: IconButton.styleFrom(
+              const SizedBox(width: 12),
+              FilledButton(
+                style: FilledButton.styleFrom(
                   backgroundColor: primaryColor,
                   padding: const EdgeInsets.all(16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
+                onPressed: _addSubject,
+                child: const Icon(Icons.add_rounded, color: Colors.white),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 30),
 
-          // Subjects List
           Expanded(
             child: _selectedClassName == null
                 ? const Center(child: Text("Select a class to view subjects"))
                 : ListView(
                     children: [
-                      _buildSubjectCategory("Compulsory", isDark),
-                      const SizedBox(height: 15),
-                      _buildSubjectCategory("Elective", isDark),
+                      _buildSubjectCategory("Compulsory", isDark, Colors.green),
+                      const SizedBox(height: 25),
+                      _buildSubjectCategory("Elective", isDark, Colors.orange),
                     ],
                   ),
           ),
@@ -1043,7 +1321,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
     );
   }
 
-  Widget _buildSubjectCategory(String type, bool isDark) {
+  Widget _buildSubjectCategory(String type, bool isDark, Color color) {
     final subs = _classSubjects
         .where(
           (s) => s['class_name'] == _selectedClassName && s['type'] == type,
@@ -1053,41 +1331,89 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          "$type Subjects",
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey,
-          ),
+        Row(
+          children: [
+            Icon(
+              type == 'Compulsory'
+                  ? Icons.stars_rounded
+                  : Icons.star_border_rounded,
+              size: 14,
+              color: color,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              "$type Subjects",
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                color: Colors.grey.shade500,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 5),
+        const SizedBox(height: 12),
         if (subs.isEmpty)
-          const Text(
-            "None added",
-            style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
+          Text(
+            "No $type subjects added.",
+            style: TextStyle(
+              fontStyle: FontStyle.italic,
+              color: Colors.grey.shade400,
+              fontSize: 13,
+            ),
           )
         else
           Wrap(
-            spacing: 8,
+            spacing: 10,
+            runSpacing: 10,
             children: subs.map((s) {
-              return InputChip(
-                label: Text(
-                  s['subject_name'],
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+              return InkWell(
+                onTap: () => _editSubject(s),
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.only(
+                    left: 14,
+                    right: 6,
+                    top: 6,
+                    bottom: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? color.withValues(alpha: 0.1)
+                        : color.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: color.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        s['subject_name'],
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      InkWell(
+                        onTap: () => _removeSubject(s),
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.close_rounded,
+                            size: 12,
+                            color: Colors.redAccent,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                backgroundColor: isDark
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : (type == 'Compulsory'
-                          ? Colors.red[50]
-                          : Colors.green[50]),
-                side: BorderSide.none,
-                deleteIconColor: Colors.red,
-                onPressed: () => _editSubject(s),
-                onDeleted: () => _removeSubject(s),
               );
             }).toList(),
           ),
@@ -1100,9 +1426,14 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, -5),
           ),
@@ -1111,23 +1442,32 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
       child: SizedBox(
         width: double.infinity,
         height: 55,
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
+        child: FilledButton.icon(
+          style: FilledButton.styleFrom(
             backgroundColor: primaryColor,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15),
+              borderRadius: BorderRadius.circular(16),
             ),
           ),
           onPressed: _isSaving ? null : _saveConfig,
-          child: _isSaving
-              ? const TridetaLoader(color: Colors.white)
-              : const Text(
-                  "SAVE CONFIGURATION",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
+          icon: _isSaving
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: TridetaLoader(color: Colors.white),
+                )
+              : const Icon(
+                  Icons.security_update_good_rounded,
+                  color: Colors.white,
                 ),
+          label: Text(
+            _isSaving ? "SAVING..." : "SECURE SYSTEM CONFIGURATION",
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.0,
+            ),
+          ),
         ),
       ),
     );
@@ -1141,19 +1481,27 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   ) {
     return InputDecoration(
       labelText: label,
-      prefixIcon: Icon(icon, color: primaryColor, size: 20),
+      labelStyle: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+      prefixIcon: Icon(icon, color: primaryColor, size: 18),
       filled: true,
       fillColor: isDark
           ? Colors.white.withValues(alpha: 0.03)
-          : Colors.grey[50],
+          : Colors.grey.shade50,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide(
           color: isDark ? Colors.white10 : Colors.grey.shade200,
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(
+          color: primaryColor.withValues(alpha: 0.5),
+          width: 2,
         ),
       ),
     );

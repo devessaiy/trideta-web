@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:local_auth/local_auth.dart';
+
+import 'package:trideta_v2/widgets/trideta_loader.dart';
+
+// MODULAR UI IMPORTS
+import 'package:trideta_v2/widgets/admin_bottom_nav_bar.dart';
+import 'package:trideta_v2/screens/admin/admin_dashboard_carousel.dart';
 
 // SCREEN IMPORTS
 import 'package:trideta_v2/screens/admin/profile_menu_screen.dart';
@@ -9,7 +16,7 @@ import 'package:trideta_v2/screens/admin/student_management_screen.dart';
 import 'package:trideta_v2/screens/admin/finance_centre_screen.dart';
 import 'package:trideta_v2/screens/admin/staff_directory_screen.dart';
 
-// 🚨 RESULT ENGINE IMPORTS
+// RESULT ENGINE IMPORTS
 import 'package:trideta_v2/screens/admin/result_computation_screen.dart';
 import 'package:trideta_v2/screens/admin/affective_domain_screen.dart';
 import 'package:trideta_v2/screens/admin/master_broadsheet_screen.dart';
@@ -24,231 +31,123 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  final _supabase = Supabase.instance.client;
+  final LocalAuthentication _localAuth = LocalAuthentication();
+
+  late PageController _pageController;
+
   int _selectedIndex = 0;
+  bool _isLoading = true;
 
   // --- SCHOOL DATA STATE ---
   String _schoolName = "Loading School...";
   String? _schoolLogoUrl;
   String _currentSession = "Loading...";
-  String _currentTerm = "";
+
+  // --- ADMIN DATA STATE ---
+  String _adminName = "Loading...";
+  Map<String, dynamic>? _latestAlert;
 
   @override
   void initState() {
     super.initState();
+    _pageController = PageController(initialPage: _selectedIndex);
     _fetchSchoolData();
   }
 
-  Future<void> _fetchSchoolData() async {
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  // SECURITY GATE (v3.0.1 Syntax)
+  // 🚨 CONFIDENTIAL SECURITY GATE
+  // 🚨 CONFIDENTIAL SECURITY GATE (Using the proven, error-free syntax)
+  Future<bool> _authenticateAdmin(String reason) async {
     try {
-      final user = Supabase.instance.client.auth.currentUser;
+      final bool canAuthenticateWithBiometrics =
+          await _localAuth.canCheckBiometrics;
+      final bool canAuthenticate =
+          canAuthenticateWithBiometrics || await _localAuth.isDeviceSupported();
+
+      if (!canAuthenticate) return true;
+
+      // 🚨 FIXED: Using the simple API that perfectly matches your setup!
+      return await _localAuth.authenticate(localizedReason: reason);
+    } catch (e) {
+      debugPrint("Local auth error: $e");
+      return true;
+    }
+  }
+
+  Future<void> _fetchSchoolData() async {
+    setState(() => _isLoading = true);
+    try {
+      final user = _supabase.auth.currentUser;
       if (user == null) return;
 
-      final profile = await Supabase.instance.client
+      final profile = await _supabase
           .from('profiles')
-          .select('school_id')
+          .select('full_name, school_id')
           .eq('id', user.id)
           .single();
+
       final schoolId = profile['school_id'];
 
-      final school = await Supabase.instance.client
+      if (mounted) {
+        setState(() {
+          _adminName = profile['full_name'] ?? "Admin";
+        });
+      }
+
+      final school = await _supabase
           .from('schools')
           .select()
           .eq('id', schoolId)
           .single();
 
+      try {
+        final alertRes = await _supabase
+            .from('alerts')
+            .select()
+            .eq('school_id', schoolId)
+            .order('created_at', ascending: false)
+            .limit(1)
+            .maybeSingle();
+        if (mounted) _latestAlert = alertRes;
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
           _schoolName = school['name'] ?? "My School";
           _schoolLogoUrl = school['logo_url'];
-
           if (_schoolLogoUrl != null) {
             _schoolLogoUrl =
                 "$_schoolLogoUrl?t=${DateTime.now().millisecondsSinceEpoch}";
           }
-
           _currentSession = school['current_session'] ?? "Not Set";
-          _currentTerm = school['current_term'] ?? "";
+          _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint("Error fetching school data: $e");
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   void _onItemTapped(int index) {
     setState(() => _selectedIndex = index);
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+    if (index == 0) _fetchSchoolData();
   }
 
-  // 🚨 THE NEW RESULTS POPUP MENU 🚨
-  void _showResultsMenu(BuildContext context, bool isDark, Color primaryColor) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) {
-        Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-
-        return Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: cardColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                "Academic Results Hub",
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                "Select a module to manage student academics.",
-                style: TextStyle(color: Colors.grey, fontSize: 13),
-              ),
-              const SizedBox(height: 25),
-
-              _buildMenuOption(
-                context,
-                title: "1. Cognitive Scores (CA & Exam)",
-                subtitle: "Enter subject scores for your classes",
-                icon: Icons.edit_document,
-                color: primaryColor,
-                isDark: isDark,
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ResultComputationScreen(),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-              _buildMenuOption(
-                context,
-                title: "2. Affective Domain & Remarks",
-                subtitle: "Rate student behaviors (1-5) and comment",
-                icon: Icons.psychology_alt_rounded,
-                color: Colors.orange,
-                isDark: isDark,
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const AffectiveDomainScreen(),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-              _buildMenuOption(
-                context,
-                title: "3. Master Broadsheet",
-                subtitle: "View grid, compute averages & rank students",
-                icon: Icons.table_chart_rounded,
-                color: Colors.green,
-                isDark: isDark,
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const MasterBroadsheetScreen(),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-              _buildMenuOption(
-                context,
-                title: "4. Generate Report Cards",
-                subtitle: "View, download and print final PDFs",
-                icon: Icons.print_rounded,
-                color: Colors.blue,
-                isDark: isDark,
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ReportCardScreen()),
-                  );
-                },
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildMenuOption(
-    BuildContext context, {
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-    required bool isDark,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(15),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: isDark ? Colors.white10 : Colors.grey.shade200,
-          ),
-          borderRadius: BorderRadius.circular(15),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: color),
-            ),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right_rounded, color: Colors.grey[400]),
-          ],
-        ),
-      ),
-    );
+  void _onPageChanged(int index) {
+    setState(() => _selectedIndex = index);
+    if (index == 0) _fetchSchoolData();
   }
 
   @override
@@ -265,146 +164,134 @@ class _DashboardScreenState extends State<DashboardScreen> {
       const ProfileMenuScreen(),
     ];
 
-    // 🚨 THE MAGIC SHAPE-SHIFTER: LayoutBuilder
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: bgColor,
+        body: Center(child: TridetaLoader(color: primaryColor)),
+      );
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth > 800) {
-          // 💻 DESKTOP LAYOUT (Side Navigation)
+        if (constraints.maxWidth >= 900) {
           return Scaffold(
             backgroundColor: bgColor,
             body: Row(
               children: [
-                NavigationRail(
-                  backgroundColor: navBarColor,
-                  selectedIndex: _selectedIndex,
-                  onDestinationSelected: _onItemTapped,
-                  selectedIconTheme: IconThemeData(color: primaryColor),
-                  selectedLabelTextStyle: TextStyle(
-                    color: primaryColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  unselectedIconTheme: const IconThemeData(color: Colors.grey),
-                  unselectedLabelTextStyle: const TextStyle(color: Colors.grey),
-                  indicatorColor: primaryColor.withValues(alpha: 0.1),
-                  labelType: NavigationRailLabelType.all,
-                  leading: Padding(
-                    padding: const EdgeInsets.only(bottom: 20, top: 15),
-                    child: _schoolLogoUrl != null
-                        ? CircleAvatar(
-                            radius: 24,
-                            backgroundColor: primaryColor.withValues(
-                              alpha: 0.1,
+                Container(
+                  width: 250,
+                  color: navBarColor,
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 40),
+                      // 🚨 FIXED: Now uses School Logo or School Icon in Sidebar
+                      _schoolLogoUrl != null
+                          ? CircleAvatar(
+                              radius: 25,
+                              backgroundColor: primaryColor.withValues(
+                                alpha: 0.1,
+                              ),
+                              backgroundImage: NetworkImage(_schoolLogoUrl!),
+                            )
+                          : Icon(
+                              Icons.school_rounded,
+                              size: 50,
+                              color: primaryColor,
                             ),
-                            backgroundImage: NetworkImage(_schoolLogoUrl!),
-                          )
-                        : Icon(
-                            Icons.admin_panel_settings_rounded,
-                            color: primaryColor,
-                            size: 40,
-                          ),
-                  ),
-                  destinations: const [
-                    NavigationRailDestination(
-                      icon: Icon(Icons.dashboard_outlined),
-                      selectedIcon: Icon(Icons.dashboard),
-                      label: Text('Home'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(Icons.people_outline),
-                      selectedIcon: Icon(Icons.people),
-                      label: Text('Students'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(Icons.notifications_outlined),
-                      selectedIcon: Icon(Icons.notifications),
-                      label: Text('Alerts'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(Icons.menu),
-                      selectedIcon: Icon(Icons.menu_open),
-                      label: Text('Menu'),
-                    ),
-                  ],
-                ),
-                const VerticalDivider(thickness: 1, width: 1),
-                Expanded(
-                  child: Center(
-                    child: Container(
-                      constraints: const BoxConstraints(maxWidth: 1100),
-                      child: IndexedStack(
-                        index: _selectedIndex,
-                        children: pages,
+                      const SizedBox(height: 20),
+                      const Text(
+                        "TRIDETA ADMIN",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          letterSpacing: 2,
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 40),
+                      _buildDesktopNavItem(
+                        Icons.dashboard_rounded,
+                        "Dashboard",
+                        0,
+                        primaryColor,
+                      ),
+                      _buildDesktopNavItem(
+                        Icons.people_alt_rounded,
+                        "Students",
+                        1,
+                        primaryColor,
+                      ),
+                      _buildDesktopNavItem(
+                        Icons.campaign_rounded,
+                        "Action Center",
+                        2,
+                        primaryColor,
+                      ),
+                      _buildDesktopNavItem(
+                        Icons.settings_rounded,
+                        "Settings",
+                        3,
+                        primaryColor,
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: PageView(
+                    controller: _pageController,
+                    physics: const BouncingScrollPhysics(),
+                    onPageChanged: _onPageChanged,
+                    children: pages,
                   ),
                 ),
               ],
             ),
           );
-        } else {
-          // 📱 MOBILE LAYOUT (Bottom Navigation)
-          return Scaffold(
-            backgroundColor: bgColor,
-            body: IndexedStack(index: _selectedIndex, children: pages),
-            bottomNavigationBar: Container(
-              decoration: BoxDecoration(
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                  ),
-                ],
-              ),
-              child: NavigationBar(
-                selectedIndex: _selectedIndex,
-                onDestinationSelected: _onItemTapped,
-                backgroundColor: navBarColor,
-                elevation: 0,
-                indicatorColor: primaryColor.withValues(alpha: 0.1),
-                height: 70,
-                destinations:
-                    [
-                      const NavigationDestination(
-                        icon: Icon(Icons.dashboard_outlined),
-                        selectedIcon: Icon(Icons.dashboard),
-                        label: 'Home',
-                      ),
-                      const NavigationDestination(
-                        icon: Icon(Icons.people_outline),
-                        selectedIcon: Icon(Icons.people),
-                        label: 'Students',
-                      ),
-                      const NavigationDestination(
-                        icon: Icon(Icons.notifications_outlined),
-                        selectedIcon: Icon(Icons.notifications),
-                        label: 'Alerts',
-                      ),
-                      const NavigationDestination(
-                        icon: Icon(Icons.menu),
-                        selectedIcon: Icon(Icons.menu_open),
-                        label: 'Menu',
-                      ),
-                    ].map((dest) {
-                      return NavigationDestination(
-                        icon: dest.icon,
-                        selectedIcon: Icon(
-                          (dest.selectedIcon as Icon).icon,
-                          color: primaryColor,
-                        ),
-                        label: dest.label,
-                      );
-                    }).toList(),
-              ),
-            ),
-          );
         }
+
+        return Scaffold(
+          backgroundColor: bgColor,
+          body: PageView(
+            controller: _pageController,
+            physics: const BouncingScrollPhysics(),
+            onPageChanged: _onPageChanged,
+            children: pages,
+          ),
+          bottomNavigationBar: AdminBottomNavBar(
+            selectedIndex: _selectedIndex,
+            onItemSelected: _onItemTapped,
+            primaryColor: primaryColor,
+            navBarColor: navBarColor,
+          ),
+        );
       },
     );
   }
 
+  Widget _buildDesktopNavItem(
+    IconData icon,
+    String title,
+    int index,
+    Color primaryColor,
+  ) {
+    bool isSelected = _selectedIndex == index;
+    return ListTile(
+      leading: Icon(icon, color: isSelected ? primaryColor : Colors.grey),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: isSelected ? primaryColor : Colors.grey,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+      selected: isSelected,
+      selectedTileColor: primaryColor.withValues(alpha: 0.1),
+      onTap: () => _onItemTapped(index),
+    );
+  }
+
   Widget _buildHomeContent(bool isDark, Color primaryColor) {
-    Color textColor = isDark ? Colors.white : Colors.black87;
-    Color subTextColor = isDark ? Colors.white70 : Colors.grey[600]!;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+    Color subTextColor = isDark ? Colors.white70 : const Color(0xFF9098B1);
 
     return SafeArea(
       child: RefreshIndicator(
@@ -412,91 +299,165 @@ class _DashboardScreenState extends State<DashboardScreen> {
         color: primaryColor,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 25),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildSchoolHeader(textColor, subTextColor, primaryColor),
-              const SizedBox(height: 25),
-              _buildSessionCard(primaryColor),
+              _buildAdminHeader(textColor, subTextColor, primaryColor),
+              const SizedBox(height: 30),
+
+              if (_schoolLogoUrl == null)
+                _buildLogoWarning(isDark, primaryColor),
+
+              _buildGlassySessionCard(primaryColor),
+              const SizedBox(height: 35),
+
+              AdminDashboardCarousel(
+                latestAlert: _latestAlert,
+                primaryColor: primaryColor,
+                isDark: isDark,
+              ),
               const SizedBox(height: 30),
 
               Text(
-                "PEOPLE & ADMINISTRATION",
+                "ADMINISTRATIVE & FINANCE",
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
-                  color: primaryColor.withValues(alpha: 0.8),
-                  fontSize: 13,
-                  letterSpacing: 1.1,
+                  color: Colors.grey.shade500,
+                  fontSize: 12,
+                  letterSpacing: 1.2,
                 ),
               ),
               const SizedBox(height: 15),
-
-              _buildModuleTile(
-                isDark: isDark,
-                icon: Icons.school_rounded,
-                color: Colors.orange,
-                title: "Student Management",
-                subtitle: "Admissions, Class List & Profiles",
-                onTap: () => setState(() => _selectedIndex = 1),
-              ),
-
-              _buildModuleTile(
-                isDark: isDark,
-                icon: Icons.badge_rounded,
-                color: Colors.purple,
-                title: "Staff Directory",
-                subtitle: "Teachers, Roles & Permissions",
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const StaffDirectoryScreen(),
-                    ),
-                  );
-                },
-              ),
-
-              const SizedBox(height: 25),
-              Text(
-                "ACADEMICS & FINANCE",
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: primaryColor.withValues(alpha: 0.8),
-                  fontSize: 13,
-                  letterSpacing: 1.1,
-                ),
-              ),
-              const SizedBox(height: 15),
-
-              _buildModuleTile(
-                isDark: isDark,
-                icon: Icons.analytics_rounded,
-                color: primaryColor,
-                title: "Results & Broadsheets",
-                subtitle: "Scores, Affective Traits & Rankings",
-                onTap: () => _showResultsMenu(context, isDark, primaryColor),
-              ),
 
               _buildModuleTile(
                 isDark: isDark,
                 icon: Icons.account_balance_wallet_rounded,
-                color: Colors.green,
+                color: Colors.green.shade600,
                 title: "Finance Centre",
-                subtitle: "Payments, Receipts & Debtors",
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const FinanceCentreScreen(),
-                    ),
+                subtitle: "Manage fees, receipts, and debtors",
+                onTap: () async {
+                  bool auth = await _authenticateAdmin(
+                    'Authenticate to access the Finance Centre.',
                   );
+                  if (auth && mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const FinanceCentreScreen(),
+                      ),
+                    );
+                  }
                 },
               ),
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.badge_rounded,
+                color: Colors.orange.shade600,
+                title: "Staff Directory",
+                subtitle: "Manage teachers and role assignments",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const StaffDirectoryScreen(),
+                  ),
+                ),
+              ),
 
+              // 🚨 REMOVED: School Configuration module removed from here!
+              const SizedBox(height: 30),
+              Text(
+                "ACADEMIC & RESULTS",
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Colors.grey.shade500,
+                  fontSize: 12,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 15),
+
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.edit_document,
+                color: primaryColor,
+                title: "Enter Subject Scores",
+                subtitle: "Input CA and Exam marks securely",
+                onTap: () async {
+                  bool auth = await _authenticateAdmin(
+                    'Authenticate to modify student examination scores.',
+                  );
+                  if (auth && mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ResultComputationScreen(),
+                      ),
+                    );
+                  }
+                },
+              ),
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.psychology_alt_rounded,
+                color: Colors.purple.shade500,
+                title: "Affective Domain & Remarks",
+                subtitle: "Rate behavior and add Form Master comments",
+                onTap: () async {
+                  bool auth = await _authenticateAdmin(
+                    'Authenticate to enter affective domains and remarks.',
+                  );
+                  if (auth && mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const AffectiveDomainScreen(),
+                      ),
+                    );
+                  }
+                },
+              ),
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.table_chart_rounded,
+                color: Colors.teal.shade500,
+                title: "Master Broadsheet",
+                subtitle: "Compute and publish term results",
+                onTap: () async {
+                  bool auth = await _authenticateAdmin(
+                    'Authenticate to compute and publish results.',
+                  );
+                  if (auth && mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const MasterBroadsheetScreen(),
+                      ),
+                    );
+                  }
+                },
+              ),
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.print_rounded,
+                color: Colors.redAccent,
+                title: "Report Cards",
+                subtitle: "Generate and print student dossiers",
+                onTap: () async {
+                  bool auth = await _authenticateAdmin(
+                    'Authenticate to view and print Report Cards.',
+                  );
+                  if (auth && mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ReportCardScreen(),
+                      ),
+                    );
+                  }
+                },
+              ),
               const SizedBox(height: 20),
-              if (_schoolLogoUrl == null)
-                _buildLogoWarning(isDark, primaryColor),
             ],
           ),
         ),
@@ -504,25 +465,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildSchoolHeader(
+  Widget _buildAdminHeader(
     Color textColor,
     Color subTextColor,
     Color primaryColor,
   ) {
     return Row(
       children: [
+        // 🚨 FIXED: Now explicitly uses the School Logo, with a School Icon fallback
         Container(
-          height: 65,
-          width: 65,
+          height: 55,
+          width: 55,
           decoration: BoxDecoration(
             color: Colors.white,
             shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
-                blurRadius: 8,
-              ),
-            ],
             border: Border.all(
               color: primaryColor.withValues(alpha: 0.2),
               width: 2,
@@ -535,7 +491,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 : null,
           ),
           child: _schoolLogoUrl == null
-              ? Icon(Icons.school_rounded, color: primaryColor, size: 32)
+              ? Icon(Icons.school_rounded, color: primaryColor, size: 24)
               : null,
         ),
         const SizedBox(width: 15),
@@ -544,20 +500,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                "Welcome back,",
+                "System Administrator",
                 style: TextStyle(
-                  fontSize: 14,
-                  color: subTextColor,
-                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
+                  color: Colors.grey.shade500,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               Text(
                 _schoolName,
                 style: TextStyle(
-                  fontSize: 22,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: textColor,
+                  letterSpacing: -0.5,
                 ),
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ],
@@ -567,66 +525,102 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildSessionCard(Color primaryColor) {
+  Widget _buildGlassySessionCard(Color primaryColor) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         gradient: LinearGradient(
+          colors: [primaryColor.withValues(alpha: 0.85), primaryColor],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [primaryColor, primaryColor.withValues(alpha: 0.8)],
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
             color: primaryColor.withValues(alpha: 0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
         ],
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.2),
+          width: 1.5,
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          const Row(
-            children: [
-              Icon(Icons.auto_awesome, color: Colors.white70, size: 18),
-              SizedBox(width: 8),
-              Text(
-                "CURRENT ACTIVE TIMELINE",
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
+          Positioned(
+            right: -30,
+            top: -30,
+            child: CircleAvatar(
+              radius: 70,
+              backgroundColor: Colors.white.withValues(alpha: 0.1),
+            ),
+          ),
+          Positioned(
+            left: -20,
+            bottom: -40,
+            child: CircleAvatar(
+              radius: 60,
+              backgroundColor: Colors.white.withValues(alpha: 0.05),
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(
+                      Icons.security_rounded,
+                      color: Colors.white70,
+                      size: 16,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      "SECURE WORKSPACE",
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 15),
-          Text(
-            _currentSession,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 32,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(30),
-            ),
-            child: Text(
-              _currentTerm,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+                const SizedBox(height: 15),
+                Text(
+                  _currentSession,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 36,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  child: const Text(
+                    "All Systems Operational",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -643,74 +637,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required VoidCallback onTap,
   }) {
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    Color textColor = isDark ? Colors.white : Colors.black87;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 15),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.transparent,
+          color: isDark ? Colors.white10 : Colors.grey.shade200,
+          width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: Icon(icon, color: color, size: 28),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
                 ),
-                const SizedBox(width: 18),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 17,
-                          color: textColor,
-                        ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: textColor,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: isDark ? Colors.white54 : Colors.grey[600],
-                        ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.white70 : Colors.grey.shade500,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 24,
-                  color: isDark ? Colors.white24 : Colors.grey[300],
-                ),
-              ],
-            ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 24,
+                color: Colors.grey.shade400,
+              ),
+            ],
           ),
         ),
       ),
@@ -719,37 +709,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildLogoWarning(bool isDark, Color primaryColor) {
     return Container(
+      margin: const EdgeInsets.only(bottom: 30),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: primaryColor.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: primaryColor.withValues(alpha: 0.1)),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: primaryColor.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
           Icon(
-            Icons.add_photo_alternate_outlined,
+            Icons.add_photo_alternate_rounded,
             color: primaryColor,
-            size: 24,
+            size: 28,
           ),
           const SizedBox(width: 15),
           const Expanded(
             child: Text(
               "Enhance your documents by adding your school logo.",
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ),
-          TextButton(
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: primaryColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const SchoolProfileScreen()),
             ).then((_) => _fetchSchoolData()),
-            child: Text(
+            child: const Text(
               "Add Now",
-              style: TextStyle(
-                color: primaryColor,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
         ],

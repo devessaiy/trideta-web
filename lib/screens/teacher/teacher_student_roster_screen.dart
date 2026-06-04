@@ -49,6 +49,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
     super.dispose();
   }
 
+  // 🚨 LOGIC UNTOUCHED
   Future<void> _fetchMyStudentsAndAttendance() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -61,7 +62,6 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
           .single();
       _schoolId = profile['school_id'];
 
-      // Find allowed classes
       final assignments = await _supabase
           .from('staff_assignments')
           .select('class_assigned')
@@ -77,7 +77,6 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
       }
 
       if (_selectedClass != null) {
-        // Fetch Students for selected class
         final studentsRes = await _supabase
             .from('students')
             .select(
@@ -87,7 +86,6 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
             .eq('class_level', _selectedClass!)
             .order('first_name', ascending: true);
 
-        // Fetch Today's Attendance for selected class
         final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
         final attendanceRes = await _supabase
             .from('attendance')
@@ -119,6 +117,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
     }
   }
 
+  // 🚨 LOGIC UNTOUCHED
   Future<void> _saveManualAttendance() async {
     if (_attendanceState.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -170,6 +169,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
     }
   }
 
+  // 🚨 LOGIC UNTOUCHED
   void _onDetect(BarcodeCapture capture) async {
     if (_isProcessingScan) return;
     final List<Barcode> barcodes = capture.barcodes;
@@ -202,22 +202,34 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
     _scannerController.start();
   }
 
+  // 🚨 UI POLISHED (Premium Dialog)
   Future<void> _showScannerActionPopup(Map<String, dynamic> student) async {
     final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
     Color primaryColor = Theme.of(context).primaryColor;
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (_attendanceState.containsKey(student['id'].toString())) {
       await showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text("Already Marked"),
+          backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: const Text(
+            "Already Marked",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
           content: Text(
             "${student['first_name']} was already marked '${_attendanceState[student['id'].toString()]}' today.",
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text("OK"),
+              child: const Text(
+                "OK",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         ),
@@ -233,15 +245,26 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            title: Text("${student['first_name']} ${student['last_name']}"),
+            backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            title: Text(
+              "${student['first_name']} ${student['last_name']}",
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: ['Punctual', 'Late', 'Absent', 'Sick'].map((status) {
                 return RadioListTile<String>(
-                  title: Text(status),
+                  title: Text(
+                    status,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   value: status,
                   groupValue: selectedStatus,
                   activeColor: primaryColor,
+                  contentPadding: EdgeInsets.zero,
                   onChanged: (val) =>
                       setDialogState(() => selectedStatus = val!),
                 );
@@ -250,12 +273,21 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text("Cancel"),
+                child: const Text(
+                  "Cancel",
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
+              FilledButton(
+                style: FilledButton.styleFrom(
                   backgroundColor: primaryColor,
                   foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 onPressed: () async {
                   Navigator.pop(ctx);
@@ -294,7 +326,10 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                     }
                   }
                 },
-                child: const Text("SAVE"),
+                child: const Text(
+                  "SAVE",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
             ],
           );
@@ -309,44 +344,25 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color primaryColor = Theme.of(context).primaryColor;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
         title: const Text(
-          "My Students & Attendance",
+          "Class Roster",
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
+        backgroundColor: bgColor,
+        foregroundColor: textColor,
         elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white60,
-          indicatorColor: Colors.white,
-          indicatorWeight: 3,
-          tabs: const [
-            Tab(icon: Icon(Icons.list_alt_rounded), text: "Manual List"),
-            Tab(icon: Icon(Icons.qr_code_scanner_rounded), text: "QR Scanner"),
-          ],
-        ),
+        centerTitle: true,
       ),
       body: Column(
         children: [
-          // CLASS FILTER
+          // ─── PREMIUM CLASS FILTER ───
           Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: cardColor,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
+            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             child: _buildFilterDropdown(
               "Select Class",
               _myClasses,
@@ -360,10 +376,74 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
               },
               isDark,
               primaryColor,
+              cardColor,
             ),
           ),
 
-          // TABS CONTENT
+          // ─── MODERN PILL TAB BAR ───
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white10 : Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              labelColor: Colors.white,
+              unselectedLabelColor: isDark
+                  ? Colors.white70
+                  : Colors.grey.shade600,
+              indicatorSize: TabBarIndicatorSize.tab,
+              dividerColor: Colors.transparent,
+              indicator: BoxDecoration(
+                color: primaryColor,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: primaryColor.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              tabs: const [
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.list_alt_rounded, size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        "Manual List",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.qr_code_scanner_rounded, size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        "Scanner",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ─── TABS CONTENT ───
           Expanded(
             child: _isLoading
                 ? Center(child: TridetaLoader(color: primaryColor))
@@ -371,7 +451,12 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                     controller: _tabController,
                     physics: const NeverScrollableScrollPhysics(),
                     children: [
-                      _buildManualTab(cardColor, isDark, primaryColor),
+                      _buildManualTab(
+                        cardColor,
+                        isDark,
+                        primaryColor,
+                        textColor,
+                      ),
                       _buildScannerTab(primaryColor),
                     ],
                   ),
@@ -381,7 +466,12 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
     );
   }
 
-  Widget _buildManualTab(Color cardColor, bool isDark, Color primaryColor) {
+  Widget _buildManualTab(
+    Color cardColor,
+    bool isDark,
+    Color primaryColor,
+    Color textColor,
+  ) {
     if (_myClasses.isEmpty) {
       return _buildEmptyState(
         "No classes assigned.",
@@ -401,25 +491,21 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
 
     return Column(
       children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          color: isDark
-              ? primaryColor.withValues(alpha: 0.1)
-              : primaryColor.withValues(alpha: 0.05),
+        Padding(
+          padding: const EdgeInsets.only(top: 10, bottom: 20),
           child: Text(
-            "Date: ${DateFormat('EEEE, MMM d, yyyy').format(DateTime.now())}",
-            textAlign: TextAlign.center,
+            DateFormat('EEEE, MMMM d, yyyy').format(DateTime.now()),
             style: TextStyle(
-              color: primaryColor,
+              color: Colors.grey.shade500,
               fontWeight: FontWeight.bold,
               letterSpacing: 1.1,
+              fontSize: 13,
             ),
           ),
         ),
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             itemCount: _allMyStudents.length,
             itemBuilder: (context, index) {
               final student = _allMyStudents[index];
@@ -431,49 +517,66 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
               String initial = fName.isNotEmpty ? fName[0].toUpperCase() : "?";
               String passportUrl = student['passport_url']?.toString() ?? "";
 
-              return Card(
-                elevation: 0,
-                color: cardColor,
-                margin: const EdgeInsets.only(bottom: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  side: BorderSide(
-                    color: isDark ? Colors.white10 : Colors.grey.shade300,
+              return Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isDark ? Colors.white10 : Colors.grey.shade200,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Theme(
-                  data: Theme.of(context).copyWith(
-                    dividerColor: Colors.transparent,
-                  ), // Removes line inside ExpansionTile
+                  data: Theme.of(
+                    context,
+                  ).copyWith(dividerColor: Colors.transparent),
                   child: ExpansionTile(
                     tilePadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 4,
+                      horizontal: 20,
+                      vertical: 8,
                     ),
-                    leading: CircleAvatar(
-                      backgroundColor: primaryColor.withValues(alpha: 0.1),
-                      backgroundImage: passportUrl.isNotEmpty
-                          ? NetworkImage(passportUrl)
-                          : null,
-                      child: passportUrl.isEmpty
-                          ? Text(
-                              initial,
-                              style: TextStyle(
-                                color: primaryColor,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            )
-                          : null,
+                    leading: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isDark ? Colors.white10 : Colors.grey.shade100,
+                          width: 2,
+                        ),
+                      ),
+                      child: CircleAvatar(
+                        radius: 22,
+                        backgroundColor: primaryColor.withValues(alpha: 0.1),
+                        backgroundImage: passportUrl.isNotEmpty
+                            ? NetworkImage(passportUrl)
+                            : null,
+                        child: passportUrl.isEmpty
+                            ? Text(
+                                initial,
+                                style: TextStyle(
+                                  color: primaryColor,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                            : null,
+                      ),
                     ),
                     title: Text(
                       "$lName $fName".trim().toUpperCase(),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontSize: 14,
+                        fontSize: 15,
+                        color: textColor,
                       ),
                     ),
                     subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 4),
+                      padding: const EdgeInsets.only(top: 6),
                       child: Row(
                         children: [
                           Text(
@@ -483,17 +586,17 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                               fontSize: 12,
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 10),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
+                              horizontal: 8,
+                              vertical: 3,
                             ),
                             decoration: BoxDecoration(
                               color: _getStatusColor(
                                 status,
                               ).withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(4),
+                              borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               status,
@@ -508,15 +611,18 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                       ),
                     ),
                     childrenPadding: const EdgeInsets.only(
-                      left: 16,
-                      right: 16,
-                      bottom: 16,
+                      left: 20,
+                      right: 20,
+                      bottom: 20,
                     ),
                     children: [
-                      const Divider(height: 1),
-                      const SizedBox(height: 12),
+                      Divider(
+                        height: 1,
+                        color: isDark ? Colors.white10 : Colors.grey.shade100,
+                      ),
+                      const SizedBox(height: 16),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Expanded(
                             child: Wrap(
@@ -532,27 +638,30 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                                           fontSize: 12,
                                           fontWeight: isSelected
                                               ? FontWeight.bold
-                                              : FontWeight.normal,
+                                              : FontWeight.w600,
                                         ),
                                       ),
                                       selected: isSelected,
                                       selectedColor: _getStatusColor(
                                         s,
-                                      ).withValues(alpha: 0.2),
+                                      ).withValues(alpha: 0.15),
                                       backgroundColor: isDark
-                                          ? Colors.white10
-                                          : Colors.grey[100],
+                                          ? Colors.white.withValues(alpha: 0.05)
+                                          : Colors.grey.shade50,
                                       labelStyle: TextStyle(
                                         color: isSelected
                                             ? _getStatusColor(s)
-                                            : (isDark
-                                                  ? Colors.white70
-                                                  : Colors.black87),
+                                            : Colors.grey.shade500,
                                       ),
+                                      showCheckmark: false,
                                       shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        side: const BorderSide(
-                                          color: Colors.transparent,
+                                        borderRadius: BorderRadius.circular(10),
+                                        side: BorderSide(
+                                          color: isSelected
+                                              ? _getStatusColor(
+                                                  s,
+                                                ).withValues(alpha: 0.5)
+                                              : Colors.transparent,
                                         ),
                                       ),
                                       onSelected: (selected) {
@@ -567,16 +676,25 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                                   .toList(),
                             ),
                           ),
-                          IconButton(
-                            icon: Icon(
-                              Icons.qr_code_rounded,
-                              color: primaryColor,
+                          Container(
+                            margin: const EdgeInsets.only(left: 12),
+                            decoration: BoxDecoration(
+                              color: primaryColor.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
                             ),
-                            tooltip: "View ID Card QR",
-                            onPressed: () => showStudentQrCode(
-                              context,
-                              student,
-                              primaryColor,
+                            child: IconButton(
+                              icon: Icon(
+                                Icons.qr_code_rounded,
+                                color: primaryColor,
+                                size: 22,
+                              ),
+                              tooltip: "View ID Card QR",
+                              onPressed: () => showStudentQrCode(
+                                context,
+                                student,
+                                primaryColor,
+                                isDark,
+                              ),
                             ),
                           ),
                         ],
@@ -589,36 +707,30 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
           ),
         ),
         Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: cardColor,
+            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, -5),
+                blurRadius: 20,
+                offset: const Offset(0, -10),
               ),
             ],
           ),
           width: double.infinity,
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
+          child: FilledButton(
+            style: FilledButton.styleFrom(
               backgroundColor: primaryColor,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              padding: const EdgeInsets.symmetric(vertical: 18),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(16),
               ),
-              elevation: 0,
             ),
             onPressed: _saveManualAttendance,
             child: const Text(
-              "SAVE BATCH ATTENDANCE",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-                letterSpacing: 1,
-              ),
+              "Save Batch Attendance",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ),
         ),
@@ -634,14 +746,20 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
     return Stack(
       children: [
         MobileScanner(controller: _scannerController, onDetect: _onDetect),
-        // Scanner Overlay Guide
         Center(
           child: Container(
             width: 250,
             height: 250,
             decoration: BoxDecoration(
               border: Border.all(color: primaryColor, width: 3),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: primaryColor.withValues(alpha: 0.2),
+                  blurRadius: 20,
+                  spreadRadius: 5,
+                ),
+              ],
             ),
           ),
         ),
@@ -651,18 +769,19 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
           right: 0,
           child: Center(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
               decoration: BoxDecoration(
-                color: Colors.black87,
+                color: const Color(0xFF1E1E1E).withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: Colors.white24),
               ),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.qr_code_scanner, color: Colors.white, size: 20),
-                  SizedBox(width: 10),
+                  SizedBox(width: 12),
                   Text(
-                    "Scan Student QR Code",
+                    "Scan Student ID Card",
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -675,7 +794,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
         ),
         if (_isProcessingScan)
           Container(
-            color: Colors.black54,
+            color: Colors.black.withValues(alpha: 0.6),
             child: Center(child: TridetaLoader(color: primaryColor)),
           ),
       ],
@@ -689,7 +808,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
       case 'Late':
         return Colors.orange;
       case 'Absent':
-        return Colors.red;
+        return Colors.redAccent;
       case 'Sick':
         return Colors.purple;
       default:
@@ -704,50 +823,66 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
     Function(String?) onChanged,
     bool isDark,
     Color primaryColor,
+    Color cardColor,
   ) {
     if (items.isEmpty) return const SizedBox.shrink();
     return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade300,
+          color: isDark ? Colors.white10 : Colors.grey.shade200,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           isExpanded: true,
           value: value,
-          hint: Padding(
-            padding: const EdgeInsets.only(left: 12),
-            child: Text(
-              hint,
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
+          hint: Text(
+            hint,
+            style: TextStyle(
+              color: Colors.grey.shade500,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          icon: Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Icon(Icons.class_rounded, color: primaryColor),
+          icon: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: primaryColor.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: primaryColor,
+              size: 20,
+            ),
           ),
           items: items
               .map(
                 (e) => DropdownMenuItem(
                   value: e,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 12),
-                    child: Text(
-                      e,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  child: Text(
+                    e,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
               )
               .toList(),
           onChanged: onChanged,
-          dropdownColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          dropdownColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
         ),
       ),
     );
@@ -763,12 +898,21 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            icon,
-            size: 80,
-            color: isDark ? Colors.white10 : Colors.grey[300],
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.grey.shade100,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              size: 60,
+              color: isDark ? Colors.white24 : Colors.grey[400],
+            ),
           ),
-          const SizedBox(height: 15),
+          const SizedBox(height: 20),
           Text(
             title,
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -789,13 +933,14 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
 }
 
 // ============================================================================
-// QR GENERATOR & DOWNLOADER COMPONENT
+// QR GENERATOR & DOWNLOADER COMPONENT (POLISHED)
 // ============================================================================
 
 void showStudentQrCode(
   BuildContext context,
   Map<String, dynamic> student,
   Color primaryColor,
+  bool isDark,
 ) {
   final screenshotController = ScreenshotController();
   final String admNo = student['admission_no'] ?? 'NO_ID';
@@ -803,50 +948,61 @@ void showStudentQrCode(
   showDialog(
     context: context,
     builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      contentPadding: const EdgeInsets.all(30),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           const Text(
-            "Student ID QR Code",
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            "ID QR Code",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 8),
           Text(
             admNo,
             style: TextStyle(
-              color: Colors.grey[600],
+              color: Colors.grey[500],
               fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 30),
 
-          SizedBox(
-            width: 220,
-            height: 220,
-            child: Screenshot(
-              controller: screenshotController,
-              child: Container(
-                color: Colors.white,
-                alignment: Alignment.center,
-                child: QrImageView(
-                  data: admNo,
-                  version: QrVersions.auto,
-                  size: 200.0,
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.grey.shade200, width: 2),
+            ),
+            child: SizedBox(
+              width: 200,
+              height: 200,
+              child: Screenshot(
+                controller: screenshotController,
+                child: Container(
+                  color: Colors.white,
+                  alignment: Alignment.center,
+                  child: QrImageView(
+                    data: admNo,
+                    version: QrVersions.auto,
+                    size: 200.0,
+                  ),
                 ),
               ),
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 30),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
                 backgroundColor: primaryColor,
-                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(16),
                 ),
               ),
               onPressed: () async {
@@ -881,10 +1037,14 @@ void showStudentQrCode(
                   }
                 }
               },
-              icon: const Icon(Icons.download, color: Colors.white, size: 18),
+              icon: const Icon(
+                Icons.download_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
               label: const Text(
                 "Save to Gallery",
-                style: TextStyle(fontWeight: FontWeight.bold),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
               ),
             ),
           ),

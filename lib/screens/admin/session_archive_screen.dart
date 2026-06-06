@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:file_saver/file_saver.dart';
 
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
@@ -87,7 +89,7 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
     }
   }
 
-  // 🚨 UNIVERSAL CSV GENERATOR & DOWNLOADER
+  // 🚨 UNIVERSAL CSV GENERATOR & DOWNLOADER (WEB & MOBILE PROOF)
   Future<void> _generateAndDownloadCSV() async {
     setState(() => _isGenerating = true);
     try {
@@ -128,22 +130,25 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
         );
       }
 
-      // Encode and launch universal data URI for download
-      final bytes = utf8.encode(csvContent.toString());
-      final base64Str = base64Encode(bytes);
-      final uri = Uri.parse("data:text/csv;base64,$base64Str");
+      // Convert String to Bytes
+      final Uint8List bytes = utf8.encode(csvContent.toString());
 
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-        if (mounted) {
-          showSuccessDialog(
-            "Archive Downloaded",
-            "Financial records for $_currentSession have been saved.",
-          );
-        }
-      } else {
-        showAuthErrorDialog(
-          "Your device does not support direct CSV downloads from this environment.",
+      // 🚨 THE FIX: Use FileSaver for true cross-platform downloads
+      // On Web: Triggers the browser's native download bar
+      // On Mobile: Saves directly to the device's Downloads folder
+      String cleanSessionName = _currentSession.replaceAll('/', '-');
+
+      await FileSaver.instance.saveFile(
+        name: 'Trideta_Financial_Archive_$cleanSessionName',
+        bytes: bytes,
+        fileExtension: 'csv',
+        mimeType: MimeType.csv,
+      );
+
+      if (mounted) {
+        showSuccessDialog(
+          "Archive Downloaded",
+          "Financial records for $_currentSession have been successfully saved to your device.",
         );
       }
     } catch (e) {

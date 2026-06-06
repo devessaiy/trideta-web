@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:trideta_v2/screens/admin/school_data_export_screen.dart';
+import 'package:trideta_v2/widgets/color_picker_sheet.dart'; // 🚨 IMPORTED MODULAR COLOR PICKER
 
 // 🚨 UPDATED ABSOLUTE IMPORTS
 import 'package:trideta_v2/screens/auth/login_screen.dart';
@@ -21,6 +23,10 @@ class ProfileMenuScreen extends StatefulWidget {
 
 class _ProfileMenuScreenState extends State<ProfileMenuScreen>
     with AuthErrorHandler {
+  // 🚨 Tracker for the new Termination Hub
+  Set<String> _downloadedTables = {};
+  final int _totalRequiredTables = 14;
+
   @override
   void initState() {
     super.initState();
@@ -116,115 +122,6 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
     );
   }
 
-  // --- BRAND COLOR PICKER LOGIC ---
-  void _showColorPicker(BuildContext context, Color currentPrimary) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final List<Map<String, dynamic>> schoolColors = [
-      {'name': 'Trideta Blue', 'color': const Color(0xFF007ACC)},
-      {'name': 'Emerald Green', 'color': const Color(0xFF10B981)},
-      {'name': 'Royal Purple', 'color': const Color(0xFF8B5CF6)},
-      {'name': 'Sunset Orange', 'color': const Color(0xFFF97316)},
-      {'name': 'Crimson Red', 'color': const Color(0xFFEF4444)},
-      {'name': 'Slate Grey', 'color': const Color(0xFF64748B)},
-      {'name': 'Midnight Black', 'color': const Color(0xFF0F172A)},
-      {'name': 'Teal', 'color': const Color(0xFF14B8A6)},
-    ];
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Text(
-          "School Brand Color",
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: isDark ? Colors.white : Colors.black,
-          ),
-        ),
-        content: Wrap(
-          spacing: 15,
-          runSpacing: 15,
-          alignment: WrapAlignment.center,
-          children: schoolColors.map((item) {
-            Color c = item['color'];
-            bool isSelected = currentPrimary.toARGB32() == c.toARGB32();
-
-            return GestureDetector(
-              onTap: () async {
-                // 1. UPDATE GLOBAL COLOR INSTANTLY
-                appColorNotifier.value = c;
-
-                // 2. BACKUP TO MEMORY
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setInt('app_primary_color', c.toARGB32());
-
-                // 3. PUSH HEX FORMAT TO DATABASE
-                try {
-                  String hexColor =
-                      '#${c.toARGB32().toRadixString(16).substring(2, 8).toUpperCase()}';
-                  final userId = Supabase.instance.client.auth.currentUser!.id;
-                  final userData = await Supabase.instance.client
-                      .from('profiles')
-                      .select('school_id')
-                      .eq('id', userId)
-                      .single();
-
-                  final schoolId = userData['school_id'];
-                  if (schoolId != null) {
-                    await Supabase.instance.client
-                        .from('schools')
-                        .update({'brand_color': hexColor})
-                        .eq('id', schoolId);
-                  }
-                } catch (e) {
-                  debugPrint("Failed to sync DB color: $e");
-                }
-
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: c,
-                      shape: BoxShape.circle,
-                      border: isSelected
-                          ? Border.all(
-                              color: isDark ? Colors.white : Colors.black87,
-                              width: 3,
-                            )
-                          : null,
-                    ),
-                    child: isSelected
-                        ? const Icon(Icons.check, color: Colors.white)
-                        : null,
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    item['name'],
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      color: isDark ? Colors.white70 : Colors.black54,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-
   // --- NEW CONTACT SUPPORT OPTIONS (EMAIL & WHATSAPP) ---
   void _showContactSupportOptions(
     BuildContext context,
@@ -317,6 +214,14 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
   Future<void> _handleDeleteSchool(BuildContext context) async {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
 
+    // 🚨 GATEKEEPER CHECK: Ensure they have downloaded their data
+    if (_downloadedTables.length < _totalRequiredTables) {
+      showAuthErrorDialog(
+        "Action Prohibited.\n\nYou must first use the 'Export All Data (CSV)' module in Data & Security to backup all $_totalRequiredTables tables before the system will allow account deletion.",
+      );
+      return;
+    }
+
     bool confirm =
         await showDialog(
           context: context,
@@ -345,7 +250,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
               ],
             ),
             content: const Text(
-              "This action is PERMANENT and CANNOT be undone.\n\nAll student records, staff profiles, financial transactions, and school configurations will be permanently erased from our servers.",
+              "This action is PERMANENT and CANNOT be undone.\n\nBecause you have exported your data, we will now proceed to permanently erase all student records, transactions, and school configurations.",
               textAlign: TextAlign.center,
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
             ),
@@ -409,7 +314,29 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
         throw "Could not identify your school ID.";
       }
 
-      // This assumes your database has cascading deletes configured on the school_id
+      // 🚨 FIXING THE 409 CONFLICT: Wipe all 13 child records sequentially FIRST
+      final List<String> safeDeletionOrder = [
+        'alert_reads',
+        'alerts',
+        'affective_traits',
+        'exam_scores',
+        'term_results',
+        'attendance',
+        'transactions',
+        'staff_assignments',
+        'class_subjects',
+        'fee_structures',
+        'students',
+        'classes',
+        'profiles',
+      ];
+      for (String tName in safeDeletionOrder) {
+        try {
+          await supabase.from(tName).delete().eq('school_id', schoolId);
+        } catch (_) {}
+      }
+
+      // NOW we can safely delete the core school record without Foreign Key blocks
       await supabase.from('schools').delete().eq('id', schoolId);
 
       // Sign the user out
@@ -526,13 +453,22 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                   _showThemeSelectionPopup(prefs);
                 },
               ),
+              // 🚨 MODULARIZED COLOR PICKER ROUTE
               _buildSettingsItem(
                 title: "School Brand Color",
                 subtitle: "Change the primary color of the app",
                 icon: Icons.color_lens,
                 color: primaryColor,
                 isDark: isDark,
-                onTap: () => _showColorPicker(context, primaryColor),
+                onTap: () {
+                  showModalBottomSheet(
+                    context: context,
+                    backgroundColor: Colors.transparent,
+                    isScrollControlled: true,
+                    builder: (ctx) =>
+                        ColorPickerSheet(currentColor: primaryColor),
+                  );
+                },
               ),
               const SizedBox(height: 30),
 
@@ -576,21 +512,42 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 10),
+              // 🚨 EXPORT DATA ROUTE (OPENS THE NEW HUB)
               _buildSettingsItem(
                 title: "Export All Data (CSV)",
                 subtitle: "Download school records and reports",
                 icon: Icons.download_rounded,
                 color: Colors.blueAccent,
                 isDark: isDark,
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Data export feature coming soon!"),
-                    ),
-                  );
+                onTap: () async {
+                  final supabase = Supabase.instance.client;
+                  final user = supabase.auth.currentUser;
+                  if (user != null) {
+                    final profile = await supabase
+                        .from('profiles')
+                        .select('school_id')
+                        .eq('id', user.id)
+                        .single();
+                    if (context.mounted) {
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => SchoolDataExportScreen(
+                            schoolId: profile['school_id'],
+                            alreadyDownloaded: _downloadedTables,
+                          ),
+                        ),
+                      );
+                      // Sync the downloaded status back so the Delete button knows!
+                      if (result != null && result is Set<String>) {
+                        setState(() {
+                          _downloadedTables.addAll(result);
+                        });
+                      }
+                    }
+                  }
                 },
               ),
-              // 🚨 RESTORED SECURITY SETTINGS
               _buildSettingsItem(
                 title: "Security Settings",
                 subtitle: "Password & Biometrics",
@@ -625,7 +582,6 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                   }
                 },
               ),
-              // 🚨 UPDATED SUPPORT DIALOG
               _buildSettingsItem(
                 title: "Contact Support",
                 subtitle: "Email or WhatsApp our team",
@@ -671,7 +627,6 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                 ),
               ),
               const SizedBox(height: 10),
-              // 🚨 YOUR ORIGINAL DELETE FUNCTION RESTORED
               _buildSettingsItem(
                 title: "Delete School Account",
                 subtitle: "Permanently erase all your data",
@@ -698,24 +653,28 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                       ),
                     ),
                   ),
-                  onPressed: () => _showLogoutDialog(context, isDark),
+                  onPressed: () async {
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (ctx) => const Center(child: TridetaLoader()),
+                    );
+                    await Supabase.instance.client.auth.signOut();
+                    if (context.mounted) {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (_) => const LoginScreen()),
+                        (route) => false,
+                      );
+                    }
+                  },
                   icon: const Icon(Icons.logout),
                   label: const Text(
-                    "Log Out",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // --- APP VERSION ---
-              Center(
-                child: Text(
-                  "TriDeta School Management\nVersion 2.0.1 (Build 42)",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: isDark ? Colors.white30 : Colors.grey[400],
-                    fontSize: 12,
+                    "LOG OUT",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
                   ),
                 ),
               ),
@@ -723,60 +682,6 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Future<void> _handleLogout() async {
-    try {
-      final supabase = Supabase.instance.client;
-      await supabase.auth.signOut();
-
-      // Reset color back to Trideta default when logged out
-      appColorNotifier.value = const Color(0xFF007ACC);
-
-      if (mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-          (route) => false,
-        );
-      }
-    } catch (e) {
-      if (mounted) showAuthErrorDialog(e.toString());
-    }
-  }
-
-  void _showLogoutDialog(BuildContext context, bool isDark) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: const Text(
-          "Log Out",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        content: const Text("Are you sure you want to securely log out?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              _handleLogout();
-            },
-            child: const Text("Log Out", style: TextStyle(color: Colors.white)),
-          ),
-        ],
       ),
     );
   }

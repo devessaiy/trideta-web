@@ -257,12 +257,14 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                     : StreamBuilder<List<Map<String, dynamic>>>(
                         stream: studentStream,
                         builder: (context, snapshot) {
-                          if (snapshot.hasError)
+                          if (snapshot.hasError) {
                             return _buildErrorState(isDark, primaryColor);
-                          if (!snapshot.hasData)
+                          }
+                          if (!snapshot.hasData) {
                             return Center(
                               child: TridetaLoader(color: primaryColor),
                             );
+                          }
 
                           final allStudents = snapshot.data!;
 
@@ -282,8 +284,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                                   cls.contains(_searchQuery.toLowerCase());
                             }).toList();
 
-                            if (filteredStudents.isEmpty)
+                            if (filteredStudents.isEmpty) {
                               return _buildEmptyState(isDark);
+                            }
 
                             Widget searchList = ListView.builder(
                               padding: const EdgeInsets.symmetric(
@@ -347,8 +350,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                                 unassignedOrLegacy;
                           }
 
-                          if (displayClasses.isEmpty)
+                          if (displayClasses.isEmpty) {
                             return _buildEmptyState(isDark);
+                          }
 
                           Widget classList = GridView.builder(
                             padding: const EdgeInsets.symmetric(
@@ -1027,10 +1031,11 @@ class _ClassListScreenState extends State<_ClassListScreen> {
 
   void _toggleStudent(String id) {
     setState(() {
-      if (_selectedStudentIds.contains(id))
+      if (_selectedStudentIds.contains(id)) {
         _selectedStudentIds.remove(id);
-      else
+      } else {
         _selectedStudentIds.add(id);
+      }
     });
   }
 

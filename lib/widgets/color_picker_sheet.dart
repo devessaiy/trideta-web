@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // 🚨 Added for Database Sync
-import 'package:trideta_v2/main.dart'; // 🚨 IMPORTED TO SYNC THE GLOBAL THEME
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:trideta_v2/main.dart'; // IMPORTED TO SYNC THE GLOBAL THEME
 
 class ColorPickerSheet extends StatelessWidget {
   final Color currentColor;
-  final Function(Color) onColorSelected;
 
-  const ColorPickerSheet({
-    super.key,
-    required this.currentColor,
-    required this.onColorSelected,
-  });
+  const ColorPickerSheet({super.key, required this.currentColor});
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +14,7 @@ class ColorPickerSheet extends StatelessWidget {
     Color bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color textColor = isDark ? Colors.white : Colors.black87;
 
-    // The available theme colors
+    // 🚨 18 Premium Theme Colors
     final List<Map<String, dynamic>> themeColors = [
       {'name': 'Trideta Blue', 'color': const Color(0xFF007ACC)},
       {'name': 'Emerald Green', 'color': const Color(0xFF10B981)},
@@ -33,7 +29,6 @@ class ColorPickerSheet extends StatelessWidget {
       {'name': 'Vivid Coral', 'color': const Color(0xFFFF6F61)},
       {'name': 'Lavender Haze', 'color': const Color(0xFFB39DDB)},
       {'name': 'Neon Wasabi', 'color': const Color(0xFFD1E231)},
-      {'name': 'Teal', 'color': const Color(0xFF008080)},
       {'name': 'Sunset Peach', 'color': const Color(0xFFFFDAB9)},
       {'name': 'Deep Berry', 'color': const Color(0xFF7D2C5E)},
       {'name': 'Tangerine', 'color': const Color(0xFFFBAB60)},
@@ -44,7 +39,7 @@ class ColorPickerSheet extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -53,9 +48,9 @@ class ColorPickerSheet extends StatelessWidget {
           Center(
             child: Container(
               width: 40,
-              height: 4,
+              height: 5,
               decoration: BoxDecoration(
-                color: Colors.grey[300],
+                color: Colors.grey.shade300,
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
@@ -65,54 +60,49 @@ class ColorPickerSheet extends StatelessWidget {
             "School Brand Color",
             style: TextStyle(
               fontSize: 20,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w900,
               color: textColor,
             ),
           ),
           const SizedBox(height: 10),
           const Text(
-            "Select a primary color to match your school's brand. This will update the theme across your entire dashboard.",
-            style: TextStyle(color: Colors.grey, fontSize: 13),
+            "Select a primary color to match your school's brand. This will immediately update the theme across your entire dashboard.",
+            style: TextStyle(color: Colors.grey, fontSize: 13, height: 1.5),
           ),
           const SizedBox(height: 25),
           Wrap(
             spacing: 15,
             runSpacing: 15,
             children: themeColors.map((theme) {
-              bool isSelected = currentColor.toARGB32() == theme['color'].value;
+              Color c = theme['color'];
+              bool isSelected = currentColor.toARGB32() == c.toARGB32();
+
               return GestureDetector(
-                // 🚨 INJECTED GLOBAL SYNC & DB TRANSLATOR HERE
                 onTap: () async {
-                  // 1. Update BOTH local UI and GLOBAL Notifier instantly
-                  onColorSelected(theme['color']);
-                  appColorNotifier.value =
-                      theme['color']; // 👈 THIS CHANGES THE WHOLE APP
+                  // 1. UPDATE GLOBAL COLOR INSTANTLY
+                  appColorNotifier.value = c;
 
-                  // 2. TRANSLATOR: Convert Flutter Color to standard "#HEX" (e.g. "#10B981")
-                  String hexColor =
-                      '#${theme['color'].value.toRadixString(16).substring(2, 8).toUpperCase()}';
+                  // 2. BACKUP TO MEMORY
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setInt('app_primary_color', c.toARGB32());
 
-                  // 3. Save to Supabase
+                  // 3. PUSH HEX FORMAT TO DATABASE
                   try {
+                    String hexColor =
+                        '#${c.toARGB32().toRadixString(16).substring(2, 8).toUpperCase()}';
                     final userId =
                         Supabase.instance.client.auth.currentUser!.id;
-
-                    // First get their school_id
                     final userData = await Supabase.instance.client
                         .from('profiles')
                         .select('school_id')
                         .eq('id', userId)
                         .single();
-
                     final schoolId = userData['school_id'];
 
-                    // Then update the schools table
                     if (schoolId != null) {
                       await Supabase.instance.client
                           .from('schools')
-                          .update({
-                            'brand_color': hexColor,
-                          }) // 👈 Saves the #HEX format
+                          .update({'brand_color': hexColor})
                           .eq('id', schoolId);
                     }
                   } catch (e) {
@@ -127,15 +117,14 @@ class ColorPickerSheet extends StatelessWidget {
                       width: 50,
                       height: 50,
                       decoration: BoxDecoration(
-                        color: theme['color'],
+                        color: c,
                         shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isSelected ? textColor : Colors.transparent,
-                          width: 3,
-                        ),
+                        border: isSelected
+                            ? Border.all(color: textColor, width: 3)
+                            : null,
                         boxShadow: [
                           BoxShadow(
-                            color: theme['color'].withOpacity(0.4),
+                            color: c.withValues(alpha: 0.4),
                             blurRadius: 8,
                             offset: const Offset(0, 4),
                           ),
@@ -147,7 +136,7 @@ class ColorPickerSheet extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      theme['name'],
+                      theme['name'].split(' ')[0], // Keep text compact
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: isSelected
@@ -155,13 +144,14 @@ class ColorPickerSheet extends StatelessWidget {
                             : FontWeight.normal,
                         color: isSelected ? textColor : Colors.grey,
                       ),
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
               );
             }).toList(),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 30),
         ],
       ),
     );

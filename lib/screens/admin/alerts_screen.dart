@@ -43,6 +43,9 @@ class _AlertsScreenState extends State<AlertsScreen>
     }
   }
 
+  // ===========================================================================
+  // 🚨 LOGIC ENGINE: STRICTLY UNTOUCHED
+  // ===========================================================================
   Future<void> _initData() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -53,14 +56,12 @@ class _AlertsScreenState extends State<AlertsScreen>
             .eq('id', user.id)
             .single();
         _schoolId = profile['school_id'];
-
         final school = await _supabase
             .from('schools')
             .select('current_session')
             .eq('id', _schoolId!)
             .single();
         _currentSession = school['current_session'] ?? "";
-
         await _checkFinancialHealth();
       }
     } catch (e) {
@@ -78,12 +79,10 @@ class _AlertsScreenState extends State<AlertsScreen>
           .select('amount, applicable_classes, applicable_categories')
           .eq('school_id', _schoolId!)
           .eq('academic_session', _currentSession);
-
       final studentsData = await _supabase
           .from('students')
           .select('*')
           .eq('school_id', _schoolId!);
-
       double totalExpected = 0.0;
 
       for (var student in studentsData) {
@@ -91,7 +90,6 @@ class _AlertsScreenState extends State<AlertsScreen>
             (student['class_level'] ?? student['current_class'] ?? '')
                 .toString();
         String sCategory = (student['category'] ?? '').toString();
-
         for (var fee in feeData) {
           if (_doesItApply(fee['applicable_classes'], sClass) &&
               _doesItApply(
@@ -168,16 +166,32 @@ class _AlertsScreenState extends State<AlertsScreen>
     bool? confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Delete Alert?"),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          "Delete Alert?",
+          style: TextStyle(
+            color: Colors.redAccent,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         content: const Text("This action cannot be undone."),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text("Cancel"),
+            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
           ),
-          TextButton(
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Delete", style: TextStyle(color: Colors.red)),
+            child: const Text(
+              "Delete",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -186,17 +200,19 @@ class _AlertsScreenState extends State<AlertsScreen>
     if (confirm == true) {
       try {
         await _supabase.from('alerts').delete().eq('id', alertId);
-        if (mounted) {
+        if (mounted)
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
                 "Alert deleted successfully.",
-                style: TextStyle(color: Colors.white),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               backgroundColor: Colors.green,
             ),
           );
-        }
       } catch (e) {
         showAuthErrorDialog("Error deleting alert: $e");
       }
@@ -204,22 +220,28 @@ class _AlertsScreenState extends State<AlertsScreen>
   }
 
   void _showDebtorOptions() {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: const Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
             SizedBox(width: 10),
             Text(
               "Alert Debtors",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
             ),
           ],
         ),
         content: Text(
           "How would you like to notify parents with outstanding balances for $_currentSession?",
+          style: TextStyle(
+            color: isDark ? Colors.white70 : Colors.black87,
+            height: 1.5,
+          ),
         ),
         actions: [
           TextButton(
@@ -227,19 +249,30 @@ class _AlertsScreenState extends State<AlertsScreen>
               Navigator.pop(ctx);
               _executeDebtorAlert(sendSms: false);
             },
-            child: const Text("Dashboard Only"),
+            child: const Text(
+              "Dashboard Only",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.redAccent,
               foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
             onPressed: () {
               Navigator.pop(ctx);
               _executeDebtorAlert(sendSms: true);
             },
-            icon: const Icon(Icons.sms_rounded, size: 16),
-            label: const Text("Dashboard + SMS"),
+            icon: const Icon(Icons.sms_rounded, size: 18),
+            label: const Text(
+              "Dashboard + SMS",
+              style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
+            ),
           ),
         ],
       ),
@@ -257,12 +290,11 @@ class _AlertsScreenState extends State<AlertsScreen>
         'type': 'fee_urgent',
       });
       if (sendSms) await Future.delayed(const Duration(seconds: 2));
-      if (mounted) {
+      if (mounted)
         showSuccessDialog(
           "Alerts Sent",
           "Debtor alerts have been sent to the parent dashboards successfully!",
         );
-      }
     } catch (e) {
       showAuthErrorDialog("Failed to send alert: ${e.toString()}");
     } finally {
@@ -270,66 +302,103 @@ class _AlertsScreenState extends State<AlertsScreen>
     }
   }
 
-  // 🚨 UPDATED CUSTOM ALERT FORM
+  // 🚨 REDESIGNED CUSTOM ALERT MODAL
   void _showCreateAlertDialog() {
     String selectedAudience = 'parent_alert';
     final titleCtrl = TextEditingController();
     final msgCtrl = TextEditingController();
     bool isSubmitting = false;
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color primaryColor = Theme.of(context).primaryColor;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) {
-          return Padding(
+          return Container(
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF121212) : Colors.white,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(30),
+              ),
+            ),
             padding: EdgeInsets.only(
               bottom: MediaQuery.of(context).viewInsets.bottom,
               left: 24,
               right: 24,
-              top: 24,
+              top: 12,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
                 const Text(
                   "Create Custom Alert",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                  ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
                 DropdownButtonFormField<String>(
                   initialValue: selectedAudience,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: "Target Audience",
-                    border: OutlineInputBorder(),
+                    labelStyle: TextStyle(color: Colors.grey.shade500),
+                    prefixIcon: Icon(Icons.group_rounded, color: primaryColor),
+                    filled: true,
+                    fillColor: isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : Colors.grey.shade50,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                   items: const [
                     DropdownMenuItem(
                       value: 'parent_alert',
-                      child: Text("Parents Only"),
+                      child: Text(
+                        "Parents Only",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ),
                     DropdownMenuItem(
                       value: 'teacher_alert',
-                      child: Text("Teachers Only"),
+                      child: Text(
+                        "Teachers Only",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ),
                     DropdownMenuItem(
                       value: 'general',
-                      child: Text("General (All Users)"),
+                      child: Text(
+                        "General (All Users)",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ),
-                    // 🚨 ROUTED TO THE SCHOOL'S OWN WEBSITE
                     DropdownMenuItem(
                       value: 'school_website',
                       child: Text(
                         "School Website (Public)",
                         style: TextStyle(
                           color: Colors.teal,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
                     ),
@@ -337,34 +406,54 @@ class _AlertsScreenState extends State<AlertsScreen>
                   onChanged: (val) =>
                       setModalState(() => selectedAudience = val!),
                 ),
-                const SizedBox(height: 15),
+                const SizedBox(height: 16),
 
                 TextField(
                   controller: titleCtrl,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: "Alert Title",
-                    border: OutlineInputBorder(),
+                    labelStyle: TextStyle(color: Colors.grey.shade500),
+                    filled: true,
+                    fillColor: isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : Colors.grey.shade50,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 15),
+                const SizedBox(height: 16),
 
                 TextField(
                   controller: msgCtrl,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
+                  maxLines: 4,
+                  decoration: InputDecoration(
                     labelText: "Message Body",
-                    border: OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                    labelStyle: TextStyle(color: Colors.grey.shade500),
+                    filled: true,
+                    fillColor: isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : Colors.grey.shade50,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 30),
 
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      backgroundColor: Theme.of(context).primaryColor,
-                      foregroundColor: Colors.white,
+                  height: 55,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 0,
                     ),
                     onPressed: isSubmitting
                         ? null
@@ -373,26 +462,35 @@ class _AlertsScreenState extends State<AlertsScreen>
                                 msgCtrl.text.isEmpty) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text("Title and message required."),
+                                  content: Text(
+                                    "Title and message required.",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  backgroundColor: Colors.orange,
                                 ),
                               );
                               return;
                             }
                             setModalState(() => isSubmitting = true);
                             try {
-                              // Safely inserts into the School's isolated alerts table
                               await _supabase.from('alerts').insert({
                                 'school_id': _schoolId,
                                 'title': titleCtrl.text.trim(),
                                 'message': msgCtrl.text.trim(),
                                 'type': selectedAudience,
                               });
-
                               if (mounted) {
                                 Navigator.pop(ctx);
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    content: Text("Alert posted successfully!"),
+                                    content: Text(
+                                      "Alert posted successfully!",
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                     backgroundColor: Colors.green,
                                   ),
                                 );
@@ -403,19 +501,24 @@ class _AlertsScreenState extends State<AlertsScreen>
                               setModalState(() => isSubmitting = false);
                             }
                           },
-                    child: isSubmitting
+                    icon: isSubmitting
                         ? const SizedBox(
                             width: 20,
                             height: 20,
                             child: TridetaLoader(color: Colors.white),
                           )
-                        : const Text(
-                            "POST ALERT",
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
+                        : const Icon(Icons.send_rounded, color: Colors.white),
+                    label: Text(
+                      isSubmitting ? "POSTING..." : "POST ALERT",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 30),
               ],
             ),
           );
@@ -424,62 +527,84 @@ class _AlertsScreenState extends State<AlertsScreen>
     );
   }
 
+  // ===========================================================================
+  // 🚨 MODULAR UI COMPOSITION
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color primaryColor = Theme.of(context).primaryColor;
 
-    if (_isLoading) {
+    if (_isLoading)
       return Scaffold(
         backgroundColor: bgColor,
         body: Center(child: TridetaLoader(color: primaryColor)),
       );
-    }
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
         title: const Text(
           "Action Center",
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        backgroundColor: primaryColor,
-        automaticallyImplyLeading: false,
+        backgroundColor: bgColor,
+        foregroundColor: isDark ? Colors.white : Colors.black87,
         elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-          tabs: const [
-            Tab(text: "System Alerts", icon: Icon(Icons.campaign_rounded)),
-            Tab(
-              text: "Recent Receipts",
-              icon: Icon(Icons.receipt_long_rounded),
+        centerTitle: true,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(16),
             ),
-          ],
+            child: TabBar(
+              controller: _tabController,
+              dividerColor: Colors.transparent,
+              indicatorSize: TabBarIndicatorSize.tab,
+              indicator: BoxDecoration(
+                color: primaryColor,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              labelColor: Colors.white,
+              unselectedLabelColor: isDark
+                  ? Colors.white54
+                  : Colors.grey.shade600,
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+              tabs: const [
+                Tab(text: "ALERTS", iconMargin: EdgeInsets.zero),
+                Tab(text: "RECEIPTS", iconMargin: EdgeInsets.zero),
+              ],
+            ),
+          ),
         ),
       ),
       floatingActionButton: _tabController.index == 0
           ? FloatingActionButton.extended(
               onPressed: _showCreateAlertDialog,
               backgroundColor: primaryColor,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add_alert_rounded),
+              elevation: 4,
+              icon: const Icon(Icons.add_alert_rounded, color: Colors.white),
               label: const Text(
                 "New Alert",
-                style: TextStyle(fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
             )
           : null,
-      // 🚨 SHAPE-SHIFTER: LayoutBuilder
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 800) {
-            // 💻 DESKTOP LAYOUT
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 800),
@@ -508,7 +633,6 @@ class _AlertsScreenState extends State<AlertsScreen>
               ),
             );
           } else {
-            // 📱 MOBILE LAYOUT
             return TabBarView(
               controller: _tabController,
               children: [
@@ -522,23 +646,29 @@ class _AlertsScreenState extends State<AlertsScreen>
     );
   }
 
+  // 🚨 REDESIGNED PREMIUM HEALTH CARD
   Widget _buildHealthCard(bool isDark) {
     if (_totalExpectedFees == 0) {
       return Container(
-        margin: const EdgeInsets.all(20),
+        margin: const EdgeInsets.fromLTRB(24, 16, 24, 24),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.grey.withValues(alpha: 0.1),
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(20),
         ),
-        child: const Row(
+        child: Row(
           children: [
-            Icon(Icons.info_outline, color: Colors.grey),
-            SizedBox(width: 10),
+            Icon(Icons.info_outline_rounded, color: Colors.grey.shade600),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
-                "Awaiting financial data for the current session.",
-                style: TextStyle(color: Colors.grey),
+                "Awaiting financial data for $_currentSession.",
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
@@ -554,80 +684,116 @@ class _AlertsScreenState extends State<AlertsScreen>
     bool showButton = false;
 
     if (_collectionPercentage < 50.0) {
-      cardColor = Colors.redAccent.withValues(alpha: 0.1);
+      cardColor = Colors.redAccent.withValues(alpha: 0.05);
       textColor = Colors.redAccent;
       icon = Icons.warning_amber_rounded;
-      title = "LOW REVENUE DETECTED";
+      title = "CRITICAL REVENUE";
       subtitle =
-          "Collection for $_currentSession is only ${_collectionPercentage.toStringAsFixed(1)}%. Expected is 50% or more. High outstanding debt detected.";
+          "Collection is only ${_collectionPercentage.toStringAsFixed(1)}%. Expected is 50% or more. High outstanding debt detected.";
       showButton = true;
     } else if (_collectionPercentage < 60.0) {
-      cardColor = Colors.orange.withValues(alpha: 0.1);
+      cardColor = Colors.orange.withValues(alpha: 0.05);
       textColor = Colors.orange;
       icon = Icons.health_and_safety_outlined;
       title = "SYSTEM STABLE";
       subtitle =
-          "Collection for $_currentSession is at ${_collectionPercentage.toStringAsFixed(1)}%. Minimum operational threshold met.";
+          "Collection is at ${_collectionPercentage.toStringAsFixed(1)}%. Minimum operational threshold met.";
     } else if (_collectionPercentage < 70.0) {
-      cardColor = Colors.teal.withValues(alpha: 0.1);
+      cardColor = Colors.teal.withValues(alpha: 0.05);
       textColor = Colors.teal;
       icon = Icons.trending_up_rounded;
       title = "HEALTHY REVENUE";
       subtitle =
-          "Collection for $_currentSession is at ${_collectionPercentage.toStringAsFixed(1)}%. Financial health is looking very good.";
+          "Collection is at ${_collectionPercentage.toStringAsFixed(1)}%. Financial health is looking very good.";
     } else {
-      cardColor = Colors.green.withValues(alpha: 0.1);
+      cardColor = Colors.green.withValues(alpha: 0.05);
       textColor = Colors.green;
       icon = Icons.verified_user_rounded;
       title = "EXCELLENT REVENUE";
       subtitle =
-          "Great job! Collection for $_currentSession is at ${_collectionPercentage.toStringAsFixed(1)}%. The school's finances are highly stable.";
+          "Great job! Collection is at ${_collectionPercentage.toStringAsFixed(1)}%. The school's finances are highly stable.";
     }
 
     return Container(
-      margin: const EdgeInsets.all(20),
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: textColor.withValues(alpha: 0.3)),
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: textColor.withValues(alpha: 0.3), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: textColor.withValues(alpha: 0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, color: textColor),
-              const SizedBox(width: 10),
-              Text(
-                title,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: textColor,
-                  fontSize: 15,
+              // Circular Progress Indicator
+              SizedBox(
+                width: 60,
+                height: 60,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CircularProgressIndicator(
+                      value: _collectionPercentage / 100,
+                      strokeWidth: 6,
+                      backgroundColor: textColor.withValues(alpha: 0.1),
+                      valueColor: AlwaysStoppedAnimation<Color>(textColor),
+                      strokeCap: StrokeCap.round,
+                    ),
+                    Center(child: Icon(icon, color: textColor, size: 24)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: textColor,
+                        fontSize: 16,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white70 : Colors.grey.shade600,
+                        height: 1.4,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Text(
-            subtitle,
-            style: TextStyle(
-              fontSize: 13,
-              color: isDark ? Colors.white70 : Colors.black87,
-            ),
-          ),
           if (showButton) ...[
-            const SizedBox(height: 15),
+            const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
+              height: 45,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
                   backgroundColor: textColor,
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
                 onPressed: _isSendingDebtorAlert ? null : _showDebtorOptions,
@@ -637,10 +803,13 @@ class _AlertsScreenState extends State<AlertsScreen>
                         height: 15,
                         child: TridetaLoader(color: Colors.white),
                       )
-                    : const Icon(Icons.notifications_active, size: 18),
+                    : const Icon(Icons.notifications_active_rounded, size: 18),
                 label: Text(
                   _isSendingDebtorAlert ? "PROCESSING..." : "ALERT ALL DEBTORS",
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                  ),
                 ),
               ),
             ),
@@ -656,7 +825,7 @@ class _AlertsScreenState extends State<AlertsScreen>
       color: primaryColor,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 80), // Padding for FAB
+        padding: const EdgeInsets.only(bottom: 100),
         children: [
           _buildHealthCard(isDark),
           StreamBuilder<List<Map<String, dynamic>>>(
@@ -667,139 +836,35 @@ class _AlertsScreenState extends State<AlertsScreen>
                 .order('created_at', ascending: false),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting &&
-                  !snapshot.hasData) {
+                  !snapshot.hasData)
                 return Padding(
                   padding: const EdgeInsets.all(20),
                   child: Center(child: TridetaLoader(color: primaryColor)),
                 );
-              }
-
               final alerts = snapshot.data ?? [];
-              if (alerts.isEmpty) {
+              if (alerts.isEmpty)
                 return SizedBox(
                   height: 250,
                   child: _buildEmptyState(
                     "No Custom Alerts",
-                    "Manual alerts will appear here.",
+                    "Manual notifications will appear here.",
                     Icons.campaign_rounded,
                     isDark,
                   ),
                 );
-              }
 
               return ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 24),
                 itemCount: alerts.length,
                 itemBuilder: (context, index) {
-                  final alert = alerts[index];
-
-                  // Visual indicator for Audience
-                  String type = alert['type'] ?? '';
-                  IconData typeIcon = Icons.notifications;
-                  Color typeColor = primaryColor;
-                  String badgeText = "General";
-
-                  if (type == 'parent_alert') {
-                    typeIcon = Icons.family_restroom;
-                    typeColor = Colors.blue;
-                    badgeText = "Parents";
-                  } else if (type == 'teacher_alert') {
-                    typeIcon = Icons.school;
-                    typeColor = Colors.purple;
-                    badgeText = "Teachers";
-                  } else if (type == 'fee_urgent') {
-                    typeIcon = Icons.warning_rounded;
-                    typeColor = Colors.red;
-                    badgeText = "Debtors";
-                  } else if (type == 'school_website') {
-                    // 🚨 NEW BADGE FOR SCHOOL WEBSITE ALERTS
-                    typeIcon = Icons.public;
-                    typeColor = Colors.teal;
-                    badgeText = "Website";
-                  }
-
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 15),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: typeColor.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(typeIcon, size: 12, color: typeColor),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      badgeText,
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: typeColor,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Spacer(),
-                              Text(
-                                alert['created_at'] != null
-                                    ? DateFormat('MMM dd, hh:mm a').format(
-                                        DateTime.parse(alert['created_at']),
-                                      )
-                                    : '',
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                              const SizedBox(width: 5),
-                              InkWell(
-                                onTap: () => _deleteAlert(alert['id']),
-                                child: const Icon(
-                                  Icons.delete_outline,
-                                  color: Colors.red,
-                                  size: 18,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            alert['title'] ?? 'Notice',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            alert['message'] ?? '',
-                            style: TextStyle(
-                              color: isDark ? Colors.white70 : Colors.black87,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  // 🚨 CALLS THE NEW COLLAPSIBLE CARD WIDGET
+                  return _CollapsibleAlertCard(
+                    alert: alerts[index],
+                    primaryColor: primaryColor,
+                    isDark: isDark,
+                    onDelete: () => _deleteAlert(alerts[index]['id']),
                   );
                 },
               );
@@ -822,11 +887,10 @@ class _AlertsScreenState extends State<AlertsScreen>
             .order('created_at', ascending: false)
             .limit(50),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
+          if (!snapshot.hasData)
             return Center(child: TridetaLoader(color: primaryColor));
-          }
           final txs = snapshot.data!;
-          if (txs.isEmpty) {
+          if (txs.isEmpty)
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
@@ -835,59 +899,100 @@ class _AlertsScreenState extends State<AlertsScreen>
                   child: _buildEmptyState(
                     "No Receipts",
                     "Recent transactions appear here.",
-                    Icons.receipt_long,
+                    Icons.receipt_long_rounded,
                     isDark,
                   ),
                 ),
               ],
             );
-          }
 
           return ListView.builder(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(24),
             itemCount: txs.length,
             itemBuilder: (context, index) {
               final tx = txs[index];
               return Container(
-                margin: const EdgeInsets.only(bottom: 10),
+                margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.white10 : Colors.white,
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
+                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isDark ? Colors.white10 : Colors.grey.shade200,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-                child: ListTile(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => AdminReceiptDetailView(tx: tx),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AdminReceiptDetailView(tx: tx),
+                      ),
                     ),
-                  ),
-                  leading: const CircleAvatar(
-                    backgroundColor: Colors.green,
-                    child: Icon(
-                      Icons.receipt_long,
-                      color: Colors.white,
-                      size: 18,
-                    ),
-                  ),
-                  title: Text(
-                    tx['student_name'] ?? 'Unknown',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Text(
-                    DateFormat(
-                      'dd MMM, yyyy',
-                    ).format(DateTime.parse(tx['created_at'])),
-                  ),
-                  trailing: Text(
-                    NumberFormat.currency(
-                      symbol: '₦',
-                      decimalDigits: 0,
-                    ).format(tx['amount']),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.receipt_long_rounded,
+                              color: Colors.green,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  tx['student_name'] ?? 'Unknown',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  DateFormat('dd MMM, yyyy').format(
+                                    DateTime.parse(tx['created_at']).toLocal(),
+                                  ),
+                                  style: TextStyle(
+                                    color: Colors.grey.shade500,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            NumberFormat.currency(
+                              symbol: '₦',
+                              decimalDigits: 0,
+                            ).format(tx['amount']),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              color: Colors.green,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -903,14 +1008,218 @@ class _AlertsScreenState extends State<AlertsScreen>
     child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(i, size: 60, color: Colors.grey[400]),
-        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: d
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.grey.shade100,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(i, size: 40, color: Colors.grey.shade400),
+        ),
+        const SizedBox(height: 20),
         Text(
           t,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
         ),
-        Text(s, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+        const SizedBox(height: 8),
+        Text(
+          s,
+          style: TextStyle(
+            color: Colors.grey.shade500,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
       ],
     ),
   );
+}
+
+// ===========================================================================
+// 🚨 LOCAL CUSTOM WIDGET: PREMIUM COLLAPSIBLE ALERT CARD
+// ===========================================================================
+class _CollapsibleAlertCard extends StatefulWidget {
+  final Map<String, dynamic> alert;
+  final Color primaryColor;
+  final bool isDark;
+  final VoidCallback onDelete;
+
+  const _CollapsibleAlertCard({
+    required this.alert,
+    required this.primaryColor,
+    required this.isDark,
+    required this.onDelete,
+  });
+
+  @override
+  State<_CollapsibleAlertCard> createState() => _CollapsibleAlertCardState();
+}
+
+class _CollapsibleAlertCardState extends State<_CollapsibleAlertCard> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    String type = widget.alert['type'] ?? '';
+    IconData typeIcon = Icons.notifications_rounded;
+    Color typeColor = widget.primaryColor;
+    String badgeText = "General";
+
+    if (type == 'parent_alert') {
+      typeIcon = Icons.family_restroom_rounded;
+      typeColor = Colors.blue;
+      badgeText = "Parents";
+    } else if (type == 'teacher_alert') {
+      typeIcon = Icons.school_rounded;
+      typeColor = Colors.purple;
+      badgeText = "Teachers";
+    } else if (type == 'fee_urgent') {
+      typeIcon = Icons.warning_rounded;
+      typeColor = Colors.redAccent;
+      badgeText = "Debtors";
+    } else if (type == 'school_website') {
+      typeIcon = Icons.public_rounded;
+      typeColor = Colors.teal;
+      badgeText = "Website";
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: widget.isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: widget.isDark ? Colors.white10 : Colors.grey.shade200,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => setState(() => _isExpanded = !_isExpanded),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: typeColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(typeIcon, size: 14, color: typeColor),
+                          const SizedBox(width: 6),
+                          Text(
+                            badgeText,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: typeColor,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      widget.alert['created_at'] != null
+                          ? DateFormat('MMM dd, hh:mm a').format(
+                              DateTime.parse(
+                                widget.alert['created_at'],
+                              ).toLocal(),
+                            )
+                          : '',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade500,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: widget.onDelete,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.delete_outline_rounded,
+                          color: Colors.redAccent,
+                          size: 16,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.alert['title'] ?? 'Notice',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Icon(
+                      _isExpanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      color: Colors.grey.shade400,
+                    ),
+                  ],
+                ),
+                // Smoothly animated expansion
+                AnimatedCrossFade(
+                  duration: const Duration(milliseconds: 300),
+                  crossFadeState: _isExpanded
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  firstChild: const SizedBox(width: double.infinity, height: 0),
+                  secondChild: Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(
+                      widget.alert['message'] ?? '',
+                      style: TextStyle(
+                        color: widget.isDark
+                            ? Colors.white70
+                            : Colors.grey.shade700,
+                        height: 1.5,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

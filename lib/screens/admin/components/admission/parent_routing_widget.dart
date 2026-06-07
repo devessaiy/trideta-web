@@ -469,8 +469,9 @@ class ParentRoutingWidget extends StatelessWidget {
         if (v!.isEmpty) return "Password required";
         if (v.length < 6) return "Must be at least 6 chars";
         if (ctrl == parentConfirmPasswordController &&
-            v != parentPasswordController.text)
+            v != parentPasswordController.text) {
           return "Passwords do not match";
+        }
         return null;
       },
       decoration: InputDecoration(

@@ -24,7 +24,7 @@ class ProfileMenuScreen extends StatefulWidget {
 class _ProfileMenuScreenState extends State<ProfileMenuScreen>
     with AuthErrorHandler {
   // 🚨 Tracker for the new Termination Hub
-  Set<String> _downloadedTables = {};
+  final Set<String> _downloadedTables = {};
   final int _totalRequiredTables = 14;
 
   @override
@@ -614,26 +614,6 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                   );
                   launchUrl(url);
                 },
-              ),
-              const SizedBox(height: 30),
-
-              // --- DANGER ZONE ---
-              const Text(
-                "Danger Zone",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.redAccent,
-                ),
-              ),
-              const SizedBox(height: 10),
-              _buildSettingsItem(
-                title: "Delete School Account",
-                subtitle: "Permanently erase all your data",
-                icon: Icons.delete_forever,
-                color: Colors.redAccent,
-                isDark: isDark,
-                onTap: () => _handleDeleteSchool(context),
               ),
               const SizedBox(height: 30),
 

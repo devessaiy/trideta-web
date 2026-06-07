@@ -6,8 +6,6 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:intl/intl.dart';
-
-// 🚨 NEW: The modern gallery saver package
 import 'package:gal/gal.dart';
 
 class AttendanceScreen extends StatefulWidget {
@@ -69,17 +67,20 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     try {
       final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
+      // 🚨 SCALING FIX: Added a 15-second timeout so bad Wi-Fi doesn't freeze the app forever
       final studentsRes = await _supabase
           .from('students')
           .select('id, first_name, last_name, admission_no, passport_url')
           .eq('school_id', widget.schoolId)
-          .eq('class_level', _selectedClass!);
+          .eq('class_level', _selectedClass!)
+          .timeout(const Duration(seconds: 15));
 
       final attendanceRes = await _supabase
           .from('attendance')
           .select('student_id, status')
           .eq('class_level', _selectedClass!)
-          .eq('date', todayStr);
+          .eq('date', todayStr)
+          .timeout(const Duration(seconds: 15));
 
       Map<String, String> existingData = {};
       for (var record in attendanceRes) {
@@ -98,7 +99,10 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text("Network Timeout: Please check your connection."),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -124,12 +128,16 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         });
       });
 
+      // 🚨 SCALING FIX: Replaced dangerous delete/insert with an atomic UPSERT.
+      // If the network drops halfway, no data is lost. It either fully updates or does nothing.
       await _supabase
           .from('attendance')
-          .delete()
-          .eq('class_level', _selectedClass!)
-          .eq('date', todayStr);
-      await _supabase.from('attendance').insert(upsertData);
+          .upsert(
+            upsertData,
+            onConflict:
+                'student_id, date', // Requires a unique constraint in Supabase
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -145,7 +153,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Save Error: $e"),
+            content: Text("Failed to save. Ensure your internet is stable."),
             backgroundColor: Colors.red,
           ),
         );
@@ -208,6 +216,8 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     }
 
     String selectedStatus = 'Punctual';
+    bool isSavingPopup =
+        false; // 🚨 SCALING FIX: Track saving state for the popup
 
     await showDialog(
       context: context,
@@ -224,58 +234,75 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   value: status,
                   groupValue: selectedStatus,
                   activeColor: _tridetaBlue,
-                  onChanged: (val) =>
-                      setDialogState(() => selectedStatus = val!),
+                  onChanged: isSavingPopup
+                      ? null
+                      : (val) => setDialogState(() => selectedStatus = val!),
                 );
               }).toList(),
             ),
             actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text("Cancel"),
-              ),
+              if (!isSavingPopup)
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text("Cancel"),
+                ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: _tridetaBlue),
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  try {
-                    await _supabase.from('attendance').insert({
-                      'school_id': widget.schoolId,
-                      'student_id': student['id'],
-                      'class_level': _selectedClass,
-                      'date': todayStr,
-                      'status': selectedStatus,
-                      'recorded_by': _supabase.auth.currentUser!.id,
-                    });
+                // 🚨 SCALING FIX: Disable button while saving to prevent double-tap duplicates
+                onPressed: isSavingPopup
+                    ? null
+                    : () async {
+                        setDialogState(() => isSavingPopup = true);
+                        try {
+                          await _supabase
+                              .from('attendance')
+                              .upsert({
+                                'school_id': widget.schoolId,
+                                'student_id': student['id'],
+                                'class_level': _selectedClass,
+                                'date': todayStr,
+                                'status': selectedStatus,
+                                'recorded_by': _supabase.auth.currentUser!.id,
+                              }, onConflict: 'student_id, date')
+                              .timeout(const Duration(seconds: 10));
 
-                    setState(
-                      () => _attendanceState[student['id']] = selectedStatus,
-                    );
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            "${student['first_name']} marked $selectedStatus",
-                          ),
-                          backgroundColor: Colors.green,
+                          setState(
+                            () => _attendanceState[student['id']] =
+                                selectedStatus,
+                          );
+                          if (mounted) {
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  "${student['first_name']} marked $selectedStatus",
+                                ),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          setDialogState(() => isSavingPopup = false);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Network Error. Tap Save again."),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                child: isSavingPopup
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
                         ),
-                      );
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Failed to save"),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
-                },
-                child: const Text(
-                  "SAVE",
-                  style: TextStyle(color: Colors.white),
-                ),
+                      )
+                    : const Text("SAVE", style: TextStyle(color: Colors.white)),
               ),
             ],
           );
@@ -348,7 +375,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
               ],
             ),
           ),
-
           Expanded(
             child: TabBarView(
               controller: _tabController,
@@ -363,12 +389,10 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
   Widget _buildManualTab() {
     if (_isLoading) return const Center(child: TridetaLoader());
-    if (_selectedClass == null) {
+    if (_selectedClass == null)
       return const Center(child: Text("Please select a class."));
-    }
-    if (_students.isEmpty) {
+    if (_students.isEmpty)
       return const Center(child: Text("No students found in this class."));
-    }
 
     return Column(
       children: [
@@ -441,11 +465,10 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                                 : Colors.black,
                           ),
                           onSelected: (selected) {
-                            if (selected) {
+                            if (selected)
                               setState(
                                 () => _attendanceState[student['id']] = s,
                               );
-                            }
                           },
                         );
                       }).toList(),
@@ -484,9 +507,8 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   }
 
   Widget _buildScannerTab() {
-    if (_selectedClass == null) {
+    if (_selectedClass == null)
       return const Center(child: Text("Please select a class first."));
-    }
 
     return Stack(
       children: [
@@ -556,8 +578,6 @@ void showStudentQrCode(BuildContext context, Map<String, dynamic> student) {
           const SizedBox(height: 5),
           Text(admNo, style: TextStyle(color: Colors.grey[600])),
           const SizedBox(height: 20),
-
-          // FIX: Fixed size prevents the 'No size' render box error
           SizedBox(
             width: 220,
             height: 220,
@@ -574,7 +594,6 @@ void showStudentQrCode(BuildContext context, Map<String, dynamic> student) {
               ),
             ),
           ),
-
           const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,
@@ -582,19 +601,14 @@ void showStudentQrCode(BuildContext context, Map<String, dynamic> student) {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF007ACC),
               ),
-
-              // 🚨 NEW: Simple, modern Gal saving logic
               onPressed: () async {
                 final Uint8List? imageBytes = await screenshotController
                     .capture();
                 if (imageBytes != null) {
                   try {
-                    // Check and request permissions automatically
                     if (!await Gal.hasAccess(toAlbum: true)) {
                       await Gal.requestAccess(toAlbum: true);
                     }
-
-                    // Save the image directly to the gallery
                     await Gal.putImageBytes(imageBytes);
 
                     if (ctx.mounted) {

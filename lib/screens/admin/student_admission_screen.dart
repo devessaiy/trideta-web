@@ -127,8 +127,9 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
           _classNameToIdMap.clear();
           if (classesData.isNotEmpty) {
             _allClassesData = List<Map<String, dynamic>>.from(classesData);
-            for (var c in classesData)
+            for (var c in classesData) {
               _classNameToIdMap[c['name'].toString()] = c['id'].toString();
+            }
             _activeClasses = classesData
                 .map((c) => c['name'].toString())
                 .toList();
@@ -270,10 +271,11 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
 
   Future<void> _registerStudent() async {
     if (!_formKey.currentState!.validate() || _pickedFile == null) {
-      if (_pickedFile == null)
+      if (_pickedFile == null) {
         showAuthErrorDialog(
           "Passport photo is missing.\n\nPlease scroll up and tap the camera icon to upload a photo of the student.",
         );
+      }
       return;
     }
 
@@ -287,9 +289,9 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         return;
       }
       String cleanPhone = rawLoginPhone.replaceAll(' ', '');
-      if (cleanPhone.startsWith('0'))
+      if (cleanPhone.startsWith('0')) {
         cleanPhone = '+234${cleanPhone.substring(1)}';
-      else if (!cleanPhone.startsWith('+'))
+      } else if (!cleanPhone.startsWith('+'))
         cleanPhone = '+234$cleanPhone';
       exactLoginId = "$cleanPhone@trideta.com";
     }
@@ -545,8 +547,9 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
   // ===========================================================================
   @override
   Widget build(BuildContext context) {
-    if (_isLoading && _activeClasses.isEmpty)
+    if (_isLoading && _activeClasses.isEmpty) {
       return const Scaffold(body: Center(child: TridetaLoader()));
+    }
     if (!_hasClasses) {
       return Scaffold(
         appBar: AppBar(title: const Text("System Check")),
@@ -636,11 +639,12 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
                   firstDate: DateTime(1990),
                   lastDate: DateTime.now(),
                 );
-                if (picked != null)
+                if (picked != null) {
                   setState(
                     () => _dobController.text =
                         "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}",
                   );
+                }
               },
               primaryColor: primaryColor,
               isDark: isDark,
@@ -651,10 +655,11 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
               usePhoneAsLogin: _usePhoneAsLogin,
               onLoginMethodChanged: (v) => setState(() {
                 _usePhoneAsLogin = v;
-                if (v)
+                if (v) {
                   _parentEmailController.clear();
-                else
+                } else {
                   _loginPhoneController.clear();
+                }
               }),
               isExistingParentFound: _isExistingParentFound,
               parentNameController: _parentNameController,

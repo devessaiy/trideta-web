@@ -25,8 +25,9 @@ class ProfileAcademicTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (isFetchingAcademics)
+    if (isFetchingAcademics) {
       return Center(child: TridetaLoader(color: primaryColor));
+    }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 10, 24, 100),

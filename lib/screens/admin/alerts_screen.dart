@@ -200,7 +200,7 @@ class _AlertsScreenState extends State<AlertsScreen>
     if (confirm == true) {
       try {
         await _supabase.from('alerts').delete().eq('id', alertId);
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
@@ -213,6 +213,7 @@ class _AlertsScreenState extends State<AlertsScreen>
               backgroundColor: Colors.green,
             ),
           );
+        }
       } catch (e) {
         showAuthErrorDialog("Error deleting alert: $e");
       }
@@ -290,11 +291,12 @@ class _AlertsScreenState extends State<AlertsScreen>
         'type': 'fee_urgent',
       });
       if (sendSms) await Future.delayed(const Duration(seconds: 2));
-      if (mounted)
+      if (mounted) {
         showSuccessDialog(
           "Alerts Sent",
           "Debtor alerts have been sent to the parent dashboards successfully!",
         );
+      }
     } catch (e) {
       showAuthErrorDialog("Failed to send alert: ${e.toString()}");
     } finally {
@@ -536,11 +538,12 @@ class _AlertsScreenState extends State<AlertsScreen>
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color primaryColor = Theme.of(context).primaryColor;
 
-    if (_isLoading)
+    if (_isLoading) {
       return Scaffold(
         backgroundColor: bgColor,
         body: Center(child: TridetaLoader(color: primaryColor)),
       );
+    }
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -836,13 +839,14 @@ class _AlertsScreenState extends State<AlertsScreen>
                 .order('created_at', ascending: false),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting &&
-                  !snapshot.hasData)
+                  !snapshot.hasData) {
                 return Padding(
                   padding: const EdgeInsets.all(20),
                   child: Center(child: TridetaLoader(color: primaryColor)),
                 );
+              }
               final alerts = snapshot.data ?? [];
-              if (alerts.isEmpty)
+              if (alerts.isEmpty) {
                 return SizedBox(
                   height: 250,
                   child: _buildEmptyState(
@@ -852,6 +856,7 @@ class _AlertsScreenState extends State<AlertsScreen>
                     isDark,
                   ),
                 );
+              }
 
               return ListView.builder(
                 shrinkWrap: true,
@@ -887,10 +892,11 @@ class _AlertsScreenState extends State<AlertsScreen>
             .order('created_at', ascending: false)
             .limit(50),
         builder: (context, snapshot) {
-          if (!snapshot.hasData)
+          if (!snapshot.hasData) {
             return Center(child: TridetaLoader(color: primaryColor));
+          }
           final txs = snapshot.data!;
-          if (txs.isEmpty)
+          if (txs.isEmpty) {
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
@@ -905,6 +911,7 @@ class _AlertsScreenState extends State<AlertsScreen>
                 ),
               ],
             );
+          }
 
           return ListView.builder(
             physics: const AlwaysScrollableScrollPhysics(),

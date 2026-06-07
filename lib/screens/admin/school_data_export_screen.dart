@@ -110,12 +110,11 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
         name:
             'Trideta_${tableName.toUpperCase()}_Backup_${DateTime.now().millisecondsSinceEpoch}',
         bytes: bytes,
-        mimeType:
-            MimeType.csv, // 🚨 FIXED: Removed the redundant 'ext:' parameter
+        mimeType: MimeType.csv,
       );
 
       setState(() => _downloadedTables.add(tableName));
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -125,6 +124,7 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
             backgroundColor: Colors.green,
           ),
         );
+      }
     } catch (e) {
       showAuthErrorDialog("Failed to export $label: $e");
     } finally {
@@ -132,6 +132,9 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
     }
   }
 
+  // ===========================================================================
+  // 🚨 TOTAL ANNIHILATION ENGINE (TABLES, AUTH.USERS, & PARENT MIGRATION)
+  // ===========================================================================
   Future<void> _executeAnnihilation() async {
     if (_downloadedTables.length < _tablesToExport.length) {
       showAuthErrorDialog(
@@ -142,7 +145,56 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
 
     setState(() => _isDeleting = true);
     try {
-      // 🚨 BYPASS 409 CONFLICT: Wipe child tables first from leaf-nodes up to avoid Foreign Key blocks!
+      final currentUser = _supabase.auth.currentUser;
+      final myEmail = currentUser?.email;
+
+      // --- PHASE 1: RECONNAISSANCE & PARENT MIGRATION ---
+      final profilesData = await _supabase
+          .from('profiles')
+          .select('id, email, role')
+          .eq('school_id', widget.schoolId);
+      List<String> emailsToDelete = [];
+
+      for (var p in profilesData) {
+        String? email = p['email']?.toString();
+        String? role = p['role']?.toString();
+        String? profileId = p['id']?.toString();
+
+        if (email == null || email.isEmpty) continue;
+        if (email == myEmail) {
+          continue; // Skip active admin (we wipe admin last)
+        }
+
+        if (role == 'parent') {
+          // Check if this parent has students in OTHER Trideta schools globally
+          final otherStudents = await _supabase
+              .from('students')
+              .select('school_id')
+              .eq('parent_email', email)
+              .neq('school_id', widget.schoolId)
+              .limit(1);
+
+          if (otherStudents.isNotEmpty) {
+            // SIBLING FOUND IN ANOTHER SCHOOL!
+            // Migrate their profile to the other school instead of destroying it.
+            String otherSchoolId = otherStudents.first['school_id'];
+            await _supabase
+                .from('profiles')
+                .update({'school_id': otherSchoolId})
+                .eq('id', profileId!);
+            continue; // Safely skip adding this parent to the kill list
+          } else {
+            // No other children in the system. Mark for complete destruction.
+            emailsToDelete.add(email);
+          }
+        } else {
+          // Teachers and Staff are unique to the school. Mark for destruction.
+          emailsToDelete.add(email);
+        }
+      }
+
+      // --- PHASE 2: TABLE PURGE ---
+      // Systematically wipe all child records to bypass Foreign Key constraint blocks
       final List<String> safeDeletionOrder = [
         'alert_reads',
         'alerts',
@@ -165,27 +217,57 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
         } catch (_) {}
       }
 
-      // Finally, safely delete the parent school record
+      // --- PHASE 3: CORE PURGE ---
+      // Safely delete the parent school record
       await _supabase.from('schools').delete().eq('id', widget.schoolId);
+
+      // --- PHASE 4: AUTH.USERS ANNIHILATION ---
+      // Concurrently trigger Edge Function to wipe all harvested emails from Auth
+      List<Future> deleteFutures = [];
+      for (String email in emailsToDelete) {
+        deleteFutures.add(
+          _supabase.functions
+              .invoke(
+                'manage-user-auth',
+                body: {'action': 'delete', 'email': email},
+              )
+              .catchError((_) => null),
+        );
+      }
+      await Future.wait(deleteFutures); // Execute the mass wipe
+
+      // Finally, destroy the Admin's own Auth account to prevent API cutoff mid-process
+      if (myEmail != null) {
+        try {
+          await _supabase.functions.invoke(
+            'manage-user-auth',
+            body: {'action': 'delete', 'email': myEmail},
+          );
+        } catch (_) {}
+      }
+
+      // Locally sign out
       await _supabase.auth.signOut();
 
       if (mounted) {
         showSuccessDialog(
           "School Deleted",
-          "Your school and all associated data have been permanently removed from TriDeta.",
+          "Your school, tables, and all associated user accounts have been permanently wiped from TriDeta.",
         );
         Future.delayed(const Duration(seconds: 2), () {
-          if (mounted)
+          if (mounted) {
             Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(builder: (_) => const LoginScreen()),
               (route) => false,
             );
+          }
         });
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         showAuthErrorDialog("Critical Failure during termination: $e");
+      }
     } finally {
       if (mounted) setState(() => _isDeleting = false);
     }
@@ -193,7 +275,7 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
 
   void _confirmAnnihilation(bool isDark) {
     if (_downloadedTables.length < _tablesToExport.length) {
-      _executeAnnihilation(); // Triggers the lockout error
+      _executeAnnihilation(); // Triggers the visual lockout error
       return;
     }
 
@@ -220,7 +302,7 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
           ],
         ),
         content: const Text(
-          "You are about to permanently delete your entire school database. This action is irreversible and all active logins will be severed immediately.\n\nDo you wish to proceed?",
+          "You are about to permanently delete your entire school database AND completely wipe all associated parent, teacher, and admin login accounts (except parents with active students in other Trideta schools).\n\nThis action is irreversible. Do you wish to proceed?",
           style: TextStyle(height: 1.5),
         ),
         actions: [
@@ -261,7 +343,6 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
 
-    // 🚨 Custom Back Button to pass the downloaded status back to the Menu
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
@@ -468,7 +549,7 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
                         : const Icon(Icons.delete_forever_rounded, size: 24),
                     label: Text(
                       _isDeleting
-                          ? "PURGING DATABASE..."
+                          ? "WIPING ACCOUNTS & DATA..."
                           : "I UNDERSTAND, TERMINATE SCHOOL",
                       style: const TextStyle(
                         fontWeight: FontWeight.w900,

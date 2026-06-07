@@ -25,7 +25,7 @@ class ParentSecurityDialogs {
 
     // 🚨 SMART CONTACT FALLBACK
     String finalContactPhone = "";
-    if (dbParentPhone != null && dbParentPhone!.isNotEmpty) {
+    if (dbParentPhone != null && dbParentPhone.isNotEmpty) {
       finalContactPhone = dbParentPhone;
     } else if (isPhantom && phantomPhone.isNotEmpty) {
       finalContactPhone = phantomPhone;

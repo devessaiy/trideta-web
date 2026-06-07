@@ -3,7 +3,6 @@ import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -18,7 +17,6 @@ import 'package:trideta_v2/screens/admin/components/student_profile/parent_secur
 import 'package:trideta_v2/screens/admin/components/student_profile/profile_academic_tab.dart';
 import 'package:trideta_v2/screens/admin/components/student_profile/profile_records_tab.dart';
 import 'package:trideta_v2/screens/admin/components/student_profile/profile_edit_form.dart';
-import 'package:trideta_v2/screens/admin/components/student_profile/parent_security_dialogs.dart';
 
 // Fallback/local stub for ParentSecurityCard in case the imported component
 // isn't available. Keeps the file compilable and provides basic functionality.

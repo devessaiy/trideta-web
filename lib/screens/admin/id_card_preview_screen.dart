@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:screenshot/screenshot.dart';
-import 'package:file_saver/file_saver.dart';
 
-// 🚨 IMPORT PDF PACKAGE
+// 🚨 Use the printing package you already have!
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import 'components/id_card_widget.dart';
 
@@ -39,23 +39,22 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
     setState(() => _isSaving = true);
     try {
       // 1. Capture the widget as a high-res image
-      final Uint8List?
-      imageBytes = await _screenshotController.captureFromWidget(
-        // 🚨 CRITICAL FIX: The Material wrapper prevents the red screen of death crash
-        Material(
-          color: Colors.transparent,
-          child: TridetaIdCard(
-            student: widget.student,
-            schoolName: widget.schoolName,
-            schoolAddress: widget.schoolAddress,
-            schoolPhone: widget.schoolPhone,
-            schoolEmail: widget.schoolEmail,
-            brandColorHex: widget.brandColorHex,
-          ),
-        ),
-        delay: const Duration(milliseconds: 200),
-        pixelRatio: 3.0,
-      );
+      final Uint8List? imageBytes = await _screenshotController
+          .captureFromWidget(
+            Material(
+              color: Colors.transparent,
+              child: TridetaIdCard(
+                student: widget.student,
+                schoolName: widget.schoolName,
+                schoolAddress: widget.schoolAddress,
+                schoolPhone: widget.schoolPhone,
+                schoolEmail: widget.schoolEmail,
+                brandColorHex: widget.brandColorHex,
+              ),
+            ),
+            delay: const Duration(milliseconds: 200),
+            pixelRatio: 3.0,
+          );
 
       if (imageBytes != null) {
         // 2. Convert the image into a PDF Document
@@ -75,15 +74,12 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
         );
 
         final Uint8List pdfBytes = await pdf.save();
-        final safeFileName = "${widget.student['first_name']}_ID_Card";
+        final safeFileName = "${widget.student['first_name']}_ID_Card.pdf";
 
-        // 3. Save as a universal PDF
-        await FileSaver.instance.saveFile(
-          name: safeFileName,
-          bytes: pdfBytes,
-          file: "pdf",
-          mimeType: MimeType.pdf,
-        );
+        // 3. 🚨 MAGIC CROSS-PLATFORM EXPORT
+        // On Web: Automatically downloads the PDF.
+        // On Mobile: Opens native share sheet (Save to Files, WhatsApp, etc.) without permissions!
+        await Printing.sharePdf(bytes: pdfBytes, filename: safeFileName);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -96,9 +92,10 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
       }
     } catch (e) {
       if (mounted) {
+        // 🚨 Replaced the fake permission error with the REAL error message so we can actually debug if it fails again
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Failed to save. Check permissions."),
+          SnackBar(
+            content: Text("Error: ${e.toString()}"),
             backgroundColor: Colors.red,
           ),
         );
@@ -122,7 +119,7 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
-          // 🚨 FITTED BOX squishes the side-by-side layout perfectly onto your phone screen
+          // FittedBox squishes the side-by-side layout perfectly onto your phone screen
           child: FittedBox(
             fit: BoxFit.contain,
             child: TridetaIdCard(

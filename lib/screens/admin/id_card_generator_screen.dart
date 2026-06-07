@@ -301,7 +301,7 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
                                   : _generateBulkIdCards,
                               icon: const Icon(Icons.print_rounded, size: 18),
                               label: const Text(
-                                "BULK",
+                                "ALL",
                                 style: TextStyle(
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: 0.5,

@@ -2,7 +2,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:screenshot/screenshot.dart';
 
-// 🚨 Use the printing package you already have!
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -38,37 +37,66 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
   Future<void> _downloadFullIdCard() async {
     setState(() => _isSaving = true);
     try {
-      // 1. Capture the widget as a high-res image
-      final Uint8List? imageBytes = await _screenshotController
-          .captureFromWidget(
-            Material(
-              color: Colors.transparent,
-              child: TridetaIdCard(
-                student: widget.student,
-                schoolName: widget.schoolName,
-                schoolAddress: widget.schoolAddress,
-                schoolPhone: widget.schoolPhone,
-                schoolEmail: widget.schoolEmail,
-                brandColorHex: widget.brandColorHex,
-              ),
-            ),
-            delay: const Duration(milliseconds: 200),
-            pixelRatio: 3.0,
-          );
+      // 1. CAPTURE THE LIVE SCREEN WIDGET
+      final Uint8List? imageBytes = await _screenshotController.capture(
+        delay: const Duration(milliseconds: 50),
+        // 🚨 THE FIX: Reduced from 4.0 to 2.0.
+        // This stops the browser from choking, drops download time to seconds,
+        // and maintains standard 300 DPI print quality.
+        pixelRatio: 2.0,
+      );
 
       if (imageBytes != null) {
-        // 2. Convert the image into a PDF Document
+        // 2. CONVERT TO A4 PDF WITH EXACT CR80 PHYSICAL DIMENSIONS
         final pdf = pw.Document();
         final pdfImage = pw.MemoryImage(imageBytes);
 
         pdf.addPage(
           pw.Page(
-            pageFormat: PdfPageFormat
-                .a4
-                .landscape, // Landscape fits side-by-side perfectly
-            margin: const pw.EdgeInsets.all(20),
+            pageFormat: PdfPageFormat.a4, // Standard A4 Paper
+            margin: const pw.EdgeInsets.all(30),
             build: (pw.Context context) {
-              return pw.Center(child: pw.Image(pdfImage));
+              return pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.SizedBox(height: 20 * PdfPageFormat.mm),
+
+                  // Instructions for the person printing the A4 sheet
+                  pw.Text(
+                    "TRIDETA ID CARD - PRINT SHEET",
+                    style: pw.TextStyle(
+                      fontSize: 16,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.SizedBox(height: 5),
+                  pw.Text(
+                    "Print this A4 document at exactly 100% scale (Do not select 'Fit to Page').",
+                    style: const pw.TextStyle(
+                      fontSize: 10,
+                      color: PdfColors.grey700,
+                    ),
+                  ),
+                  pw.Text(
+                    "The cards below are strictly formatted to physical CR80 dimensions (54mm x 86mm).",
+                    style: const pw.TextStyle(
+                      fontSize: 10,
+                      color: PdfColors.grey700,
+                    ),
+                  ),
+
+                  pw.SizedBox(height: 40 * PdfPageFormat.mm),
+
+                  // THE MAGIC SIZING CODE
+                  // Front width (54mm) + Gap (3.6mm) + Back width (54mm) = 111.6mm total.
+                  // Height is exactly 86mm.
+                  pw.Container(
+                    width: 111.6 * PdfPageFormat.mm,
+                    height: 86 * PdfPageFormat.mm,
+                    child: pw.Image(pdfImage, fit: pw.BoxFit.contain),
+                  ),
+                ],
+              );
             },
           ),
         );
@@ -76,9 +104,7 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
         final Uint8List pdfBytes = await pdf.save();
         final safeFileName = "${widget.student['first_name']}_ID_Card.pdf";
 
-        // 3. 🚨 MAGIC CROSS-PLATFORM EXPORT
-        // On Web: Automatically downloads the PDF.
-        // On Mobile: Opens native share sheet (Save to Files, WhatsApp, etc.) without permissions!
+        // 3. SHARE / DOWNLOAD
         await Printing.sharePdf(bytes: pdfBytes, filename: safeFileName);
 
         if (mounted) {
@@ -92,7 +118,6 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
       }
     } catch (e) {
       if (mounted) {
-        // 🚨 Replaced the fake permission error with the REAL error message so we can actually debug if it fails again
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Error: ${e.toString()}"),
@@ -119,16 +144,18 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
-          // FittedBox squishes the side-by-side layout perfectly onto your phone screen
           child: FittedBox(
             fit: BoxFit.contain,
-            child: TridetaIdCard(
-              student: widget.student,
-              schoolName: widget.schoolName,
-              schoolAddress: widget.schoolAddress,
-              schoolPhone: widget.schoolPhone,
-              schoolEmail: widget.schoolEmail,
-              brandColorHex: widget.brandColorHex,
+            child: Screenshot(
+              controller: _screenshotController,
+              child: TridetaIdCard(
+                student: widget.student,
+                schoolName: widget.schoolName,
+                schoolAddress: widget.schoolAddress,
+                schoolPhone: widget.schoolPhone,
+                schoolEmail: widget.schoolEmail,
+                brandColorHex: widget.brandColorHex,
+              ),
             ),
           ),
         ),
@@ -153,7 +180,7 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
                 )
               : const Icon(Icons.picture_as_pdf, color: Colors.white),
           label: Text(
-            _isSaving ? "Generating PDF..." : "Download as PDF",
+            _isSaving ? "Generating A4 PDF..." : "Download A4 Print Sheet",
             style: const TextStyle(color: Colors.white, fontSize: 16),
           ),
         ),

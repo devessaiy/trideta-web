@@ -30,6 +30,22 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   // Stores the full class data with UUIDs for the promotion engine
   List<Map<String, dynamic>> _allClassesData = [];
 
+  bool _isLoading = true;
+  List<dynamic> _students = [];
+  List<dynamic> _allStudentsUnfiltered = [];
+
+  // Standard specific filters
+  String _selectedClassFilter = 'All Classes';
+  String _selectedSort = 'First Name A-Z';
+  List<String> _availableClasses = ['All Classes'];
+
+  // Multi-select state
+  bool _isSelecting = false;
+  final Set<String> _selectedStudentIds = {};
+
+  // Caching the current user's email for the header greeting
+  String _userEmail = "Admin";
+
   @override
   void initState() {
     super.initState();
@@ -40,1009 +56,214 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   // 🚨 LOGIC ENGINE: STRICTLY UNTOUCHED
   // ===========================================================================
   Future<void> _fetchSchoolId() async {
-    final user = _supabase.auth.currentUser;
-    if (user != null) {
-      final profile = await _supabase
-          .from('profiles')
-          .select('school_id')
-          .eq('id', user.id)
-          .single();
-
-      final sId = profile['school_id'];
-      if (mounted) setState(() => _schoolId = sId);
-
-      if (sId != null) {
-        _fetchSchoolConfig(sId);
-        _fetchFormMasters(sId);
-      }
-    }
-  }
-
-  Future<void> _fetchSchoolConfig(String sId) async {
     try {
-      final classesData = await _supabase
-          .from('classes')
-          .select('id, name')
-          .eq('school_id', sId)
-          .order('list_order', ascending: true);
-
-      if (mounted) {
-        setState(() {
-          _allClassesData = List<Map<String, dynamic>>.from(classesData);
-          _officialClassOrder = classesData
-              .map((c) => c['name'].toString())
-              .toList();
-        });
+      final user = _supabase.auth.currentUser;
+      if (user != null) {
+        _userEmail = user.email ?? "Admin";
+        final profile = await _supabase
+            .from('profiles')
+            .select('school_id')
+            .eq('id', user.id)
+            .single();
+        _schoolId = profile['school_id'];
+        if (_schoolId != null) {
+          await Future.wait([_fetchClassesAndOrder(), _fetchFormMasters()]);
+          _fetchStudents();
+        }
       }
     } catch (e) {
-      debugPrint("School config fetch error: $e");
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showError("Failed to verify school ID.");
+      }
     }
   }
 
-  Future<void> _fetchFormMasters(String sId) async {
+  Future<void> _fetchClassesAndOrder() async {
     try {
-      final response = await _supabase
+      final classesResponse = await _supabase
+          .from('classes')
+          .select('*')
+          .eq('school_id', _schoolId!)
+          .order('list_order', ascending: true);
+
+      _allClassesData = List<Map<String, dynamic>>.from(classesResponse);
+      _officialClassOrder = _allClassesData
+          .map((c) => c['name'].toString())
+          .toList();
+    } catch (e) {
+      debugPrint("Failed to fetch official class order: $e");
+    }
+  }
+
+  Future<void> _fetchFormMasters() async {
+    try {
+      final assignments = await _supabase
           .from('staff_assignments')
-          .select('class_assigned, profiles!inner(full_name)')
-          .eq('school_id', sId)
-          .filter('subject_assigned', 'is', null);
+          .select('class_level, profiles (first_name, last_name)')
+          .eq('school_id', _schoolId!)
+          .eq('role', 'Form Master');
 
-      Map<String, String> masters = {};
-
-      for (var row in response) {
-        String rawClass = (row['class_assigned'] ?? '').toString();
-        String normalizedClass = rawClass.toLowerCase().replaceAll(' ', '');
-
-        if (row['profiles'] != null && row['profiles']['full_name'] != null) {
-          masters[normalizedClass] = row['profiles']['full_name'];
+      Map<String, String> masterMap = {};
+      for (var assignment in assignments) {
+        String classLevel = assignment['class_level']?.toString() ?? '';
+        var profile = assignment['profiles'];
+        if (classLevel.isNotEmpty && profile != null) {
+          String masterName =
+              "${profile['first_name']} ${profile['last_name']}";
+          masterMap[classLevel] = masterName;
         }
       }
 
       if (mounted) {
-        setState(() => _formMasters = masters);
+        setState(() {
+          _formMasters = masterMap;
+        });
       }
     } catch (e) {
-      debugPrint("Form Master fetch error: $e");
+      debugPrint("Failed to fetch form masters: $e");
     }
   }
 
-  Future<void> _handleRefresh() async {
-    await _fetchSchoolId();
-    setState(() {});
+  Future<void> _fetchStudents() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      final response = await _supabase
+          .from('students')
+          .select('*')
+          .eq('school_id', _schoolId!);
+
+      final List<dynamic> loadedStudents = List.from(response);
+
+      // Extract unique classes for the filter dropdown
+      Set<String> classSet = {'All Classes'};
+      for (var s in loadedStudents) {
+        if (s['class_level'] != null &&
+            s['class_level'].toString().isNotEmpty) {
+          classSet.add(s['class_level'].toString());
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _allStudentsUnfiltered = loadedStudents;
+          _availableClasses = classSet.toList();
+          // Sort available classes using the official admin order
+          _availableClasses.sort((a, b) {
+            if (a == 'All Classes') return -1;
+            if (b == 'All Classes') return 1;
+            int indexA = _officialClassOrder.indexOf(a);
+            int indexB = _officialClassOrder.indexOf(b);
+            if (indexA == -1 && indexB == -1) return a.compareTo(b);
+            if (indexA == -1) return 1;
+            if (indexB == -1) return -1;
+            return indexA.compareTo(indexB);
+          });
+          _filterAndSortStudents();
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showError("Failed to fetch students. Please try again.");
+      }
+    }
   }
 
-  // ===========================================================================
-  // 🚨 PREMIUM RESPONSIVE UI
-  // ===========================================================================
-  @override
-  Widget build(BuildContext context) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
-    Color primaryColor = Theme.of(context).primaryColor;
+  void _filterAndSortStudents() {
+    List<dynamic> filtered = List.from(_allStudentsUnfiltered);
 
-    final Stream<List<Map<String, dynamic>>>? studentStream = _schoolId == null
-        ? null
-        : _supabase
-              .from('students')
-              .stream(primaryKey: ['id'])
-              .eq('school_id', _schoolId!)
-              .order('first_name', ascending: true);
+    // Filter by Search Query
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered.where((s) {
+        final fName = s['first_name']?.toString().toLowerCase() ?? '';
+        final lName = s['last_name']?.toString().toLowerCase() ?? '';
+        final query = _searchQuery.toLowerCase();
+        return fName.contains(query) || lName.contains(query);
+      }).toList();
+    }
 
-    return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        title: const Text(
-          "Student Management",
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        backgroundColor: bgColor,
-        foregroundColor: textColor,
-        elevation: 0,
-        centerTitle: true,
-        automaticallyImplyLeading: false,
-        actions: kIsWeb
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.refresh_rounded),
-                  tooltip: "Refresh Data",
-                  onPressed: _handleRefresh,
-                ),
-                const SizedBox(width: 10),
-              ]
-            : null,
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          bool isDesktop = constraints.maxWidth > 800;
+    // Filter by Class
+    if (_selectedClassFilter != 'All Classes') {
+      filtered = filtered
+          .where((s) => s['class_level'] == _selectedClassFilter)
+          .toList();
+    }
 
-          Widget mainContent = Column(
-            children: [
-              // ─── RESPONSIVE HEADERS ───
-              if (isDesktop)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 25, 24, 0),
-                  child: IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          flex: 5,
-                          child: _buildTopHeader(isDark, primaryColor),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          flex: 4,
-                          child: _buildSmartIdCard(
-                            cardColor,
-                            textColor,
-                            isDark,
-                            primaryColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              else
-                Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                      child: _buildTopHeader(isDark, primaryColor),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                      child: _buildSmartIdCard(
-                        cardColor,
-                        textColor,
-                        isDark,
-                        primaryColor,
-                      ),
-                    ),
-                  ],
-                ),
+    // Sort the results
+    filtered.sort((a, b) {
+      switch (_selectedSort) {
+        case 'First Name A-Z':
+          return (a['first_name'] ?? '').compareTo(b['first_name'] ?? '');
+        case 'First Name Z-A':
+          return (b['first_name'] ?? '').compareTo(a['first_name'] ?? '');
+        case 'Date Added (Newest)':
+          DateTime dtA = a['created_at'] != null
+              ? DateTime.parse(a['created_at'])
+              : DateTime.now();
+          DateTime dtB = b['created_at'] != null
+              ? DateTime.parse(b['created_at'])
+              : DateTime.now();
+          return dtB.compareTo(dtA);
+        case 'Date Added (Oldest)':
+          DateTime dtA = a['created_at'] != null
+              ? DateTime.parse(a['created_at'])
+              : DateTime.now();
+          DateTime dtB = b['created_at'] != null
+              ? DateTime.parse(b['created_at'])
+              : DateTime.now();
+          return dtA.compareTo(dtB);
+        default:
+          return 0;
+      }
+    });
 
-              // ─── SEARCH FIELD ───
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
-                child: TextField(
-                  onChanged: (val) => setState(() => _searchQuery = val),
-                  style: TextStyle(
-                    color: textColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: "Search Classes or Students...",
-                    hintStyle: TextStyle(
-                      color: Colors.grey.shade500,
-                      fontWeight: FontWeight.normal,
-                    ),
-                    prefixIcon: Icon(
-                      Icons.search_rounded,
-                      color: primaryColor,
-                      size: 20,
-                    ),
-                    filled: true,
-                    fillColor: isDark
-                        ? Colors.white.withValues(alpha: 0.03)
-                        : Colors.grey.shade50,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
-                        color: primaryColor.withValues(alpha: 0.5),
-                        width: 2,
-                      ),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                ),
-              ),
-
-              // ─── DATA ENGINE ───
-              Expanded(
-                child: studentStream == null
-                    ? Center(child: TridetaLoader(color: primaryColor))
-                    : StreamBuilder<List<Map<String, dynamic>>>(
-                        stream: studentStream,
-                        builder: (context, snapshot) {
-                          if (snapshot.hasError) {
-                            return _buildErrorState(isDark, primaryColor);
-                          }
-                          if (!snapshot.hasData) {
-                            return Center(
-                              child: TridetaLoader(color: primaryColor),
-                            );
-                          }
-
-                          final allStudents = snapshot.data!;
-
-                          if (_searchQuery.isNotEmpty) {
-                            final filteredStudents = allStudents.where((s) {
-                              final name =
-                                  "${s['first_name']} ${s['last_name']}"
-                                      .toLowerCase();
-                              final id = (s['admission_no'] ?? "")
-                                  .toLowerCase();
-                              final cls = (s['class_level'] ?? "")
-                                  .toLowerCase();
-                              return name.contains(
-                                    _searchQuery.toLowerCase(),
-                                  ) ||
-                                  id.contains(_searchQuery.toLowerCase()) ||
-                                  cls.contains(_searchQuery.toLowerCase());
-                            }).toList();
-
-                            if (filteredStudents.isEmpty) {
-                              return _buildEmptyState(isDark);
-                            }
-
-                            Widget searchList = ListView.builder(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 10,
-                              ),
-                              itemCount: filteredStudents.length,
-                              itemBuilder: (context, index) =>
-                                  _buildStudentCard(
-                                    filteredStudents[index],
-                                    cardColor,
-                                    textColor,
-                                    isDark,
-                                    primaryColor,
-                                  ),
-                            );
-
-                            return kIsWeb
-                                ? searchList
-                                : RefreshIndicator(
-                                    onRefresh: _handleRefresh,
-                                    color: primaryColor,
-                                    child: searchList,
-                                  );
-                          }
-
-                          Map<String, List<Map<String, dynamic>>> grouped = {};
-                          for (String cls in _officialClassOrder) {
-                            grouped[cls] = [];
-                          }
-
-                          List<Map<String, dynamic>> unassignedOrLegacy = [];
-
-                          for (var s in allStudents) {
-                            String studentClass = (s['class_level'] ?? "")
-                                .toString()
-                                .trim();
-                            String? matchedOfficialClass;
-
-                            for (String officialClass in _officialClassOrder) {
-                              if (officialClass.toUpperCase() ==
-                                  studentClass.toUpperCase()) {
-                                matchedOfficialClass = officialClass;
-                                break;
-                              }
-                            }
-
-                            if (matchedOfficialClass != null) {
-                              grouped[matchedOfficialClass]!.add(s);
-                            } else {
-                              unassignedOrLegacy.add(s);
-                            }
-                          }
-
-                          List<String> displayClasses = List.from(
-                            _officialClassOrder,
-                          );
-                          if (unassignedOrLegacy.isNotEmpty) {
-                            displayClasses.add("Unassigned / Legacy Data");
-                            grouped["Unassigned / Legacy Data"] =
-                                unassignedOrLegacy;
-                          }
-
-                          if (displayClasses.isEmpty) {
-                            return _buildEmptyState(isDark);
-                          }
-
-                          Widget classList = GridView.builder(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 10,
-                            ),
-                            gridDelegate:
-                                SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: isDesktop ? 2 : 1,
-                                  crossAxisSpacing: 16,
-                                  mainAxisSpacing: 16,
-                                  mainAxisExtent: 130,
-                                ),
-                            itemCount: displayClasses.length,
-                            itemBuilder: (context, index) {
-                              String cls = displayClasses[index];
-                              List<Map<String, dynamic>> classRoster =
-                                  grouped[cls]!;
-                              return _buildClassOverviewCard(
-                                cls,
-                                classRoster,
-                                cardColor,
-                                textColor,
-                                isDark,
-                                primaryColor,
-                              );
-                            },
-                          );
-
-                          return kIsWeb
-                              ? classList
-                              : RefreshIndicator(
-                                  onRefresh: _handleRefresh,
-                                  color: primaryColor,
-                                  child: classList,
-                                );
-                        },
-                      ),
-              ),
-            ],
-          );
-
-          if (isDesktop) {
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 900),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: bgColor,
-                    border: Border(
-                      left: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
-                      ),
-                      right: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
-                      ),
-                    ),
-                  ),
-                  child: mainContent,
-                ),
-              ),
-            );
-          } else {
-            return mainContent;
-          }
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: primaryColor,
-        elevation: 4,
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const StudentAdmissionScreen()),
-        ),
-        icon: const Icon(Icons.person_add_rounded, color: Colors.white),
-        label: const Text(
-          "ADMIT STUDENT",
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.5,
-          ),
-        ),
-      ),
-    );
-  }
-
-  // --- COMPACT OVERFLOW-FREE WIDGETS ---
-
-  Widget _buildTopHeader(bool isDark, Color primaryColor) {
-    return Container(
-      width: double
-          .infinity, // 🚨 FIXED: Now stretches fully inside the Expanded/Padding
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [primaryColor.withValues(alpha: 0.85), primaryColor],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: primaryColor.withValues(alpha: 0.25),
-            blurRadius: 15,
-            offset: const Offset(0, 6),
-          ),
-        ],
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.15),
-          width: 1.5,
-        ),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -25,
-            top: -25,
-            child: CircleAvatar(
-              radius: 45,
-              backgroundColor: Colors.white.withValues(alpha: 0.08),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _schoolId == null
-                  ? null
-                  : _supabase
-                        .from('students')
-                        .stream(primaryKey: ['id'])
-                        .eq('school_id', _schoolId!),
-              builder: (context, snapshot) {
-                int total = snapshot.data?.length ?? 0;
-                int boys =
-                    snapshot.data?.where((s) => s['gender'] == 'Male').length ??
-                    0;
-                int girls =
-                    snapshot.data
-                        ?.where((s) => s['gender'] == 'Female')
-                        .length ??
-                    0;
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      "TOTAL ENROLLED",
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    // 🚨 Increased from 32px to 42px
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        total.toString(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 42,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -1.0,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 16,
-                      runSpacing: 8,
-                      children: [
-                        _miniStatLabel(
-                          "Boys",
-                          boys.toString(),
-                          Icons.boy_rounded,
-                        ),
-                        _miniStatLabel(
-                          "Girls",
-                          girls.toString(),
-                          Icons.girl_rounded,
-                        ),
-                      ],
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _miniStatLabel(String title, String val, IconData icon) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: Colors.white60, size: 16),
-        const SizedBox(width: 4),
-        Text(
-          "$title: ",
-          style: const TextStyle(
-            color: Colors.white60,
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        // 🚨 Increased from 12px to 15px
-        Text(
-          val,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSmartIdCard(
-    Color cardColor,
-    Color textColor,
-    bool isDark,
-    Color primaryColor,
-  ) {
-    return InkWell(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const IdCardGeneratorScreen()),
-      ),
-      borderRadius: BorderRadius.circular(24),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isDark ? Colors.white10 : Colors.grey.shade200,
-            width: 1.5,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.badge_rounded,
-                color: Colors.orange,
-                size: 28,
-              ), // Increased icon size
-            ),
-            const SizedBox(height: 16),
-            // Increased title font size to balance with the massive stats
-            Text(
-              "Smart ID",
-              style: TextStyle(
-                color: textColor,
-                fontWeight: FontWeight.w900,
-                fontSize: 18,
-                letterSpacing: -0.3,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              "Bulk QR Cards",
-              style: TextStyle(
-                color: Colors.grey.shade500,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildClassOverviewCard(
-    String className,
-    List<Map<String, dynamic>> students,
-    Color cardColor,
-    Color textColor,
-    bool isDark,
-    Color primaryColor,
-  ) {
-    bool isLegacy = className == "Unassigned / Legacy Data";
-    Color iconColor = isLegacy ? Colors.redAccent : primaryColor;
-
-    String searchClassKey = className.toLowerCase().replaceAll(' ', '');
-    String formMasterName = isLegacy
-        ? "Action Required"
-        : (_formMasters[searchClassKey] ?? "Not Assigned");
-
-    return Container(
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isLegacy
-              ? Colors.redAccent.withValues(alpha: 0.3)
-              : (isDark ? Colors.white10 : Colors.grey.shade200),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => _ClassListScreen(
-                  className: className,
-                  students: students,
-                  allClasses: _allClassesData,
-                  cardColor: cardColor,
-                  textColor: textColor,
-                  isDark: isDark,
-                ),
-              ),
-            ).then((_) {
-              if (mounted) _handleRefresh();
-            });
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    isLegacy ? Icons.warning_rounded : Icons.class_rounded,
-                    color: iconColor,
-                    size: 28,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        className.toUpperCase(),
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 17,
-                          color: isLegacy ? Colors.redAccent : textColor,
-                          letterSpacing: -0.3,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        isLegacy
-                            ? formMasterName
-                            : "Form Master: $formMasterName",
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: isLegacy
-                              ? Colors.redAccent
-                              : Colors.grey.shade500,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: iconColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.people_alt_rounded,
-                              size: 14,
-                              color: iconColor,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              "${students.length} Students",
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w900,
-                                color: iconColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: Colors.grey.shade300,
-                  size: 24,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStudentCard(
-    Map<String, dynamic> student,
-    Color cardColor,
-    Color textColor,
-    bool isDark,
-    Color primaryColor,
-  ) {
-    final String fullName = "${student['first_name']} ${student['last_name']}";
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        leading: Hero(
-          tag: student['id'],
-          child: CircleAvatar(
-            radius: 24,
-            backgroundColor: primaryColor.withValues(alpha: 0.1),
-            backgroundImage: student['passport_url'] != null
-                ? NetworkImage(student['passport_url'])
-                : null,
-            child: student['passport_url'] == null
-                ? Icon(Icons.person_rounded, color: primaryColor)
-                : null,
-          ),
-        ),
-        title: Text(
-          fullName,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 15,
-            color: textColor,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            "${student['admission_no'] ?? 'NO ID'} • ${student['gender']} • ${student['class_level']}",
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade500,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        trailing: Icon(
-          Icons.chevron_right_rounded,
-          color: Colors.grey.shade300,
-          size: 20,
-        ),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => StudentProfileScreen(
-                name: fullName,
-                id: student['id'],
-                studentClass: student['class_level'] ?? "Unassigned",
-                imagePath: student['passport_url'],
-                parentPhone: student['parent_phone'],
-                parentEmail: student['parent_email'],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(bool isDark) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.05)
-                  : Colors.grey.shade100,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.person_search_rounded,
-              size: 60,
-              color: isDark ? Colors.white24 : Colors.grey[400],
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            "No students match your search",
-            style: TextStyle(
-              color: Colors.grey,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildErrorState(bool isDark, Color primaryColor) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(30),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.wifi_off_rounded,
-              size: 80,
-              color: isDark ? Colors.white24 : Colors.grey[300],
-            ),
-            const SizedBox(height: 20),
-            Text(
-              "Connection Lost",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white70 : Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              "We couldn't connect to the server. Please check your internet connection and try again.",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: isDark ? Colors.white54 : Colors.grey[600],
-                fontSize: 14,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 30),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: primaryColor,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-              ),
-              onPressed: _handleRefresh,
-              icon: const Icon(Icons.refresh_rounded, color: Colors.white),
-              label: const Text(
-                "Refresh",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================================
-// DEDICATED CLASS ROSTER SCREEN (POLISHED MODALS & CARDS)
-// ============================================================================
-class _ClassListScreen extends StatefulWidget {
-  final String className;
-  final List<Map<String, dynamic>> students;
-  final List<Map<String, dynamic>> allClasses;
-  final Color cardColor;
-  final Color textColor;
-  final bool isDark;
-
-  const _ClassListScreen({
-    required this.className,
-    required this.students,
-    required this.allClasses,
-    required this.cardColor,
-    required this.textColor,
-    required this.isDark,
-  });
-
-  @override
-  State<_ClassListScreen> createState() => _ClassListScreenState();
-}
-
-class _ClassListScreenState extends State<_ClassListScreen> {
-  final Set<String> _selectedStudentIds = {};
-  bool _isSelecting = false;
-  late List<Map<String, dynamic>> _localStudents;
-
-  @override
-  void initState() {
-    super.initState();
-    _localStudents = List<Map<String, dynamic>>.from(widget.students);
-    _localStudents.sort(
-      (a, b) => (a['first_name'] ?? '').toString().compareTo(
-        (b['first_name'] ?? '').toString(),
-      ),
-    );
-  }
-
-  void _toggleSelectAll() {
     setState(() {
-      if (_selectedStudentIds.length == _localStudents.length) {
+      _students = filtered;
+      // Cleanup any selected students that might have been filtered out
+      _selectedStudentIds.removeWhere(
+        (id) => !_students.any((student) => student['id'] == id),
+      );
+      if (_selectedStudentIds.isEmpty) {
+        _isSelecting = false;
+      }
+    });
+  }
+
+  void _toggleSelection(String studentId) {
+    setState(() {
+      if (_selectedStudentIds.contains(studentId)) {
+        _selectedStudentIds.remove(studentId);
+      } else {
+        _selectedStudentIds.add(studentId);
+      }
+      _isSelecting = _selectedStudentIds.isNotEmpty;
+    });
+  }
+
+  void _selectAll() {
+    setState(() {
+      if (_selectedStudentIds.length == _students.length) {
         _selectedStudentIds.clear();
+        _isSelecting = false;
       } else {
-        _selectedStudentIds.addAll(
-          _localStudents.map((s) => s['id'].toString()),
-        );
+        _selectedStudentIds.addAll(_students.map((s) => s['id'] as String));
+        _isSelecting = true;
       }
     });
   }
 
-  void _toggleStudent(String id) {
-    setState(() {
-      if (_selectedStudentIds.contains(id)) {
-        _selectedStudentIds.remove(id);
-      } else {
-        _selectedStudentIds.add(id);
-      }
-    });
-  }
-
+  // --- Mass Promotion Engine (Untouched) ---
   void _showPromotionDialog(Color primaryColor) {
-    String? selectedClassId;
-    String? selectedClassName;
-    bool isSaving = false;
+    String? selectedTargetClass;
+    bool isProcessing = false;
+
+    List<String> validTargetClasses = List.from(_officialClassOrder);
+    validTargetClasses.add("Graduated");
+    validTargetClasses.add("Withdrawn");
+    validTargetClasses.add("Expelled");
 
     showDialog(
       context: context,
@@ -1051,162 +272,113 @@ class _ClassListScreenState extends State<_ClassListScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              backgroundColor: widget.cardColor,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(20),
               ),
-              title: const Row(
-                children: [
-                  Icon(Icons.move_up_rounded, color: Colors.blue),
-                  SizedBox(width: 10),
-                  Text(
-                    "Promote / Reassign",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                  ),
-                ],
+              title: Text(
+                "Reassign ${_selectedStudentIds.length} Students",
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    "Moving ${_selectedStudentIds.length} students to:",
-                    style: TextStyle(
-                      color: widget.isDark ? Colors.white70 : Colors.black87,
-                    ),
+                  const Text(
+                    "Select the new target class for the selected students. This will update their current active class immediately.",
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
                   ),
                   const SizedBox(height: 20),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: widget.isDark
-                          ? Colors.white.withValues(alpha: 0.05)
-                          : Colors.grey.shade50,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: widget.isDark
-                            ? Colors.white10
-                            : Colors.grey.shade200,
+                  DropdownButtonFormField<String>(
+                    decoration: InputDecoration(
+                      labelText: "Target Class / Status",
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        isExpanded: true,
-                        dropdownColor: widget.cardColor,
-                        value: selectedClassId,
-                        hint: const Padding(
-                          padding: EdgeInsets.only(left: 16),
-                          child: Text(
-                            "Select Destination Class",
-                            style: TextStyle(fontSize: 14),
-                          ),
-                        ),
-                        items: widget.allClasses.map((c) {
-                          return DropdownMenuItem<String>(
-                            value: c['id'].toString(),
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 16),
-                              child: Text(
-                                c['name'].toString(),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          setDialogState(() {
-                            selectedClassId = val;
-                            selectedClassName = widget.allClasses
-                                .firstWhere(
-                                  (c) => c['id'].toString() == val,
-                                )['name']
-                                .toString();
-                          });
-                        },
-                      ),
-                    ),
+                    value: selectedTargetClass,
+                    items: validTargetClasses.map((String c) {
+                      return DropdownMenuItem(value: c, child: Text(c));
+                    }).toList(),
+                    onChanged: (val) {
+                      setDialogState(() => selectedTargetClass = val);
+                    },
                   ),
+                  if (isProcessing)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 20.0),
+                      child: TridetaLoader(),
+                    ),
                 ],
               ),
-              actionsPadding: const EdgeInsets.only(bottom: 20, right: 20),
               actions: [
-                TextButton(
-                  onPressed: isSaving ? null : () => Navigator.pop(ctx),
-                  child: const Text(
-                    "Cancel",
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontWeight: FontWeight.bold,
+                if (!isProcessing)
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text(
+                      "CANCEL",
+                      style: TextStyle(color: Colors.grey),
                     ),
                   ),
-                ),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                if (!isProcessing)
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
-                  ),
-                  onPressed: (isSaving || selectedClassId == null)
-                      ? null
-                      : () async {
-                          setDialogState(() => isSaving = true);
-                          try {
-                            await Supabase.instance.client
-                                .from('students')
-                                .update({
-                                  'class_id': selectedClassId,
-                                  'class_level': selectedClassName,
-                                })
-                                .inFilter('id', _selectedStudentIds.toList());
-
-                            if (mounted) {
-                              setState(() {
-                                _localStudents.removeWhere(
-                                  (s) => _selectedStudentIds.contains(
-                                    s['id'].toString(),
-                                  ),
+                    onPressed: selectedTargetClass == null
+                        ? null
+                        : () async {
+                            setDialogState(() => isProcessing = true);
+                            try {
+                              String? newClassId;
+                              if (selectedTargetClass != "Graduated" &&
+                                  selectedTargetClass != "Withdrawn" &&
+                                  selectedTargetClass != "Expelled") {
+                                var targetClassMap = _allClassesData.firstWhere(
+                                  (c) => c['name'] == selectedTargetClass,
+                                  orElse: () => {},
                                 );
-                                _selectedStudentIds.clear();
-                                _isSelecting = false;
-                              });
-                              Navigator.pop(ctx);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    "Successfully moved students to $selectedClassName",
-                                  ),
-                                  backgroundColor: Colors.green,
-                                  behavior: SnackBarBehavior.floating,
-                                ),
-                              );
+                                newClassId = targetClassMap['id'];
+                              }
+
+                              Map<String, dynamic> updatePayload = {
+                                'class_level': selectedTargetClass,
+                              };
+                              if (newClassId != null) {
+                                updatePayload['class_id'] = newClassId;
+                              }
+
+                              for (String studentId in _selectedStudentIds) {
+                                await _supabase
+                                    .from('students')
+                                    .update(updatePayload)
+                                    .eq('id', studentId);
+                              }
+
+                              if (context.mounted) {
+                                Navigator.pop(ctx);
+                                _showSuccess(
+                                  "${_selectedStudentIds.length} students reassigned to $selectedTargetClass",
+                                );
+                                setState(() {
+                                  _selectedStudentIds.clear();
+                                  _isSelecting = false;
+                                });
+                                _fetchStudents();
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                setDialogState(() => isProcessing = false);
+                                _showError("Failed to reassign students: $e");
+                              }
                             }
-                          } catch (e) {
-                            setDialogState(() => isSaving = false);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text("Failed to move students: $e"),
-                                backgroundColor: Colors.red,
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          }
-                        },
-                  child: isSaving
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: TridetaLoader(color: Colors.white),
-                        )
-                      : const Text(
-                          "CONFIRM",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                ),
+                          },
+                    child: const Text(
+                      "CONFIRM ASSIGNMENT",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
               ],
             );
           },
@@ -1215,178 +387,680 @@ class _ClassListScreenState extends State<_ClassListScreen> {
     );
   }
 
+  void _showError(String msg) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+  }
+
+  void _showSuccess(String msg) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.green));
+  }
+
+  // ===========================================================================
+  // 🚨 UI COMPONENTS
+  // ===========================================================================
+
+  Widget _buildDesktopHeader(Color primaryColor, bool isDark, String email) {
+    int totalStudents = _allStudentsUnfiltered.length;
+
+    return Container(
+      padding: const EdgeInsets.all(30),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.grey.shade200,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Student Directory",
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Manage enrollments, assign classes, and access full academic records across the institution.",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark ? Colors.white70 : Colors.grey.shade600,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.groups_rounded,
+                            size: 18,
+                            color: primaryColor,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            "$totalStudents Total Enrolled",
+                            style: TextStyle(
+                              color: primaryColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 30),
+          _buildQuickActionsBox(primaryColor, isDark),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileHeader(Color primaryColor, bool isDark, String email) {
+    int totalStudents = _allStudentsUnfiltered.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [primaryColor, primaryColor.withValues(alpha: 0.8)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: primaryColor.withValues(alpha: 0.3),
+                blurRadius: 15,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.admin_panel_settings_rounded,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          "Active Session",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.school_rounded,
+                    color: Colors.white70,
+                    size: 30,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                "Total Enrolled",
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "$totalStudents",
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 42,
+                  fontWeight: FontWeight.w900,
+                  height: 1.0,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _buildQuickActionsBox(primaryColor, isDark),
+      ],
+    );
+  }
+
+  Widget _buildQuickActionsBox(Color primaryColor, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.grey.shade200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Directory Tools",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: isDark ? Colors.white54 : Colors.grey.shade500,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 0,
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const StudentAdmissionScreen(),
+                      ),
+                    ).then((_) => _fetchStudents());
+                  },
+                  icon: const Icon(Icons.person_add_rounded, size: 18),
+                  label: const Text(
+                    "ADMIT STUDENT",
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: isDark
+                        ? Colors.white.withValues(alpha: 0.1)
+                        : primaryColor.withValues(alpha: 0.1),
+                    foregroundColor: isDark ? Colors.white : primaryColor,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 0,
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const IdCardGeneratorScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.badge_rounded, size: 18),
+                  label: const Text(
+                    "GENERATE ID",
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildControlsRow(Color primaryColor, bool isDark, bool isDesktop) {
+    final searchField = Container(
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.grey.shade200,
+        ),
+      ),
+      child: TextField(
+        onChanged: (val) {
+          setState(() => _searchQuery = val);
+          _filterAndSortStudents();
+        },
+        style: TextStyle(
+          fontSize: 14,
+          color: isDark ? Colors.white : Colors.black87,
+        ),
+        decoration: InputDecoration(
+          hintText: "Search by name...",
+          hintStyle: TextStyle(
+            color: isDark ? Colors.white30 : Colors.grey.shade400,
+          ),
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            color: isDark ? Colors.white54 : Colors.grey.shade400,
+          ),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 14,
+          ),
+        ),
+      ),
+    );
+
+    final filters = Row(
+      children: [
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark ? Colors.white10 : Colors.grey.shade200,
+              ),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                isExpanded: true,
+                value: _selectedClassFilter,
+                icon: Icon(
+                  Icons.filter_list_rounded,
+                  color: Colors.grey.shade400,
+                  size: 18,
+                ),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+                items: _availableClasses.map((String value) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                }).toList(),
+                onChanged: (newValue) {
+                  if (newValue != null) {
+                    setState(() => _selectedClassFilter = newValue);
+                    _filterAndSortStudents();
+                  }
+                },
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark ? Colors.white10 : Colors.grey.shade200,
+              ),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                isExpanded: true,
+                value: _selectedSort,
+                icon: Icon(
+                  Icons.sort_rounded,
+                  color: Colors.grey.shade400,
+                  size: 18,
+                ),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+                items:
+                    [
+                      'First Name A-Z',
+                      'First Name Z-A',
+                      'Date Added (Newest)',
+                      'Date Added (Oldest)',
+                    ].map((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(
+                          value,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      );
+                    }).toList(),
+                onChanged: (newValue) {
+                  if (newValue != null) {
+                    setState(() => _selectedSort = newValue);
+                    _filterAndSortStudents();
+                  }
+                },
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    return isDesktop
+        ? Row(
+            children: [
+              Expanded(flex: 2, child: searchField),
+              const SizedBox(width: 16),
+              Expanded(flex: 3, child: filters),
+            ],
+          )
+        : Column(children: [searchField, const SizedBox(height: 12), filters]);
+  }
+
   @override
   Widget build(BuildContext context) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color primaryColor = Theme.of(context).primaryColor;
-    Color bgColor = widget.isDark
-        ? const Color(0xFF121212)
-        : const Color(0xFFF8FAFC);
+    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
 
-    Widget rosterContent = _localStudents.isEmpty
-        ? Center(
-            child: Text(
-              "No students left in this class.",
-              style: TextStyle(color: Colors.grey[500], fontSize: 16),
-            ),
-          )
-        : ListView.builder(
-            padding: const EdgeInsets.all(24),
-            itemCount: _localStudents.length,
-            itemBuilder: (context, index) {
-              final student = _localStudents[index];
-              final String fullName =
-                  "${student['first_name']} ${student['last_name']}";
-              final String sId = student['id'].toString();
-              final bool isSelected = _selectedStudentIds.contains(sId);
+    bool isDesktop = MediaQuery.of(context).size.width > 800;
+    double horizontalPadding = isDesktop ? 30.0 : 16.0;
 
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? primaryColor.withValues(alpha: 0.1)
-                      : widget.cardColor,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isSelected
-                        ? primaryColor.withValues(alpha: 0.5)
-                        : (widget.isDark
-                              ? Colors.white.withValues(alpha: 0.05)
-                              : Colors.grey.shade200),
-                    width: 1.5,
+    // 🚨 THIS IS THE NEW SCROLLABLE LAYOUT ENGINE
+    Widget rosterContent = CustomScrollView(
+      slivers: [
+        // ─── TOP HEADER (Scrolls out of view) ───
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            horizontalPadding,
+            horizontalPadding,
+            16.0,
+          ),
+          sliver: SliverToBoxAdapter(
+            child: isDesktop
+                ? _buildDesktopHeader(primaryColor, isDark, _userEmail)
+                : _buildMobileHeader(primaryColor, isDark, _userEmail),
+          ),
+        ),
+
+        // ─── STICKY CONTROLS (Pins to the top) ───
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _StickyControlsDelegate(
+            bgColor:
+                bgColor, // Matches Scaffold background to hide items scrolling behind it
+            height: isDesktop ? 80.0 : 140.0,
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+            child: _buildControlsRow(primaryColor, isDark, isDesktop),
+          ),
+        ),
+
+        // ─── STUDENT LIST (Scrolls continuously) ───
+        SliverPadding(
+          padding: EdgeInsets.only(
+            left: horizontalPadding,
+            right: horizontalPadding,
+            bottom: horizontalPadding,
+          ),
+          sliver: _isLoading
+              ? SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 50.0),
+                    child: Center(child: TridetaLoader(color: primaryColor)),
                   ),
-                  boxShadow: isSelected
-                      ? []
-                      : [
+                )
+              : _students.isEmpty
+              ? SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 50.0),
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.search_off_rounded,
+                            size: 80,
+                            color: Colors.grey.shade300,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            "No Students Found",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            "Try adjusting your search or filters.",
+                            style: TextStyle(color: Colors.grey.shade500),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              : SliverList(
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final student = _students[index];
+                    final isSelected = _selectedStudentIds.contains(
+                      student['id'],
+                    );
+                    final String fullName =
+                        "${student['first_name']} ${student['last_name']}";
+                    final String classLevel =
+                        student['class_level'] ?? 'Unassigned';
+                    final String? photoUrl = student['passport_url'];
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isSelected
+                              ? primaryColor
+                              : (isDark
+                                    ? Colors.white10
+                                    : Colors.grey.shade200),
+                          width: isSelected ? 2 : 1,
+                        ),
+                        boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.02),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
                         ],
-                ),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 8,
-                  ),
-                  leading: _isSelecting
-                      ? Checkbox(
-                          value: isSelected,
-                          onChanged: (val) => _toggleStudent(sId),
-                          activeColor: primaryColor,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        )
-                      : Hero(
-                          tag: student['id'],
-                          child: CircleAvatar(
-                            radius: 24,
-                            backgroundColor: primaryColor.withValues(
-                              alpha: 0.1,
-                            ),
-                            backgroundImage: student['passport_url'] != null
-                                ? NetworkImage(student['passport_url'])
-                                : null,
-                            child: student['passport_url'] == null
-                                ? Icon(
-                                    Icons.person_rounded,
-                                    color: primaryColor,
-                                  )
-                                : null,
-                          ),
-                        ),
-                  title: Text(
-                    fullName,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      color: widget.textColor,
-                    ),
-                  ),
-                  subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      "${student['admission_no'] ?? 'NO ID'} • ${student['gender']}",
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
-                        fontWeight: FontWeight.w600,
                       ),
-                    ),
-                  ),
-                  trailing: _isSelecting
-                      ? null
-                      : const Icon(
-                          Icons.chevron_right_rounded,
-                          color: Colors.grey,
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
                         ),
-                  onTap: () {
-                    if (_isSelecting) {
-                      _toggleStudent(sId);
-                    } else {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => StudentProfileScreen(
-                            name: fullName,
-                            id: student['id'],
-                            studentClass:
-                                student['class_level'] ?? "Unassigned",
-                            imagePath: student['passport_url'],
-                            parentPhone: student['parent_phone'],
-                            parentEmail: student['parent_email'],
+                        onTap: () {
+                          if (_isSelecting) {
+                            _toggleSelection(student['id']);
+                          } else {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => StudentProfileScreen(
+                                  name: student['full_name'] ?? '',
+                                  id: student['id'] ?? '',
+                                  studentClass: student['class'] ?? '',
+                                  imagePath: student['passport_url'],
+                                  parentPhone: student['parent_phone'],
+                                  parentEmail: student['parent_email'],
+                                ),
+                              ),
+                            ).then((_) => _fetchStudents());
+                          }
+                        },
+                        onLongPress: () => _toggleSelection(student['id']),
+                        leading: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_isSelecting)
+                              Checkbox(
+                                value: isSelected,
+                                onChanged: (_) =>
+                                    _toggleSelection(student['id']),
+                                activeColor: primaryColor,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            CircleAvatar(
+                              radius: 24,
+                              backgroundColor: primaryColor.withValues(
+                                alpha: 0.1,
+                              ),
+                              backgroundImage:
+                                  photoUrl != null && photoUrl.isNotEmpty
+                                  ? NetworkImage(photoUrl)
+                                  : null,
+                              child: photoUrl == null || photoUrl.isEmpty
+                                  ? Icon(
+                                      Icons.person_rounded,
+                                      color: primaryColor,
+                                    )
+                                  : null,
+                            ),
+                          ],
+                        ),
+                        title: Text(
+                          fullName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            "ID: ${student['admission_no'] ?? 'N/A'} • $classLevel",
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade500,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                      );
-                    }
-                  },
-                  onLongPress: () {
-                    if (!_isSelecting) {
-                      setState(() {
-                        _isSelecting = true;
-                        _selectedStudentIds.add(sId);
-                      });
-                    }
-                  },
+                        trailing: Icon(
+                          Icons.chevron_right_rounded,
+                          color: Colors.grey.shade400,
+                        ),
+                      ),
+                    );
+                  }, childCount: _students.length),
                 ),
-              );
-            },
-          );
+        ),
+      ],
+    );
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: Text(
-          _isSelecting
-              ? "${_selectedStudentIds.length} Selected"
-              : "${widget.className.toUpperCase()} Roster",
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        title: const Text(
+          "Student Directory",
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         backgroundColor: bgColor,
-        foregroundColor: widget.textColor,
+        foregroundColor: isDark ? Colors.white : Colors.black87,
         elevation: 0,
         centerTitle: true,
-        leading: _isSelecting
-            ? IconButton(
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => setState(() {
-                  _isSelecting = false;
-                  _selectedStudentIds.clear();
-                }),
-              )
-            : null,
         actions: [
           if (_isSelecting)
             IconButton(
               icon: const Icon(Icons.select_all_rounded),
+              onPressed: _selectAll,
               tooltip: "Select All",
-              onPressed: _toggleSelectAll,
             ),
-          if (!_isSelecting && _localStudents.isNotEmpty)
+          if (_isSelecting)
             IconButton(
-              icon: const Icon(Icons.checklist_rtl_rounded),
-              tooltip: "Multi-Select",
+              icon: const Icon(Icons.close_rounded),
+              onPressed: () {
+                setState(() {
+                  _selectedStudentIds.clear();
+                  _isSelecting = false;
+                });
+              },
+            ),
+          if (!_isSelecting && !isDesktop)
+            IconButton(
+              icon: const Icon(Icons.checklist_rounded),
               onPressed: () => setState(() => _isSelecting = true),
             ),
         ],
@@ -1402,9 +1076,7 @@ class _ClassListScreenState extends State<_ClassListScreen> {
                     color: bgColor,
                     border: Border.symmetric(
                       vertical: BorderSide(
-                        color: widget.isDark
-                            ? Colors.white10
-                            : Colors.grey.shade200,
+                        color: isDark ? Colors.white10 : Colors.grey.shade200,
                       ),
                     ),
                   ),
@@ -1433,5 +1105,47 @@ class _ClassListScreenState extends State<_ClassListScreen> {
             )
           : null,
     );
+  }
+}
+
+// ===========================================================================
+// 🚨 CUSTOM DELEGATE FOR STICKY SEARCH/FILTER ROW
+// ===========================================================================
+class _StickyControlsDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  final double height;
+  final Color bgColor;
+  final EdgeInsets padding;
+
+  _StickyControlsDelegate({
+    required this.child,
+    required this.height,
+    required this.bgColor,
+    required this.padding,
+  });
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return Container(
+      color: bgColor, // Solid background so scrolling items disappear behind it
+      padding: padding.copyWith(top: 10.0, bottom: 16.0), // Breathing room
+      alignment: Alignment.center,
+      child: child,
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _StickyControlsDelegate oldDelegate) {
+    return true;
   }
 }

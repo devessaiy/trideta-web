@@ -255,7 +255,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     });
   }
 
-  // --- Mass Promotion Engine (Untouched) ---
+  // --- Mass Promotion Engine ---
   void _showPromotionDialog(Color primaryColor) {
     String? selectedTargetClass;
     bool isProcessing = false;
@@ -583,6 +583,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     );
   }
 
+  // 🚨 FIXED: Used Wrap instead of Row+Expanded to prevent RenderFlex crashes on Desktop
   Widget _buildQuickActionsBox(Color primaryColor, bool isDark) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -606,62 +607,64 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          Row(
-            mainAxisSize: MainAxisSize.min,
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
             children: [
-              Expanded(
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 16,
+                    horizontal: 16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 0,
+                ),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const StudentAdmissionScreen(),
                     ),
-                    elevation: 0,
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const StudentAdmissionScreen(),
-                      ),
-                    ).then((_) => _fetchStudents());
-                  },
-                  icon: const Icon(Icons.person_add_rounded, size: 18),
-                  label: const Text(
-                    "ADMIT STUDENT",
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
-                  ),
+                  ).then((_) => _fetchStudents());
+                },
+                icon: const Icon(Icons.person_add_rounded, size: 18),
+                label: const Text(
+                  "ADMIT STUDENT",
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: isDark
-                        ? Colors.white.withValues(alpha: 0.1)
-                        : primaryColor.withValues(alpha: 0.1),
-                    foregroundColor: isDark ? Colors.white : primaryColor,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : primaryColor.withValues(alpha: 0.1),
+                  foregroundColor: isDark ? Colors.white : primaryColor,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 16,
+                    horizontal: 16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 0,
+                ),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const IdCardGeneratorScreen(),
                     ),
-                    elevation: 0,
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const IdCardGeneratorScreen(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.badge_rounded, size: 18),
-                  label: const Text(
-                    "GENERATE ID",
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
-                  ),
+                  );
+                },
+                icon: const Icon(Icons.badge_rounded, size: 18),
+                label: const Text(
+                  "GENERATE ID",
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
                 ),
               ),
             ],
@@ -831,7 +834,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     bool isDesktop = MediaQuery.of(context).size.width > 800;
     double horizontalPadding = isDesktop ? 30.0 : 16.0;
 
-    // 🚨 THIS IS THE NEW SCROLLABLE LAYOUT ENGINE
     Widget rosterContent = CustomScrollView(
       slivers: [
         // ─── TOP HEADER (Scrolls out of view) ───
@@ -853,9 +855,8 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         SliverPersistentHeader(
           pinned: true,
           delegate: _StickyControlsDelegate(
-            bgColor:
-                bgColor, // Matches Scaffold background to hide items scrolling behind it
-            height: isDesktop ? 80.0 : 140.0,
+            bgColor: bgColor,
+            height: isDesktop ? 80.0 : 170.0,
             padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
             child: _buildControlsRow(primaryColor, isDark, isDesktop),
           ),
@@ -953,12 +954,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => StudentProfileScreen(
-                                  name: student['full_name'] ?? '',
-                                  id: student['id'] ?? '',
-                                  studentClass: student['class'] ?? '',
-                                  imagePath: student['passport_url'],
-                                  parentPhone: student['parent_phone'],
-                                  parentEmail: student['parent_email'],
+                                  name: fullName,
+                                  id: student['id'],
+                                  studentClass: classLevel,
                                 ),
                               ),
                             ).then((_) => _fetchStudents());
@@ -1137,8 +1135,8 @@ class _StickyControlsDelegate extends SliverPersistentHeaderDelegate {
     bool overlapsContent,
   ) {
     return Container(
-      color: bgColor, // Solid background so scrolling items disappear behind it
-      padding: padding.copyWith(top: 10.0, bottom: 16.0), // Breathing room
+      color: bgColor,
+      padding: padding.copyWith(top: 10.0, bottom: 16.0),
       alignment: Alignment.center,
       child: child,
     );

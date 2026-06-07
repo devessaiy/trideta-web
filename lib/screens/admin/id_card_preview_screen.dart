@@ -39,21 +39,21 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
     try {
       // 1. CAPTURE THE LIVE SCREEN WIDGET
       final Uint8List? imageBytes = await _screenshotController.capture(
-        delay: const Duration(milliseconds: 50),
-        // 🚨 THE FIX: Reduced from 4.0 to 2.0.
-        // This stops the browser from choking, drops download time to seconds,
-        // and maintains standard 300 DPI print quality.
-        pixelRatio: 2.0,
+        delay: const Duration(milliseconds: 100),
+        // 🚨 PERFORMANCE FIX: Dropped to 1.5.
+        // This generates a ~215 DPI image, which is perfectly crisp for a 54mm card
+        // but stops the browser's CPU from choking.
+        pixelRatio: 1.5,
       );
 
       if (imageBytes != null) {
-        // 2. CONVERT TO A4 PDF WITH EXACT CR80 PHYSICAL DIMENSIONS
+        // 2. CONVERT TO A4 PDF
         final pdf = pw.Document();
         final pdfImage = pw.MemoryImage(imageBytes);
 
         pdf.addPage(
           pw.Page(
-            pageFormat: PdfPageFormat.a4, // Standard A4 Paper
+            pageFormat: PdfPageFormat.a4,
             margin: const pw.EdgeInsets.all(30),
             build: (pw.Context context) {
               return pw.Column(
@@ -61,7 +61,6 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
                 children: [
                   pw.SizedBox(height: 20 * PdfPageFormat.mm),
 
-                  // Instructions for the person printing the A4 sheet
                   pw.Text(
                     "TRIDETA ID CARD - PRINT SHEET",
                     style: pw.TextStyle(
@@ -87,9 +86,6 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
 
                   pw.SizedBox(height: 40 * PdfPageFormat.mm),
 
-                  // THE MAGIC SIZING CODE
-                  // Front width (54mm) + Gap (3.6mm) + Back width (54mm) = 111.6mm total.
-                  // Height is exactly 86mm.
                   pw.Container(
                     width: 111.6 * PdfPageFormat.mm,
                     height: 86 * PdfPageFormat.mm,

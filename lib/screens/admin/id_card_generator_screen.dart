@@ -27,6 +27,7 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
   String _schoolAddress = "Return to School Administration";
   String _schoolPhone = "";
   String _schoolEmail = "";
+  String _brandColorHex = "#007ACC"; // 🚨 ADDED BRAND COLOR VARIABLE
 
   List<String> _activeClasses = [];
   String? _selectedClass;
@@ -51,10 +52,10 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
       _schoolId = profile['school_id'];
 
       if (_schoolId != null) {
-        // 🚨 UPDATED QUERY: Fetching name, address, phone, and email exactly like your Report Card!
+        // 🚨 UPDATED QUERY: Added brand_color
         final schoolData = await _supabase
             .from('schools')
-            .select('name, address, contact_phone, contact_email')
+            .select('name, address, contact_phone, contact_email, brand_color')
             .eq('id', _schoolId!)
             .single();
 
@@ -63,6 +64,8 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
             schoolData['address'] ?? "Return to School Administration";
         _schoolPhone = schoolData['contact_phone'] ?? "";
         _schoolEmail = schoolData['contact_email'] ?? "";
+        _brandColorHex =
+            schoolData['brand_color'] ?? "#007ACC"; // 🚨 FETCHED BRAND COLOR
 
         final classData = await _supabase
             .from('classes')
@@ -119,6 +122,7 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
           schoolAddress: _schoolAddress, // 🚨 RED LINES FIXED!
           schoolPhone: _schoolPhone, // 🚨 RED LINES FIXED!
           schoolEmail: _schoolEmail, // 🚨 RED LINES FIXED!
+          brandColorHex: _brandColorHex, // 🚨 PASSED BRAND COLOR
         ),
       ),
     );
@@ -297,7 +301,7 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
                                   : _generateBulkIdCards,
                               icon: const Icon(Icons.print_rounded, size: 18),
                               label: const Text(
-                                "BULK A4",
+                                "BULK",
                                 style: TextStyle(
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: 0.5,

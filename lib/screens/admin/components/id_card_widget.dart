@@ -5,11 +5,10 @@ import 'package:qr_flutter/qr_flutter.dart';
 class TridetaIdCard extends StatelessWidget {
   final Map<String, dynamic> student;
   final String schoolName;
-
-  // 🚨 NEW VARIABLES ADDED TO THE CONSTRUCTOR HERE
   final String schoolAddress;
   final String schoolPhone;
   final String schoolEmail;
+  final String brandColorHex;
 
   const TridetaIdCard({
     super.key,
@@ -18,9 +17,19 @@ class TridetaIdCard extends StatelessWidget {
     required this.schoolAddress,
     required this.schoolPhone,
     required this.schoolEmail,
+    required this.brandColorHex,
   });
 
-  // 🚨 FORMATTER: Abbreviates last name if total length is > 15 chars to keep it centered
+  Color get brandColor {
+    try {
+      String hex = brandColorHex.replaceAll('#', '');
+      if (hex.length == 6) hex = 'FF$hex';
+      return Color(int.parse(hex, radix: 16));
+    } catch (e) {
+      return const Color(0xFF007ACC);
+    }
+  }
+
   String _formatName(String first, String last) {
     if ((first.length + last.length) > 15) {
       return "$first ${last.isNotEmpty ? last[0] + '.' : ''}".toUpperCase();
@@ -30,44 +39,16 @@ class TridetaIdCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 🚨 A4 PAPER SIZING LOGIC 🚨
-    // A standard CR80 ID Card is 54mm x 86mm. A4 Paper is 210mm x 297mm.
-    // If our digital card width is 300px, then exactly scaled A4 dimensions are 1166px by 1650px.
     return Container(
-      width: 1166,
-      height: 1650,
-      color: Colors.white, // The white A4 background
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      color: Colors.white,
+      padding: const EdgeInsets.all(20),
+      // 🚨 CHANGED TO ROW FOR SIDE-BY-SIDE LAYOUT
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            "PRINT ON A4 PAPER AT 100% SCALE (DO NOT 'FIT TO PAGE')",
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 40),
-
-          // Front Card wrapped in a dashed cutting border
-          Container(
-            padding: const EdgeInsets.all(1),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey, style: BorderStyle.solid),
-            ),
-            child: _buildFrontCard(),
-          ),
-
-          const SizedBox(height: 60), // Gap between front and back
-          // Back Card wrapped in a dashed cutting border
-          Container(
-            padding: const EdgeInsets.all(1),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey, style: BorderStyle.solid),
-            ),
-            child: _buildBackCard(),
-          ),
+          _buildFrontCard(),
+          const SizedBox(width: 20), // Gap between front and back
+          _buildBackCard(),
         ],
       ),
     );
@@ -80,65 +61,37 @@ class TridetaIdCard extends StatelessWidget {
     final String firstName = student['first_name']?.toString() ?? '';
     final String lastName = student['last_name']?.toString() ?? '';
     final String formattedName = _formatName(firstName, lastName);
-
     final String admissionNo = student['admission_no']?.toString() ?? 'N/A';
     final String? passportUrl = student['passport_url'];
     final String role = student['class_level'] ?? 'STUDENT';
-    const Color brandBlue = Color(0xFF007ACC);
 
     return Container(
       width: 300,
-      height: 478, // Exact CR80 ratio (300 x 1.592)
+      height: 478,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade300, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
-          // Background slant
           Positioned(
-            top: 150,
+            top: 130,
             left: -50,
             right: -50,
             child: Transform.rotate(
               angle: -0.15,
-              child: Container(height: 200, color: Colors.grey.shade100),
-            ),
-          ),
-
-          // Top Black Header
-          ClipPath(
-            clipper: TopSlantClipper(),
-            child: Container(
-              height: 120,
-              color: Colors.black,
-              padding: const EdgeInsets.only(top: 25, left: 15, right: 15),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.school, color: Colors.white, size: 28),
-                  const SizedBox(width: 8),
-                  // FULL NAME LOGIC: Flexible wrapper prevents overflow
-                  Expanded(
-                    child: Text(
-                      schoolName.toUpperCase(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        height: 1.2,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
+              child: Container(
+                height: 220,
+                color: brandColor.withValues(alpha: 0.08),
               ),
             ),
           ),
-
-          // Bottom Blue Footer
+          ClipPath(
+            clipper: TopHeaderClipper(),
+            child: Container(height: 130, color: brandColor),
+          ),
           Positioned(
             bottom: 0,
             left: 0,
@@ -146,62 +99,109 @@ class TridetaIdCard extends StatelessWidget {
             child: ClipPath(
               clipper: BottomSlantClipper(),
               child: Container(
-                height: 110,
-                color: brandBlue,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
+                height: 120,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [brandColor.withValues(alpha: 0.75), brandColor],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Stack(
                   children: [
-                    Text(
-                      "Batch ID $admissionNo",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
+                    Positioned(
+                      right: -20,
+                      top: -20,
+                      child: CircleAvatar(
+                        radius: 50,
+                        backgroundColor: Colors.white.withValues(alpha: 0.1),
                       ),
                     ),
-                    const SizedBox(height: 5),
-                    Container(
-                      height: 35,
-                      width: 200,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: BarcodeWidget(
-                        barcode: Barcode.code128(),
-                        data: admissionNo,
-                        drawText: false,
-                        color: Colors.black,
+                    Positioned(
+                      left: -20,
+                      bottom: -20,
+                      child: CircleAvatar(
+                        radius: 40,
+                        backgroundColor: Colors.white.withValues(alpha: 0.05),
                       ),
                     ),
-                    const SizedBox(height: 15),
+                    Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          "Batch ID $admissionNo",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Center(
+                          child: Container(
+                            height: 35,
+                            width: 200,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: BarcodeWidget(
+                              barcode: Barcode.code128(),
+                              data: admissionNo,
+                              drawText: false,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                      ],
+                    ),
                   ],
                 ),
               ),
             ),
           ),
-
-          // Center Profile Info
-          Positioned(
-            top: 90,
-            left: 0,
-            right: 0,
+          Positioned.fill(
             child: Column(
               children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 25, left: 20, right: 20),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.school, color: Colors.white, size: 28),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          schoolName.toUpperCase(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            height: 1.2,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
                 Container(
                   width: 130,
                   height: 130,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: brandBlue, width: 4),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(color: brandColor, width: 5),
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(23),
                     child: passportUrl != null && passportUrl.startsWith('http')
                         ? Image.network(
                             passportUrl,
@@ -220,14 +220,13 @@ class TridetaIdCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 15),
-                // CENTERED FORMATTED NAME
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: Text(
                     formattedName,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                      fontSize: 20,
+                      fontSize: 22,
                       fontWeight: FontWeight.w900,
                       color: Colors.black,
                     ),
@@ -237,7 +236,7 @@ class TridetaIdCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 24,
-                    vertical: 6,
+                    vertical: 8,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.black,
@@ -249,15 +248,15 @@ class TridetaIdCard extends StatelessWidget {
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.5,
-                      fontSize: 12,
+                      fontSize: 11,
                     ),
                   ),
                 ),
-                const SizedBox(height: 15),
+                const SizedBox(height: 12),
                 const Text(
                   "Valid until 31 DEC 2026",
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.bold,
                     color: Colors.black87,
                   ),
@@ -275,52 +274,65 @@ class TridetaIdCard extends StatelessWidget {
   // ==========================================
   Widget _buildBackCard() {
     final String admissionNo = student['admission_no']?.toString() ?? 'N/A';
-    const Color brandBlue = Color(0xFF007ACC);
 
     return Container(
       width: 300,
       height: 478,
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade300, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
-          ClipPath(
-            clipper: TopSlantClipper(),
-            child: Container(height: 100, color: Colors.black),
-          ),
-
           Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: ClipPath(
-              clipper: BottomSlantClipper(),
+            top: 130,
+            left: -50,
+            right: -50,
+            child: Transform.rotate(
+              angle: -0.15,
               child: Container(
-                height: 150,
-                color: brandBlue,
-                padding: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
-                child: const Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "IN CASE OF LOSS",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
+                height: 220,
+                color: brandColor.withValues(alpha: 0.08),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -60,
+            left: -30,
+            right: -30,
+            child: Transform.rotate(
+              angle: -0.12,
+              child: Container(
+                height: 180,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [brandColor.withValues(alpha: 0.75), brandColor],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(40),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: brandColor.withValues(alpha: 0.3),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
                     ),
-                    SizedBox(height: 4),
-                    Text(
-                      "If found, please return this card to the school administration office. Unauthorized use of this card is strictly prohibited.",
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                        height: 1.4,
+                  ],
+                ),
+                child: Stack(
+                  children: [
+                    Positioned(
+                      right: 20,
+                      top: -20,
+                      child: CircleAvatar(
+                        radius: 60,
+                        backgroundColor: Colors.white.withValues(alpha: 0.1),
                       ),
                     ),
                   ],
@@ -328,43 +340,107 @@ class TridetaIdCard extends StatelessWidget {
               ),
             ),
           ),
-
+          ClipPath(
+            clipper: TopHeaderClipper(),
+            child: Container(height: 130, color: brandColor),
+          ),
           Positioned(
-            top: 100,
+            top: 25,
             left: 20,
             right: 20,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.school, color: Colors.white, size: 28),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    schoolName.toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      height: 1.2,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 130,
+            left: 24,
+            right: 24,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  schoolName.toUpperCase(),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 14,
-                  ),
+                const Text(
+                  "YOUR SCHOOL NAME",
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
                 ),
-                const SizedBox(height: 8),
-                // 🚨 REAL DATA INJECTED HERE
+                const SizedBox(height: 4),
                 Text(
-                  "$schoolAddress\nPhone: $schoolPhone\nEmail: $schoolEmail",
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Colors.black87,
-                    height: 1.5,
-                  ),
+                  schoolName,
+                  style: const TextStyle(fontSize: 12, color: Colors.black87),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  schoolAddress,
+                  style: const TextStyle(fontSize: 11, color: Colors.black87),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  "Phone: $schoolPhone",
+                  style: const TextStyle(fontSize: 11, color: Colors.black87),
+                ),
+                Text(
+                  "Email: $schoolEmail",
+                  style: const TextStyle(fontSize: 11, color: Colors.black87),
                 ),
                 const SizedBox(height: 25),
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade300),
+                    border: Border.all(color: Colors.grey.shade300, width: 1.5),
                   ),
                   child: QrImageView(
                     data: admissionNo,
                     version: QrVersions.auto,
-                    size: 90.0,
+                    size: 85.0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Positioned(
+            bottom: 25,
+            left: 24,
+            right: 24,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "IN CASE OF LOSS",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  "If found, please return this card to the school administration office. Unauthorized use of this card is strictly prohibited.",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    height: 1.4,
                   ),
                 ),
               ],
@@ -376,13 +452,13 @@ class TridetaIdCard extends StatelessWidget {
   }
 }
 
-// Custom Clippers
-class TopSlantClipper extends CustomClipper<Path> {
+class TopHeaderClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
     final path = Path();
-    path.lineTo(0, size.height);
-    path.lineTo(size.width, size.height - 30);
+    path.lineTo(0, size.height - 40);
+    path.quadraticBezierTo(0, size.height - 10, 30, size.height - 15);
+    path.lineTo(size.width, size.height - 45);
     path.lineTo(size.width, 0);
     path.close();
     return path;

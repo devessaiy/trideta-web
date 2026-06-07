@@ -1,19 +1,21 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:screenshot/screenshot.dart';
-import 'package:gal/gal.dart';
-import 'package:file_saver/file_saver.dart'; // 🚨 Pure Flutter file saving
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:file_saver/file_saver.dart';
+
+// 🚨 IMPORT PDF PACKAGE
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 import 'components/id_card_widget.dart';
 
 class IdCardPreviewScreen extends StatefulWidget {
   final Map<String, dynamic> student;
   final String schoolName;
-  // 🚨 THIS IS WHAT WAS MISSING: Declaring the variables!
   final String schoolAddress;
   final String schoolPhone;
   final String schoolEmail;
+  final String brandColorHex;
 
   const IdCardPreviewScreen({
     super.key,
@@ -22,6 +24,7 @@ class IdCardPreviewScreen extends StatefulWidget {
     required this.schoolAddress,
     required this.schoolPhone,
     required this.schoolEmail,
+    required this.brandColorHex,
   });
 
   @override
@@ -35,56 +38,60 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
   Future<void> _downloadFullIdCard() async {
     setState(() => _isSaving = true);
     try {
-      final Uint8List imageBytes = await _screenshotController
-          .captureFromWidget(
-            TridetaIdCard(
-              student: widget.student,
-              schoolName: widget.schoolName,
-              schoolAddress: widget.schoolAddress,
-              schoolPhone: widget.schoolPhone,
-              schoolEmail: widget.schoolEmail,
-            ),
-            delay: const Duration(milliseconds: 200),
-            pixelRatio: 2.0,
-          );
+      // 1. Capture the widget as a high-res image
+      final Uint8List?
+      imageBytes = await _screenshotController.captureFromWidget(
+        // 🚨 CRITICAL FIX: The Material wrapper prevents the red screen of death crash
+        Material(
+          color: Colors.transparent,
+          child: TridetaIdCard(
+            student: widget.student,
+            schoolName: widget.schoolName,
+            schoolAddress: widget.schoolAddress,
+            schoolPhone: widget.schoolPhone,
+            schoolEmail: widget.schoolEmail,
+            brandColorHex: widget.brandColorHex,
+          ),
+        ),
+        delay: const Duration(milliseconds: 200),
+        pixelRatio: 3.0,
+      );
 
       if (imageBytes != null) {
-        final safeFileName = "${widget.student['first_name']}_A4_ID_Sheet";
+        // 2. Convert the image into a PDF Document
+        final pdf = pw.Document();
+        final pdfImage = pw.MemoryImage(imageBytes);
 
-        if (kIsWeb) {
-          // 🚨 PURE FLUTTER WEB DOWNLOAD
-          await FileSaver.instance.saveFile(
-            name: safeFileName,
-            bytes: imageBytes,
-            fileExtension: "png",
-            mimeType: MimeType.png,
+        pdf.addPage(
+          pw.Page(
+            pageFormat: PdfPageFormat
+                .a4
+                .landscape, // Landscape fits side-by-side perfectly
+            margin: const pw.EdgeInsets.all(20),
+            build: (pw.Context context) {
+              return pw.Center(child: pw.Image(pdfImage));
+            },
+          ),
+        );
+
+        final Uint8List pdfBytes = await pdf.save();
+        final safeFileName = "${widget.student['first_name']}_ID_Card";
+
+        // 3. Save as a universal PDF
+        await FileSaver.instance.saveFile(
+          name: safeFileName,
+          bytes: pdfBytes,
+          file: "pdf",
+          mimeType: MimeType.pdf,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("PDF Downloaded successfully!"),
+              backgroundColor: Colors.green,
+            ),
           );
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  "A4 Image downloaded! Check your browser downloads.",
-                ),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
-        } else {
-          // 🚨 MOBILE GALLERY LOGIC
-          if (!await Gal.hasAccess(toAlbum: true)) {
-            await Gal.requestAccess(toAlbum: true);
-          }
-          await Gal.putImageBytes(imageBytes);
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("A4 Sheet saved to Gallery!"),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
         }
       }
     } catch (e) {
@@ -104,10 +111,10 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[800],
+      backgroundColor: Colors.grey[200],
       appBar: AppBar(
         title: const Text(
-          "A4 Print Preview",
+          "ID Card Preview",
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         backgroundColor: const Color(0xFF007ACC),
@@ -115,6 +122,7 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
+          // 🚨 FITTED BOX squishes the side-by-side layout perfectly onto your phone screen
           child: FittedBox(
             fit: BoxFit.contain,
             child: TridetaIdCard(
@@ -123,6 +131,7 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
               schoolAddress: widget.schoolAddress,
               schoolPhone: widget.schoolPhone,
               schoolEmail: widget.schoolEmail,
+              brandColorHex: widget.brandColorHex,
             ),
           ),
         ),
@@ -137,10 +146,17 @@ class _IdCardPreviewScreenState extends State<IdCardPreviewScreen> {
           ),
           onPressed: _isSaving ? null : _downloadFullIdCard,
           icon: _isSaving
-              ? const CircularProgressIndicator(color: Colors.white)
-              : const Icon(Icons.print, color: Colors.white),
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                )
+              : const Icon(Icons.picture_as_pdf, color: Colors.white),
           label: Text(
-            _isSaving ? "Processing..." : "Download A4 Print Sheet",
+            _isSaving ? "Generating PDF..." : "Download as PDF",
             style: const TextStyle(color: Colors.white, fontSize: 16),
           ),
         ),

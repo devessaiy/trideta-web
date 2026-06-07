@@ -400,11 +400,63 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   }
 
   // ===========================================================================
-  // 🚨 UI COMPONENTS
+  // 🚨 UI COMPONENTS (AESTHETIC UPGRADES)
   // ===========================================================================
+
+  Widget _buildDesktopStatPill(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+    bool isDark,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 28, color: color),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark ? Colors.white70 : Colors.grey.shade600,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 18,
+                  color: color,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildDesktopHeader(Color primaryColor, bool isDark, String email) {
     int totalStudents = _allStudentsUnfiltered.length;
+    int maleCount = _allStudentsUnfiltered
+        .where((s) => s['gender']?.toString().toLowerCase() == 'male')
+        .length;
+    int femaleCount = _allStudentsUnfiltered
+        .where((s) => s['gender']?.toString().toLowerCase() == 'female')
+        .length;
 
     return Container(
       padding: const EdgeInsets.all(30),
@@ -446,36 +498,31 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                     height: 1.5,
                   ),
                 ),
-                const SizedBox(height: 20),
-                Row(
+                const SizedBox(height: 24),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: primaryColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.groups_rounded,
-                            size: 18,
-                            color: primaryColor,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            "$totalStudents Total Enrolled",
-                            style: TextStyle(
-                              color: primaryColor,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
+                    _buildDesktopStatPill(
+                      "TOTAL",
+                      totalStudents.toString(),
+                      Icons.groups_rounded,
+                      primaryColor,
+                      isDark,
+                    ),
+                    _buildDesktopStatPill(
+                      "MALES",
+                      maleCount.toString(),
+                      Icons.male_rounded,
+                      Colors.blue,
+                      isDark,
+                    ),
+                    _buildDesktopStatPill(
+                      "FEMALES",
+                      femaleCount.toString(),
+                      Icons.female_rounded,
+                      Colors.pink,
+                      isDark,
                     ),
                   ],
                 ),
@@ -489,8 +536,52 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     );
   }
 
+  Widget _buildMobileMiniStat(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.2),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: Colors.white, size: 18),
+        ),
+        const SizedBox(width: 10),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
+            ),
+            Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildMobileHeader(Color primaryColor, bool isDark, String email) {
     int totalStudents = _allStudentsUnfiltered.length;
+    int maleCount = _allStudentsUnfiltered
+        .where((s) => s['gender']?.toString().toLowerCase() == 'male')
+        .length;
+    int femaleCount = _allStudentsUnfiltered
+        .where((s) => s['gender']?.toString().toLowerCase() == 'female')
+        .length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -574,6 +665,42 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                   height: 1.0,
                 ),
               ),
+              const SizedBox(height: 24),
+
+              // 🚨 NEW PREMIUM DEMOGRAPHICS ROW
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 16,
+                  horizontal: 20,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildMobileMiniStat(
+                      Icons.male_rounded,
+                      "MALES",
+                      maleCount.toString(),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 35,
+                      color: Colors.white.withValues(alpha: 0.2),
+                    ),
+                    _buildMobileMiniStat(
+                      Icons.female_rounded,
+                      "FEMALES",
+                      femaleCount.toString(),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -583,9 +710,10 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     );
   }
 
-  // 🚨 FIXED: Used Wrap instead of Row+Expanded to prevent RenderFlex crashes on Desktop
   Widget _buildQuickActionsBox(Color primaryColor, bool isDark) {
     return Container(
+      width: double
+          .infinity, // 🚨 FIX: Forces the card to stretch to full width on mobile
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
@@ -954,9 +1082,12 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => StudentProfileScreen(
-                                  name: fullName,
-                                  id: student['id'],
-                                  studentClass: classLevel,
+                                  name: student['first_name'] ?? '',
+                                  id: student['id'] ?? '',
+                                  studentClass: student['class'] ?? '',
+                                  imagePath: student['photo_url'],
+                                  parentPhone: student['parent_phone'],
+                                  parentEmail: student['parent_email'],
                                 ),
                               ),
                             ).then((_) => _fetchStudents());

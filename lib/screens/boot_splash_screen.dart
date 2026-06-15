@@ -12,7 +12,7 @@ import 'package:trideta_v2/main.dart'; // Imports notifiers
 
 // ROUTING IMPORTS
 import 'package:trideta_v2/screens/auth/onboarding_screen.dart';
-import 'package:trideta_v2/screens/public/landing_page_screen.dart';
+
 import 'package:trideta_v2/screens/auth/login_screen.dart';
 
 class BootSplashScreen extends StatefulWidget {
@@ -168,7 +168,7 @@ class _BootSplashScreenState extends State<BootSplashScreen>
     if (mounted) {
       Widget nextScreen = shouldShowOnboarding
           ? const OnboardingScreen()
-          : (kIsWeb ? const LandingPageScreen() : const LoginScreen());
+          : (kIsWeb ? LoginScreen() : const LoginScreen());
 
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(

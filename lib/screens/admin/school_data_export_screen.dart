@@ -550,7 +550,7 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
                     label: Text(
                       _isDeleting
                           ? "WIPING ACCOUNTS & DATA..."
-                          : "I UNDERSTAND, TERMINATE SCHOOL",
+                          : "UNDERSTOOD, TERMINATE.",
                       style: const TextStyle(
                         fontWeight: FontWeight.w900,
                         letterSpacing: 1.0,

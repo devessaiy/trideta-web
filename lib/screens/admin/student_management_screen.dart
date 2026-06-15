@@ -294,7 +294,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    value: selectedTargetClass,
+                    initialValue: selectedTargetClass,
                     items: validTargetClasses.map((String c) {
                       return DropdownMenuItem(value: c, child: Text(c));
                     }).toList(),

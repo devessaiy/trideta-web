@@ -32,7 +32,7 @@ class TridetaIdCard extends StatelessWidget {
 
   String _formatName(String first, String last) {
     if ((first.length + last.length) > 15) {
-      return "$first ${last.isNotEmpty ? last[0] + '.' : ''}".toUpperCase();
+      return "$first ${last.isNotEmpty ? '${last[0]}.' : ''}".toUpperCase();
     }
     return "$first $last".toUpperCase();
   }

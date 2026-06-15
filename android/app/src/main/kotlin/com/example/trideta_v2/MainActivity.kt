@@ -1,4 +1,4 @@
-package com.your.package.name // 🚨 LEAVE YOUR ORIGINAL PACKAGE NAME HERE
+package com.example.trideta_v2
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 

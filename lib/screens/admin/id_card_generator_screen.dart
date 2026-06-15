@@ -152,11 +152,12 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
 
-    if (_isLoadingConfig)
+    if (_isLoadingConfig) {
       return Scaffold(
         backgroundColor: bgColor,
         body: Center(child: TridetaLoader(color: primaryColor)),
       );
+    }
 
     return Scaffold(
       backgroundColor: bgColor,

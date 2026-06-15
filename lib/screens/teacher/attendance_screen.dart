@@ -389,10 +389,12 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
   Widget _buildManualTab() {
     if (_isLoading) return const Center(child: TridetaLoader());
-    if (_selectedClass == null)
+    if (_selectedClass == null) {
       return const Center(child: Text("Please select a class."));
-    if (_students.isEmpty)
+    }
+    if (_students.isEmpty) {
       return const Center(child: Text("No students found in this class."));
+    }
 
     return Column(
       children: [
@@ -465,10 +467,11 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                                 : Colors.black,
                           ),
                           onSelected: (selected) {
-                            if (selected)
+                            if (selected) {
                               setState(
                                 () => _attendanceState[student['id']] = s,
                               );
+                            }
                           },
                         );
                       }).toList(),
@@ -507,8 +510,9 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   }
 
   Widget _buildScannerTab() {
-    if (_selectedClass == null)
+    if (_selectedClass == null) {
       return const Center(child: Text("Please select a class first."));
+    }
 
     return Stack(
       children: [

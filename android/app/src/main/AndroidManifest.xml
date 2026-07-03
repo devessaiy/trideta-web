@@ -68,6 +68,16 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="trideta" android:host="reset-callback" />
             </intent-filter>
+            <!-- 🚨 ADD THIS FOR GOOGLE SIGN IN REDIRECTS -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <!-- Accepts URIs that begin with "io.supabase.trideta://login-callback" -->
+                <data
+                    android:scheme="io.supabase.trideta"
+                    android:host="login-callback" />
+            </intent-filter>
         </activity>
         <meta-data
             android:name="flutterEmbedding"

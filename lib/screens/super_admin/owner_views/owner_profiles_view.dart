@@ -32,10 +32,11 @@ class OwnerProfilesManagementView extends StatelessWidget {
                   .from('profiles')
                   .stream(primaryKey: ['id']),
               builder: (context, snapshot) {
-                if (!snapshot.hasData)
+                if (!snapshot.hasData) {
                   return const Center(
                     child: TridetaLoader(color: Colors.indigo),
                   );
+                }
                 final profiles = snapshot.data!;
 
                 return ListView.builder(

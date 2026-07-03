@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 class OwnerMetricsView extends StatelessWidget {
   final Function(int) onNavigate;

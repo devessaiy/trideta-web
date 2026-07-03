@@ -33,11 +33,12 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
   Future<void> _loadSecurityPreferences() async {
     bool canCheck = await _biometricService.isBiometricAvailable();
     bool isEnabled = await _biometricService.isBiometricEnabled();
-    if (mounted)
+    if (mounted) {
       setState(() {
         _canCheckBiometrics = canCheck;
         _isBiometricEnabled = isEnabled;
       });
+    }
   }
 
   // ============================================================================
@@ -195,11 +196,12 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
               );
               await _biometricService.setBiometricEnabled(true);
               setState(() => _isBiometricEnabled = true);
-              if (mounted)
+              if (mounted) {
                 showSuccessDialog(
                   "Enabled",
                   "Biometric login successfully enabled!",
                 );
+              }
             },
             child: const Text(
               "Save & Enable",
@@ -265,11 +267,12 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
                 await _biometricService.deleteCredentials();
                 await _biometricService.setBiometricEnabled(false);
                 _loadSecurityPreferences();
-                if (mounted)
+                if (mounted) {
                   showSuccessDialog(
                     "Password Updated",
                     "Password updated securely.",
                   );
+                }
               } catch (e) {
                 if (mounted) showAuthErrorDialog(e.toString());
               }

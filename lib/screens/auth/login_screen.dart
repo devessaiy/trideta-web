@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -9,6 +10,9 @@ import 'package:trideta_v2/screens/admin/finance_dashboard_screen.dart';
 import 'package:trideta_v2/services/auth_service.dart';
 import 'package:trideta_v2/services/biometric_service.dart';
 import 'package:trideta_v2/screens/shared/setup_wizard.dart';
+
+// 🚨 OWNER DASHBOARD IMPORT (Ensure you have created this file from the previous step)
+import 'package:trideta_v2/screens/super_admin/trideta_owner_dashboard.dart';
 
 // 🚨 MODULAR IMPORTS
 import 'package:trideta_v2/utils/auth_error_handler.dart';
@@ -27,6 +31,9 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   bool _isObscure = true;
   bool _isLoading = false;
   bool _canCheckBiometrics = false;
+
+  // 🚨 UI STATE: 0 = Email Step, 1 = Password Step
+  int _currentStep = 0;
 
   final _authService = AuthService();
   final _biometricService = BiometricService();
@@ -146,6 +153,33 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   Future<void> _checkBiometrics() async {
     bool canCheck = await _biometricService.isBiometricAvailable();
     setState(() => _canCheckBiometrics = canCheck);
+  }
+
+  // ============================================================================
+  // 🚨 2-STEP LOGIC CONTROLS
+  // ============================================================================
+  void _proceedToPassword() {
+    if (_emailController.text.trim().isEmpty) {
+      showAuthErrorDialog("Please enter your Email or Phone Number.");
+      return;
+    }
+    setState(() => _currentStep = 1);
+  }
+
+  Future<void> _loginWithGoogle() async {
+    setState(() => _isLoading = true);
+    try {
+      await _supabase.auth.signInWithOAuth(
+        OAuthProvider.google,
+        // Using deep linking for mobile, null for web to use current URL
+        redirectTo: kIsWeb ? null : 'io.supabase.trideta://login-callback/',
+      );
+      // Supabase handles the session creation automatically.
+    } catch (e) {
+      if (mounted) showAuthErrorDialog("Failed to sign in with Google.");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   // ============================================================================
@@ -333,15 +367,38 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   }
 
   // 🚨 THE MAGIC INJECTION: Fetching Color before Routing!
+  // 🚨 THE MAGIC INJECTION: Fetching Color before Routing!
   Future<void> _checkAndNavigate() async {
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) throw "Session error. Please try logging again.";
 
-      // 🚨 AUTO-HEALING PROFILE QUERY
+      // ==========================================
+      // 🚨 MASTER CONSOLE ROUTING (NEW)
+      // ==========================================
+      final superAdminCheck = await _supabase
+          .from('super_admins')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (superAdminCheck != null) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const TridetaOwnerDashboard()),
+        );
+        return; // Halt execution so normal routing doesn't trigger
+      }
+      // ==========================================
+
+      // 🚨 AUTO-HEALING PROFILE QUERY (UPDATED TO FETCH SUSPENSION & SUBSCRIPTION)
       Map<String, dynamic>? profile = await _supabase
           .from('profiles')
-          .select('role, schools(brand_color)')
+          .select(
+            'role, is_suspended, schools(brand_color, subscription_status)',
+          )
           .eq('id', user.id)
           .maybeSingle();
 
@@ -389,7 +446,9 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
           // Fetch the newly created profile so login can continue
           profile = await _supabase
               .from('profiles')
-              .select('role, schools(brand_color)')
+              .select(
+                'role, is_suspended, schools(brand_color, subscription_status)',
+              )
               .eq('id', user.id)
               .maybeSingle();
         }
@@ -405,6 +464,39 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
         );
         return;
       }
+
+      // ==========================================
+      // 🚨 SAAS BILLING & MODERATION LOCKOUTS
+      // ==========================================
+
+      // 1. Check if the individual profile is suspended (Social Moderation)
+      if (profile['is_suspended'] == true) {
+        await _supabase.auth.signOut();
+        if (mounted) {
+          showAuthErrorDialog(
+            "Access Denied. Your account has been suspended for violating community guidelines. Please contact support.",
+          );
+        }
+        return;
+      }
+
+      // 2. Check the School's Subscription Status
+      if (profile['schools'] != null) {
+        final subStatus = profile['schools']['subscription_status'];
+
+        if (subStatus == 'terminated') {
+          await _supabase.auth.signOut();
+          if (mounted) {
+            showAuthErrorDialog(
+              "Access Denied. Your school's Trideta subscription has been terminated. Please contact your school administrator.",
+            );
+          }
+          return; // Completely blocks login
+        }
+        // Note: We DO NOT block 'paused_payment' here. They can log in to view data,
+        // but the SubscriptionGuard will block their ability to add/edit data inside the app.
+      }
+      // ==========================================
 
       final String role = (profile['role'] ?? 'parent')
           .toString()
@@ -422,17 +514,12 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
 
         if (dbColorStr != null && dbColorStr.isNotEmpty) {
           try {
-            // 🚨 TRANSLATOR: Convert "#HEX" from DB to Flutter Color
             dbColorStr = dbColorStr.replaceAll('#', '');
             if (dbColorStr.length == 6) {
-              dbColorStr = 'FF$dbColorStr'; // Add 100% opacity prefix
+              dbColorStr = 'FF$dbColorStr';
             }
-
-            // Parse using radix 16!
             final Color fetchedColor = Color(int.parse(dbColorStr, radix: 16));
             appColorNotifier.value = fetchedColor;
-
-            // Backup to memory
             final prefs = await SharedPreferences.getInstance();
             await prefs.setInt('app_primary_color', fetchedColor.toARGB32());
           } catch (e) {
@@ -441,6 +528,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
         }
       }
       // ==========================================
+
       if (role == 'admin') {
         bool isConfigured = await _authService.isSchoolConfigured();
         final childrenRes = await _supabase
@@ -463,7 +551,6 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
           );
         }
       } else if (role == 'parent') {
-        // 🚨 ROUTES DIRECTLY TO THE PARENT DASHBOARD
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const ParentDashboardScreen()),
@@ -724,9 +811,49 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
         ),
         const SizedBox(height: 40),
 
+        // 🚨 2-STEP CROSS-FADE IMPLEMENTATION
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 300),
+          crossFadeState: _currentStep == 0
+              ? CrossFadeState.showFirst
+              : CrossFadeState.showSecond,
+          firstChild: _buildStep1Email(
+            isDark,
+            primaryColor,
+            textColor,
+            hintColor,
+            fieldColor,
+          ),
+          secondChild: _buildStep2Password(
+            isDark,
+            primaryColor,
+            textColor,
+            hintColor,
+            fieldColor,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ==========================================
+  // STEP 1: EMAIL & GOOGLE SIGN IN
+  // ==========================================
+  Widget _buildStep1Email(
+    bool isDark,
+    Color primaryColor,
+    Color textColor,
+    Color hintColor,
+    Color fieldColor,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         TextField(
           controller: _emailController,
           keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+          onSubmitted: (_) => _proceedToPassword(),
           style: TextStyle(color: textColor),
           decoration: InputDecoration(
             prefixIcon: Icon(Icons.person_outline, color: hintColor),
@@ -745,11 +872,186 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
           ),
         ),
         const SizedBox(height: 16),
+        SizedBox(
+          height: 55,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+            ),
+            onPressed: _proceedToPassword,
+            child: const Text(
+              "CONTINUE",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Expanded(
+              child: Divider(
+                color: isDark ? Colors.white24 : Colors.grey.shade300,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                "OR",
+                style: TextStyle(color: hintColor, fontWeight: FontWeight.bold),
+              ),
+            ),
+            Expanded(
+              child: Divider(
+                color: isDark ? Colors.white24 : Colors.grey.shade300,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
 
+        // 🚨 NEW GOOGLE LOGIN BUTTON
+        SizedBox(
+          height: 55,
+          child: OutlinedButton.icon(
+            onPressed: _isLoading ? null : _loginWithGoogle,
+            style: OutlinedButton.styleFrom(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+              side: BorderSide(
+                color: isDark ? Colors.white24 : Colors.grey.shade300,
+              ),
+            ),
+            icon: const Icon(
+              Icons.g_mobiledata_rounded,
+              size: 32,
+              color: Colors.blue,
+            ),
+            label: Text(
+              "Sign in with Google",
+              style: TextStyle(
+                color: textColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ),
+        ),
+
+        // ORIGINAL BIOMETRICS BLOCK
+        if (_canCheckBiometrics) ...[
+          const SizedBox(height: 30),
+          GestureDetector(
+            onTap: _handleBiometricLogin,
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.fingerprint, size: 40, color: primaryColor),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  "Login with Biometrics",
+                  style: TextStyle(
+                    color: primaryColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+
+        // ORIGINAL REGISTRATION ROUTE
+        const SizedBox(height: 20),
+        TextButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const SchoolRegistrationScreen(),
+              ),
+            );
+          },
+          child: Text(
+            "Don't have an account? Register your School",
+            style: TextStyle(color: primaryColor, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ==========================================
+  // STEP 2: PASSWORD
+  // ==========================================
+  Widget _buildStep2Password(
+    bool isDark,
+    Color primaryColor,
+    Color textColor,
+    Color hintColor,
+    Color fieldColor,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // EMAIL CHIP (Back Button)
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: fieldColor,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(
+              color: isDark ? Colors.white24 : Colors.grey.shade300,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  _emailController.text,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: textColor,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              GestureDetector(
+                onTap: () => setState(() => _currentStep = 0),
+                child: Text(
+                  "Edit",
+                  style: TextStyle(
+                    color: primaryColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // ORIGINAL PASSWORD FIELD
         TextField(
           controller: _passwordController,
           obscureText: _isObscure,
           style: TextStyle(color: textColor),
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _handleLogin(),
           decoration: InputDecoration(
             prefixIcon: Icon(Icons.lock_outline, color: hintColor),
             suffixIcon: IconButton(
@@ -820,49 +1122,6 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
                       letterSpacing: 1.2,
                     ),
                   ),
-          ),
-        ),
-
-        if (_canCheckBiometrics) ...[
-          const SizedBox(height: 30),
-          GestureDetector(
-            onTap: _handleBiometricLogin,
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: primaryColor.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.fingerprint, size: 40, color: primaryColor),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  "Login with Biometrics",
-                  style: TextStyle(
-                    color: primaryColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-
-        const SizedBox(height: 20),
-        TextButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const SchoolRegistrationScreen(),
-              ),
-            );
-          },
-          child: Text(
-            "Don't have an account? Register your School",
-            style: TextStyle(color: primaryColor, fontWeight: FontWeight.w600),
           ),
         ),
       ],

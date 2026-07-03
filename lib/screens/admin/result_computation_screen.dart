@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
+import 'package:trideta_v2/utils/subscription_guard.dart'; // 🚨 INJECT THE GUARD
 
 // --- MODELS --- //
 class StudentScore {
@@ -334,11 +335,22 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
   }
 
   Future<void> _saveAllScores() async {
+    // 1. Validate local UI state first
     if (_selectedClassId == null ||
         _selectedSubjectId == null ||
         _students.isEmpty) {
       return;
     }
+
+    // ==========================================
+    // 🚨 2. SUBSCRIPTION CHECK BEFORE SAVING
+    // ==========================================
+    final subGuard = SubscriptionGuard();
+    bool canProceed = await subGuard.canPerformAction(context);
+
+    // If the guard returns false (school is paused), stop execution completely!
+    if (!canProceed) return;
+    // ==========================================
 
     setState(() => _isSaving = true);
 
@@ -363,7 +375,8 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           'total_score': s.total,
           'grade': s.grade,
           'remark': s.remark,
-          'last_edited_by': _userId,
+          'recorded_by': _supabase.auth.currentUser!.id,
+          'updated_at': DateTime.now().toIso8601String(),
         };
 
         if (s.resultId != null) {
@@ -377,18 +390,24 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
       if (toInsert.isNotEmpty) {
         await _supabase.from('exam_scores').insert(toInsert);
       }
+
       if (toUpdate.isNotEmpty) {
-        await _supabase.from('exam_scores').upsert(toUpdate, onConflict: 'id');
+        for (var row in toUpdate) {
+          await _supabase.from('exam_scores').update(row).eq('id', row['id']);
+        }
       }
 
       if (mounted) {
-        showSuccessDialog("Success", "All scores saved successfully.");
-        // Refetch to ensure we grab the freshly created result IDs
-        _fetchStudentsAndScores();
+        showSuccessDialog(
+          "Success",
+          "All scores for $_selectedClassName - $_selectedSubjectName have been saved securely.",
+        );
+        // Refresh data to get IDs of newly inserted records
+        await _fetchStudentsAndScores();
       }
     } catch (e) {
       if (mounted) {
-        showAuthErrorDialog("Failed to save scores. Check connection.");
+        showAuthErrorDialog("Failed to save scores. Error: $e");
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);

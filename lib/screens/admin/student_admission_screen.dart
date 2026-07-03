@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart';
+// import 'package:trideta_v2/utils/subscription_guard.dart'; // 🚨 INJECT THE GUARD
 
 import 'package:trideta_v2/main.dart';
 import 'package:trideta_v2/screens/admin/school_configuration_screen.dart';

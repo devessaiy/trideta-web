@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 // 🚨 IMPORT THE EXTRACTED MODULAR RECEIPT VIEW
 import 'package:trideta_v2/screens/admin/admin_receipt_detail_view.dart';
+import 'package:trideta_v2/utils/subscription_guard.dart'; // 🚨 INJECT THE GUARD
 
 class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key});
@@ -281,6 +282,14 @@ class _AlertsScreenState extends State<AlertsScreen>
   }
 
   Future<void> _executeDebtorAlert({required bool sendSms}) async {
+    // ==========================================
+    // 🚨 SUBSCRIPTION CHECK BEFORE SENDING ALERTS
+    // ==========================================
+    final subGuard = SubscriptionGuard();
+    bool canProceed = await subGuard.canPerformAction(context);
+    if (!canProceed) return;
+    // ==========================================
+
     setState(() => _isSendingDebtorAlert = true);
     try {
       await _supabase.from('alerts').insert({
@@ -296,9 +305,10 @@ class _AlertsScreenState extends State<AlertsScreen>
           "Alerts Sent",
           "Debtor alerts have been sent to the parent dashboards successfully!",
         );
+        _handleRefresh();
       }
     } catch (e) {
-      showAuthErrorDialog("Failed to send alert: ${e.toString()}");
+      if (mounted) showAuthErrorDialog("Error sending alerts: $e");
     } finally {
       if (mounted) setState(() => _isSendingDebtorAlert = false);
     }
@@ -475,6 +485,17 @@ class _AlertsScreenState extends State<AlertsScreen>
                               );
                               return;
                             }
+
+                            // ==========================================
+                            // 🚨 SUBSCRIPTION CHECK BEFORE CREATING ALERT
+                            // ==========================================
+                            final subGuard = SubscriptionGuard();
+                            bool canProceed = await subGuard.canPerformAction(
+                              context,
+                            );
+                            if (!canProceed) return;
+                            // ==========================================
+
                             setModalState(() => isSubmitting = true);
                             try {
                               await _supabase.from('alerts').insert({
@@ -482,23 +503,25 @@ class _AlertsScreenState extends State<AlertsScreen>
                                 'title': titleCtrl.text.trim(),
                                 'message': msgCtrl.text.trim(),
                                 'type': selectedAudience,
+                                'created_by': _supabase.auth.currentUser!.id,
                               });
-                              if (mounted) {
-                                Navigator.pop(ctx);
+                              if (context.mounted) {
+                                Navigator.pop(context); // Close the dialog
+                                showSuccessDialog(
+                                  "Alert Created",
+                                  "Your custom alert has been broadcasted.",
+                                );
+                                _handleRefresh(); // Refresh the list
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      "Alert posted successfully!",
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    backgroundColor: Colors.green,
+                                  SnackBar(
+                                    content: Text("Error: $e"),
+                                    backgroundColor: Colors.red,
                                   ),
                                 );
                               }
-                            } catch (e) {
-                              showAuthErrorDialog("Failed to post alert: $e");
                             } finally {
                               setModalState(() => isSubmitting = false);
                             }

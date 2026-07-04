@@ -16,6 +16,7 @@ import 'package:trideta_v2/screens/admin/finance_dashboard_screen.dart';
 import 'package:trideta_v2/screens/super_admin/trideta_owner_dashboard.dart';
 import 'package:trideta_v2/screens/shared/setup_wizard.dart';
 import 'package:trideta_v2/main.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 // 🚨 MODULAR UI IMPORTS (Fixed to point to your new components)
 import 'package:trideta_v2/screens/auth/components/login_branding_panel.dart';
@@ -170,42 +171,44 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   Future<void> _loginWithGoogle() async {
     setState(() => _isLoading = true);
     try {
+      // ==========================================
+      // 🌐 1. WEB IMPLEMENTATION
+      // ==========================================
+      if (kIsWeb) {
+        // On the web, we use Supabase's secure redirect flow
+        await _supabase.auth.signInWithOAuth(OAuthProvider.google);
+        // The browser will securely redirect to Google and reload your app,
+        // so we stop execution here.
+        return;
+      }
+
+      // ==========================================
+      // 📱 2. NATIVE MOBILE IMPLEMENTATION (Android/iOS)
+      // ==========================================
       const webClientId =
           '141687394764-9fm23jupir4196b7h5ku0dvnullt7suu.apps.googleusercontent.com';
 
-      // 1. Initialize the new v7+ Singleton
       await GoogleSignIn.instance.initialize(serverClientId: webClientId);
 
-      // 2. Trigger the Native Bottom Sheet (signIn is now authenticate)
       final googleUser = await GoogleSignIn.instance.authenticate();
 
-      // ignore: dead_code
       if (googleUser == null) {
         if (mounted) setState(() => _isLoading = false);
         return;
       }
 
-      // 3. Extract the ID Token
       final googleAuth = await googleUser.authentication;
       final idToken = googleAuth.idToken;
-
-      // 4. Extract the Access Token (Moved to a separate authorization client in v7+)
-      final authorizedUser = await googleUser.authorizationClient
-          .authorizeScopes([]);
-      final accessToken = authorizedUser.accessToken;
 
       if (idToken == null) {
         throw 'Missing Google Auth Token. Please try again.';
       }
 
-      // 5. Pass both tokens to Supabase
       await _supabase.auth.signInWithIdToken(
         provider: OAuthProvider.google,
         idToken: idToken,
-        accessToken: accessToken,
       );
 
-      // 6. Route to the correct dashboard
       await _checkAndNavigate();
     } catch (e) {
       if (mounted) {

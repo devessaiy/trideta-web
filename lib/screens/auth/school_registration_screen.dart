@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart'; // 🚨 NEW IMPORT FOR PRIVACY LINK
 
 // 🚨 MODULAR IMPORTS
 import 'package:trideta_v2/utils/auth_error_handler.dart';
@@ -52,781 +52,694 @@ class _SchoolRegistrationScreenState extends State<SchoolRegistrationScreen>
     super.dispose();
   }
 
-  // --- PASSWORD VALIDATION LOGIC ---
-  void _checkPasswordStrength(String val, Color primaryColor) {
-    if (val.isEmpty) {
-      setState(() => _passwordStrength = "");
-      _checkMatch(_confirmPasswordController.text);
-      return;
-    }
-
-    bool hasLetters = RegExp(r'[a-zA-Z]').hasMatch(val);
-    bool hasNumbers = RegExp(r'[0-9]').hasMatch(val);
-    bool hasSpecial = RegExp(r'[!@#\$&*~%]').hasMatch(val);
-
-    if (val.length < 6) {
-      _passwordStrength = "Too short (Min 6 characters)";
-      _strengthColor = Colors.red;
-    } else if (!hasLetters || !hasNumbers) {
-      _passwordStrength = "Weak (Add letters & numbers)";
-      _strengthColor = Colors.orange;
-    } else if (hasLetters && hasNumbers && !hasSpecial && val.length >= 6) {
-      _passwordStrength = "Good Password";
-      _strengthColor = primaryColor;
-    } else if (hasLetters && hasNumbers && hasSpecial && val.length >= 8) {
-      _passwordStrength = "Strong Password";
-      _strengthColor = Colors.green;
-    } else {
-      _passwordStrength = "Good Password";
-      _strengthColor = primaryColor;
-    }
-
-    setState(() {});
-    _checkMatch(_confirmPasswordController.text);
+  void _checkPasswordStrength(String password) {
+    setState(() {
+      if (password.isEmpty) {
+        _passwordStrength = "";
+        _strengthColor = Colors.transparent;
+      } else if (password.length < 6) {
+        _passwordStrength = "Weak (Too Short)";
+        _strengthColor = Colors.red;
+      } else if (!RegExp(r'[A-Z]').hasMatch(password) ||
+          !RegExp(r'[0-9]').hasMatch(password)) {
+        _passwordStrength = "Medium (Add Uppercase & Number)";
+        _strengthColor = Colors.orange;
+      } else {
+        _passwordStrength = "Strong";
+        _strengthColor = Colors.green;
+      }
+    });
+    _checkPasswordMatch(_confirmPasswordController.text);
   }
 
-  void _checkMatch(String val) {
-    if (val.isEmpty) {
-      setState(() => _matchStatus = "");
+  void _checkPasswordMatch(String confirmPassword) {
+    setState(() {
+      if (confirmPassword.isEmpty) {
+        _matchStatus = "";
+        _matchColor = Colors.transparent;
+      } else if (confirmPassword == _passwordController.text) {
+        _matchStatus = "Passwords Match ✓";
+        _matchColor = Colors.green;
+      } else {
+        _matchStatus = "Passwords do not match";
+        _matchColor = Colors.red;
+      }
+    });
+  }
+
+  void _showPrivacyDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => _buildPrivacyAgreement(context),
+    );
+  }
+
+  void _showFreeTierDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => _buildFreeTierAgreement(context),
+    );
+  }
+
+  Future<void> _handleRegistration() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_passwordController.text != _confirmPasswordController.text) {
+      showAuthErrorDialog("Passwords do not match. Please verify.");
+      return;
+    }
+    if (!_isAgreed) {
+      showAuthErrorDialog(
+        "You must agree to the Terms & Privacy Policy to register.",
+      );
+      return;
+    }
+    if (!_isFreeTierAgreed) {
+      showAuthErrorDialog(
+        "You must acknowledge the Free Trial Limitations to register.",
+      );
       return;
     }
 
-    if (val == _passwordController.text) {
-      _matchStatus = "Passwords match";
-      _matchColor = Colors.green;
-    } else {
-      _matchStatus = "Passwords do not match";
-      _matchColor = Colors.red;
+    setState(() => _isLoading = true);
+
+    String formattedPhone = _phoneController.text.trim().replaceAll(' ', '');
+    if (formattedPhone.startsWith('0')) {
+      formattedPhone = '+234${formattedPhone.substring(1)}';
+    } else if (!formattedPhone.startsWith('+')) {
+      formattedPhone = '+234$formattedPhone';
     }
-    setState(() {});
+
+    try {
+      String? error = await _authService.registerSchool(
+        schoolName: _schoolNameController.text.trim(),
+        email: _emailController.text.trim(),
+        phone: formattedPhone,
+        password: _passwordController.text,
+      );
+
+      if (error == null) {
+        if (mounted) {
+          showSuccessDialog(
+            "Registration Successful!",
+            "Your school has been registered and is active on the Free Tier. Please log in to complete setup.",
+          );
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+            }
+          });
+        }
+      } else {
+        setState(() => _isLoading = false);
+        showAuthErrorDialog(error);
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      showAuthErrorDialog(e.toString());
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : Colors.grey.shade50;
-    Color textColor = isDark ? Colors.white : Colors.black87;
+    Color bgColor = isDark ? const Color(0xFF121212) : Colors.white;
     Color primaryColor = Theme.of(context).primaryColor;
+    Color textColor = isDark ? Colors.white : Colors.black87;
+    Color fieldColor = isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade100;
+    Color hintColor = isDark ? Colors.grey.shade500 : Colors.grey.shade600;
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: IconThemeData(color: textColor),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: textColor),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-      // 🚨 THE MAGIC SHAPE-SHIFTER: LayoutBuilder
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth > 800) {
-            // 💻 DESKTOP: Split Screen
-            return Row(
-              children: [
-                Expanded(
-                  flex: 5,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          primaryColor.withValues(alpha: 0.8),
-                          primaryColor,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.domain_add_rounded,
-                            size: 100,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(height: 20),
-                          const Text(
-                            "Partner with Trideta",
-                            style: TextStyle(
-                              fontSize: 42,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                              letterSpacing: 2.0,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            "Bring your entire school into the cloud today.",
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.white.withValues(alpha: 0.8),
-                            ),
-                          ),
-                        ],
-                      ),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 500),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Icon(Icons.domain_add, size: 70, color: primaryColor),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Register School",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      color: textColor,
+                      letterSpacing: 1.5,
                     ),
                   ),
-                ),
-                Expanded(
-                  flex: 5,
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 550),
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 40,
-                          vertical: 20,
+                  const SizedBox(height: 10),
+                  Text(
+                    "Create your TriDeta Administrative Account",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 16, color: hintColor),
+                  ),
+                  const SizedBox(height: 40),
+
+                  // School Name Field
+                  _buildTextField(
+                    controller: _schoolNameController,
+                    label: "Full School Name",
+                    icon: Icons.account_balance,
+                    hintColor: hintColor,
+                    fieldColor: fieldColor,
+                    primaryColor: primaryColor,
+                    textColor: textColor,
+                    validator: (val) => val == null || val.length < 5
+                        ? 'Enter a valid school name (min 5 chars)'
+                        : null,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Official Email Field
+                  _buildTextField(
+                    controller: _emailController,
+                    label: "Official School Email",
+                    icon: Icons.email,
+                    inputType: TextInputType.emailAddress,
+                    hintColor: hintColor,
+                    fieldColor: fieldColor,
+                    primaryColor: primaryColor,
+                    textColor: textColor,
+                    validator: (val) => val == null || !val.contains('@')
+                        ? 'Enter a valid email address'
+                        : null,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Official Phone Field
+                  _buildTextField(
+                    controller: _phoneController,
+                    label: "Admin Phone Number",
+                    icon: Icons.phone,
+                    inputType: TextInputType.phone,
+                    hintColor: hintColor,
+                    fieldColor: fieldColor,
+                    primaryColor: primaryColor,
+                    textColor: textColor,
+                    validator: (val) => val == null || val.length < 10
+                        ? 'Enter a valid phone number'
+                        : null,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Password Field
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: _isObscure1,
+                    onChanged: _checkPasswordStrength,
+                    style: TextStyle(color: textColor),
+                    decoration: InputDecoration(
+                      prefixIcon: Icon(Icons.lock, color: hintColor),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _isObscure1 ? Icons.visibility : Icons.visibility_off,
+                          color: hintColor,
                         ),
-                        child: _buildRegistrationForm(
-                          isDark,
-                          primaryColor,
-                          isMobile: false,
-                        ),
+                        onPressed: () =>
+                            setState(() => _isObscure1 = !_isObscure1),
+                      ),
+                      labelText: "Admin Password",
+                      labelStyle: TextStyle(color: hintColor),
+                      filled: true,
+                      fillColor: fieldColor,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: BorderSide(color: primaryColor, width: 2),
                       ),
                     ),
+                    validator: (val) => val == null || val.length < 6
+                        ? 'Password must be at least 6 characters'
+                        : null,
                   ),
-                ),
-              ],
-            );
-          } else {
-            // 📱 MOBILE: Centered Single Column
-            return Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: _buildRegistrationForm(
-                  isDark,
-                  primaryColor,
-                  isMobile: true,
-                ),
-              ),
-            );
-          }
-        },
-      ),
-    );
-  }
-
-  // 🚨 EXTRACTED FORM FOR BOTH PLATFORMS
-  Widget _buildRegistrationForm(
-    bool isDark,
-    Color primaryColor, {
-    required bool isMobile,
-  }) {
-    Color textColor = isDark ? Colors.white : Colors.black87;
-    Color subTextColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
-    Color fieldColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-
-    return Form(
-      key: _formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (isMobile) ...[
-            Icon(Icons.domain_add, size: 80, color: primaryColor),
-            const SizedBox(height: 20),
-          ],
-          Text(
-            "Create School Account",
-            textAlign: isMobile ? TextAlign.center : TextAlign.left,
-            style: TextStyle(
-              fontSize: isMobile ? 24 : 32,
-              fontWeight: FontWeight.bold,
-              color: primaryColor,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            "Enter your administrative details below.",
-            textAlign: isMobile ? TextAlign.center : TextAlign.left,
-            style: TextStyle(color: subTextColor, fontSize: 16),
-          ),
-          const SizedBox(height: 30),
-
-          // 1. SCHOOL NAME
-          TextFormField(
-            controller: _schoolNameController,
-            style: TextStyle(color: textColor),
-            decoration: _inputDecoration(
-              "School Name",
-              Icons.school,
-              fieldColor,
-              subTextColor,
-              primaryColor,
-            ),
-            validator: (value) =>
-                value!.isEmpty ? "Please enter school name" : null,
-          ),
-          const SizedBox(height: 15),
-
-          // 2. EMAIL
-          TextFormField(
-            controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
-            style: TextStyle(color: textColor),
-            decoration: _inputDecoration(
-              "Admin Email (Login ID)",
-              Icons.email,
-              fieldColor,
-              subTextColor,
-              primaryColor,
-            ),
-            validator: (value) => value!.isEmpty ? "Please enter email" : null,
-          ),
-          const SizedBox(height: 15),
-
-          // 3. PHONE NUMBER
-          TextFormField(
-            controller: _phoneController,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            maxLength: 11,
-            style: TextStyle(color: textColor),
-            decoration: _inputDecoration(
-              "Admin Phone Number",
-              Icons.phone,
-              fieldColor,
-              subTextColor,
-              primaryColor,
-            ).copyWith(counterText: ""),
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return "Please enter phone number";
-              }
-              if (value.length < 11) {
-                return "Phone number must be exactly 11 digits";
-              }
-              return null;
-            },
-          ),
-          Padding(
-            padding: const EdgeInsets.only(top: 8.0, left: 10.0),
-            child: Text(
-              "* This will be used for administrative contact.",
-              style: TextStyle(
-                fontSize: 12,
-                color: subTextColor,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // 4. PASSWORD
-          TextFormField(
-            controller: _passwordController,
-            obscureText: _isObscure1,
-            style: TextStyle(color: textColor),
-            onChanged: (val) => _checkPasswordStrength(val, primaryColor),
-            decoration:
-                _inputDecoration(
-                  "Create Password",
-                  Icons.lock_outline,
-                  fieldColor,
-                  subTextColor,
-                  primaryColor,
-                ).copyWith(
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _isObscure1 ? Icons.visibility : Icons.visibility_off,
-                      color: subTextColor,
-                    ),
-                    onPressed: () => setState(() => _isObscure1 = !_isObscure1),
-                  ),
-                ),
-            validator: (value) =>
-                value!.isEmpty ? "Please create a password" : null,
-          ),
-          if (_passwordStrength.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8.0, left: 10.0),
-              child: Text(
-                _passwordStrength,
-                style: TextStyle(
-                  color: _strengthColor,
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          const SizedBox(height: 15),
-
-          // 5. CONFIRM PASSWORD
-          TextFormField(
-            controller: _confirmPasswordController,
-            obscureText: _isObscure2,
-            style: TextStyle(color: textColor),
-            onChanged: _checkMatch,
-            decoration:
-                _inputDecoration(
-                  "Confirm Password",
-                  Icons.lock_reset,
-                  fieldColor,
-                  subTextColor,
-                  primaryColor,
-                ).copyWith(
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _isObscure2 ? Icons.visibility : Icons.visibility_off,
-                      color: subTextColor,
-                    ),
-                    onPressed: () => setState(() => _isObscure2 = !_isObscure2),
-                  ),
-                ),
-          ),
-          if (_matchStatus.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8.0, left: 10.0),
-              child: Text(
-                _matchStatus,
-                style: TextStyle(
-                  color: _matchColor,
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          const SizedBox(height: 30),
-
-          // AGREEMENT CHECKBOX 1: Privacy Policy
-          Row(
-            children: [
-              Checkbox(
-                value: _isAgreed,
-                activeColor: primaryColor,
-                checkColor: Colors.white,
-                side: BorderSide(color: subTextColor),
-                onChanged: (val) => setState(() => _isAgreed = val!),
-              ),
-              Expanded(
-                child: Wrap(
-                  children: [
-                    Text("I agree to the ", style: TextStyle(color: textColor)),
-                    GestureDetector(
-                      onTap: () => _showPrivacyPolicy(primaryColor),
+                  if (_passwordStrength.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0, left: 12.0),
                       child: Text(
-                        "Terms & Privacy Policy",
+                        _passwordStrength,
                         style: TextStyle(
-                          color: primaryColor,
+                          color: _strengthColor,
                           fontWeight: FontWeight.bold,
-                          decoration: TextDecoration.underline,
+                          fontSize: 12,
                         ),
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+                  const SizedBox(height: 20),
 
-          // AGREEMENT CHECKBOX 2: Free Tier Acknowledgment
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Checkbox(
-                value: _isFreeTierAgreed,
-                activeColor: primaryColor,
-                checkColor: Colors.white,
-                side: BorderSide(color: subTextColor),
-                onChanged: (val) => setState(() => _isFreeTierAgreed = val!),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 10.0),
-                  child: Text(
-                    "I acknowledge that TriDeta is currently free for a limited time, and continued usage in the future may require a paid subscription.",
-                    style: TextStyle(fontSize: 13, color: textColor),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 30),
-
-          // SUBMIT BUTTON
-          SizedBox(
-            height: 55,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryColor,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-              ),
-              onPressed: _isLoading
-                  ? null
-                  : () => _showConfirmationDialog(primaryColor),
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 24,
-                      width: 24,
-                      child: TridetaLoader(color: Colors.white),
-                    )
-                  : const Text(
-                      "REGISTER SCHOOL",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        letterSpacing: 1.2,
+                  // Confirm Password Field
+                  TextFormField(
+                    controller: _confirmPasswordController,
+                    obscureText: _isObscure2,
+                    onChanged: _checkPasswordMatch,
+                    style: TextStyle(color: textColor),
+                    decoration: InputDecoration(
+                      prefixIcon: Icon(Icons.lock_clock, color: hintColor),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _isObscure2 ? Icons.visibility : Icons.visibility_off,
+                          color: hintColor,
+                        ),
+                        onPressed: () =>
+                            setState(() => _isObscure2 = !_isObscure2),
+                      ),
+                      labelText: "Confirm Password",
+                      labelStyle: TextStyle(color: hintColor),
+                      filled: true,
+                      fillColor: fieldColor,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: BorderSide(color: primaryColor, width: 2),
                       ),
                     ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+                  ),
+                  if (_matchStatus.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0, left: 12.0),
+                      child: Text(
+                        _matchStatus,
+                        style: TextStyle(
+                          color: _matchColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 30),
 
-  // --- UI HELPERS ---
-  InputDecoration _inputDecoration(
-    String label,
-    IconData icon,
-    Color fieldColor,
-    Color hintColor,
-    Color primaryColor,
-  ) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: TextStyle(color: hintColor),
-      prefixIcon: Icon(icon, color: primaryColor),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
-        borderSide: BorderSide.none,
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
-        borderSide: BorderSide(color: primaryColor, width: 2),
-      ),
-      filled: true,
-      fillColor: fieldColor,
-    );
-  }
+                  // Agreement Checkboxes
+                  Container(
+                    decoration: BoxDecoration(
+                      color: primaryColor.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(
+                        color: primaryColor.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      children: [
+                        CheckboxListTile(
+                          value: _isAgreed,
+                          onChanged: (val) => setState(() => _isAgreed = val!),
+                          activeColor: primaryColor,
+                          title: Row(
+                            children: [
+                              Text(
+                                "I agree to the ",
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: textColor,
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: _showPrivacyDialog,
+                                child: Text(
+                                  "Privacy Policy",
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: primaryColor,
+                                    fontWeight: FontWeight.bold,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        CheckboxListTile(
+                          value: _isFreeTierAgreed,
+                          onChanged: (val) =>
+                              setState(() => _isFreeTierAgreed = val!),
+                          activeColor: primaryColor,
+                          title: Row(
+                            children: [
+                              Text(
+                                "I accept the ",
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: textColor,
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: _showFreeTierDialog,
+                                child: Text(
+                                  "Free Tier Limits",
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: primaryColor,
+                                    fontWeight: FontWeight.bold,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 30),
 
-  Widget _buildDetailRow(String label, String value, Color textColor) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 90,
-            child: Text(
-              label,
-              style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
-            ),
-          ),
-          Expanded(
-            child: Text(value, style: TextStyle(color: textColor)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- LOGIC ---
-  void _showConfirmationDialog(Color primaryColor) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color popupBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    Color textColor = isDark ? Colors.white : Colors.black87;
-
-    if (!_formKey.currentState!.validate()) {
-      showAuthErrorDialog("Please fill in all the required fields correctly.");
-      return;
-    }
-
-    String pwd = _passwordController.text;
-    if (pwd.length < 6 ||
-        !RegExp(r'[a-zA-Z]').hasMatch(pwd) ||
-        !RegExp(r'[0-9]').hasMatch(pwd)) {
-      showAuthErrorDialog(
-        "Your password is too weak. It must be at least 6 characters long and contain both letters and numbers.",
-      );
-      return;
-    }
-    if (pwd != _confirmPasswordController.text) {
-      showAuthErrorDialog(
-        "The passwords you entered do not match. Please check them and try again.",
-      );
-      return;
-    }
-
-    if (!_isAgreed || !_isFreeTierAgreed) {
-      showAuthErrorDialog(
-        "You must check both agreement boxes to acknowledge the Terms of Service and Free Access policy before continuing.",
-      );
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: popupBg,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Text(
-          "Confirm Details",
-          style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              "Please verify your details before submitting:",
-              style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
-            ),
-            const SizedBox(height: 20),
-            _buildDetailRow("School:", _schoolNameController.text, textColor),
-            _buildDetailRow("Email:", _emailController.text, textColor),
-            _buildDetailRow("Phone:", _phoneController.text, textColor),
-            _buildDetailRow("Password:", "********", textColor),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              "Edit",
-              style: TextStyle(color: isDark ? Colors.white54 : Colors.grey),
-            ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            onPressed: () {
-              Navigator.pop(context);
-              _submitRegistration(primaryColor);
-            },
-            child: const Text(
-              "Submit",
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+                  // Register Button
+                  SizedBox(
+                    height: 55,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        elevation: 5,
+                      ),
+                      onPressed: _isLoading ? null : _handleRegistration,
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: TridetaLoader(color: Colors.white),
+                            )
+                          : const Text(
+                              "REGISTER SCHOOL",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Future<void> _submitRegistration(Color primaryColor) async {
-    setState(() => _isLoading = true);
-
-    String? error = await _authService.registerSchool(
-      schoolName: _schoolNameController.text.trim(),
-      email: _emailController.text.trim(),
-      password: _passwordController.text.trim(),
-      phone: _phoneController.text.trim(),
-    );
-
-    setState(() => _isLoading = false);
-
-    if (error == null) {
-      if (mounted) _showSuccessDialog(primaryColor);
-    } else {
-      String laymanError = error;
-      if (error.toLowerCase().contains("already registered") ||
-          error.toLowerCase().contains("already exists")) {
-        laymanError =
-            "An account with this email already exists. Please try logging in.";
-      } else if (error.toLowerCase().contains("database error")) {
-        laymanError =
-            "We hit a snag setting up your school profile. Please check your internet and try again.";
-      } else if (error.toLowerCase().contains("timeout") ||
-          error.toLowerCase().contains("socket")) {
-        laymanError =
-            "Poor internet connection. Please check your network and try again.";
-      }
-
-      if (mounted) showAuthErrorDialog(laymanError);
-    }
-  }
-
-  void _showSuccessDialog(Color primaryColor) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color popupBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    Color textColor = isDark ? Colors.white : Colors.black87;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: popupBg,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Column(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.green, size: 50),
-            const SizedBox(height: 10),
-            Text(
-              "Success!",
-              style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
-            ),
-          ],
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required Color hintColor,
+    required Color fieldColor,
+    required Color primaryColor,
+    required Color textColor,
+    TextInputType inputType = TextInputType.text,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: inputType,
+      style: TextStyle(color: textColor),
+      decoration: InputDecoration(
+        prefixIcon: Icon(icon, color: hintColor),
+        labelText: label,
+        labelStyle: TextStyle(color: hintColor),
+        filled: true,
+        fillColor: fieldColor,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide.none,
         ),
-        content: Text(
-          "Your school account has been created.\n\nPlease log in to complete the Setup Wizard.",
-          textAlign: TextAlign.center,
-          style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(color: primaryColor, width: 2),
         ),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryColor,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              onPressed: () {
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
-                );
-              },
-              child: const Text(
-                "GO TO LOGIN",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
+      validator: validator,
     );
   }
 
-  void _showPrivacyPolicy(Color primaryColor) {
+  // 🚨 REFACTORED PRIVACY DIALOG
+  Widget _buildPrivacyAgreement(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color textColor = isDark ? Colors.white : Colors.black87;
+    Color primaryColor = Theme.of(context).primaryColor;
+    Color hintColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (_, controller) => Container(
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: SingleChildScrollView(
-            controller: controller,
-            padding: const EdgeInsets.all(25),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 50,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: isDark ? Colors.grey[700] : Colors.grey[300],
+    return Dialog(
+      backgroundColor: bgColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.privacy_tip, color: primaryColor, size: 30),
+                  const SizedBox(width: 10),
+                  Text(
+                    "Terms & Privacy Policy",
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: textColor,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // 🚨 NEW LINK-BASED UI
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "By registering your school on TriDeta, you agree to our comprehensive Terms of Service and Privacy Policy, which dictate how we handle your school's data, communications, and security.",
+                        style: TextStyle(
+                          color: hintColor,
+                          fontSize: 15,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      GestureDetector(
+                        onTap: () async {
+                          final Uri url = Uri.parse(
+                            'https://trideta.vercel.app/privacy-policy.html',
+                          );
+                          if (await canLaunchUrl(url)) {
+                            await launchUrl(
+                              url,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          } else {
+                            if (context.mounted) {
+                              showAuthErrorDialog(
+                                "Could not open the privacy policy link.",
+                              );
+                            }
+                          }
+                        },
+                        child: Text(
+                          "Learn more...",
+                          style: TextStyle(
+                            color: primaryColor,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 30),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  "Terms & Privacy Policy",
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: primaryColor,
-                  ),
-                ),
-                const SizedBox(height: 15),
-                Text(
-                  "1. Data Privacy",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  "TriDeta Systems respects your data privacy. We store student and school records securely using industry-standard encryption.",
-                  style: TextStyle(color: textColor),
-                ),
-                const SizedBox(height: 15),
-                Text(
-                  "2. Usage Rights",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  "This software is licensed for educational management purposes only.",
-                  style: TextStyle(color: textColor),
-                ),
-                const SizedBox(height: 15),
-                Text(
-                  "3. Subscription Model",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  "TriDeta is provided completely free of charge for a promotional period. We reserve the right to introduce subscription tiers in the future. Administrators will receive a 30-day notice prior to any billing changes.",
-                  style: TextStyle(color: textColor),
-                ),
-                const SizedBox(height: 15),
-                Text(
-                  "4. Security",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  "TriDeta is not responsible for any data loss or security breaches that may occur based on user negligence or misuse of the system.",
-                  style: TextStyle(color: textColor),
-                ),
-                const SizedBox(height: 30),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text(
-                      "I UNDERSTAND",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(
+                    "I UNDERSTAND",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildFreeTierAgreement(BuildContext context) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color textColor = isDark ? Colors.white : Colors.black87;
+    Color primaryColor = Theme.of(context).primaryColor;
+    Color hintColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+
+    return Dialog(
+      backgroundColor: bgColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.star_outline, color: primaryColor, size: 30),
+                  const SizedBox(width: 10),
+                  Text(
+                    "Free Tier Limits",
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: textColor,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Your school will be automatically placed on the Free Tier upon registration. Please note the following constraints:",
+                        style: TextStyle(color: hintColor, fontSize: 15),
+                      ),
+                      const SizedBox(height: 20),
+                      _buildLimitItem(
+                        Icons.people,
+                        "Maximum of 50 Students",
+                        textColor,
+                        primaryColor,
+                      ),
+                      const SizedBox(height: 15),
+                      _buildLimitItem(
+                        Icons.storage,
+                        "500MB Data Storage",
+                        textColor,
+                        primaryColor,
+                      ),
+                      const SizedBox(height: 15),
+                      _buildLimitItem(
+                        Icons.message,
+                        "No Mass SMS Messaging",
+                        textColor,
+                        primaryColor,
+                      ),
+                      const SizedBox(height: 15),
+                      _buildLimitItem(
+                        Icons.support_agent,
+                        "Standard Support Response Times",
+                        textColor,
+                        primaryColor,
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        "You can upgrade to a Premium plan at any time from your Admin Dashboard to lift these limits.",
+                        style: TextStyle(
+                          color: primaryColor,
+                          fontWeight: FontWeight.bold,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 30),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(
+                    "I UNDERSTAND",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLimitItem(
+    IconData icon,
+    String text,
+    Color textColor,
+    Color iconColor,
+  ) {
+    return Row(
+      children: [
+        Icon(icon, color: iconColor, size: 24),
+        const SizedBox(width: 15),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: textColor,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

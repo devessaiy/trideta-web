@@ -1,514 +1,943 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart'; // 🚨 Added for the Privacy Policy link
+
+// 枠圷 MODULAR IMPORTS
+import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
+import 'package:trideta_v2/screens/auth/login_screen.dart';
+import 'package:trideta_v2/services/auth_service.dart';
 
-class SchoolMasterDetailsScreen extends StatelessWidget {
-  final Map<String, dynamic> school;
+class SchoolRegistrationScreen extends StatefulWidget {
+  const SchoolRegistrationScreen({super.key});
 
-  const SchoolMasterDetailsScreen({super.key, required this.school});
+  @override
+  State<SchoolRegistrationScreen> createState() =>
+      _SchoolRegistrationScreenState();
+}
 
-  Future<void> _launchUrl(String scheme, String path) async {
-    final Uri url = Uri(scheme: scheme, path: path);
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url);
-    }
+class _SchoolRegistrationScreenState extends State<SchoolRegistrationScreen>
+    with AuthErrorHandler {
+  final _formKey = GlobalKey<FormState>();
+  final _schoolNameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
+
+  // Password Controllers
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+
+  // Backend Service
+  final _authService = AuthService();
+  bool _isLoading = false;
+
+  // Privacy Agreement State
+  bool _isAgreed = false;
+  bool _isFreeTierAgreed = false;
+
+  // Password State Variables
+  bool _isObscure1 = true;
+  bool _isObscure2 = true;
+  String _passwordStrength = "";
+  Color _strengthColor = Colors.transparent;
+  String _matchStatus = "";
+  Color _matchColor = Colors.transparent;
+
+  @override
+  void dispose() {
+    _schoolNameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
   }
 
-  Future<void> _launchMaps(String? address) async {
-    if (address == null || address.isEmpty) return;
-    final url = Uri.parse(
-      'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(address)}',
-    );
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url);
+  // --- PASSWORD VALIDATION LOGIC ---
+  void _checkPasswordStrength(String val, Color primaryColor) {
+    if (val.isEmpty) {
+      setState(() => _passwordStrength = "");
+      _checkMatch(_confirmPasswordController.text);
+      return;
     }
+
+    bool hasLetters = RegExp(r'[a-zA-Z]').hasMatch(val);
+    bool hasNumbers = RegExp(r'[0-9]').hasMatch(val);
+    bool hasSpecial = RegExp(r'[!@#\$&*~%]').hasMatch(val);
+
+    if (val.length < 6) {
+      _passwordStrength = "Too short (Min 6 characters)";
+      _strengthColor = Colors.red;
+    } else if (!hasLetters || !hasNumbers) {
+      _passwordStrength = "Weak (Add letters & numbers)";
+      _strengthColor = Colors.orange;
+    } else if (hasLetters && hasNumbers && !hasSpecial && val.length >= 6) {
+      _passwordStrength = "Good Password";
+      _strengthColor = primaryColor;
+    } else if (hasLetters && hasNumbers && hasSpecial && val.length >= 8) {
+      _passwordStrength = "Strong Password";
+      _strengthColor = Colors.green;
+    } else {
+      _passwordStrength = "Good Password";
+      _strengthColor = primaryColor;
+    }
+
+    setState(() {});
+    _checkMatch(_confirmPasswordController.text);
+  }
+
+  void _checkMatch(String val) {
+    if (val.isEmpty) {
+      setState(() => _matchStatus = "");
+      return;
+    }
+
+    if (val == _passwordController.text) {
+      _matchStatus = "Passwords match";
+      _matchColor = Colors.green;
+    } else {
+      _matchStatus = "Passwords do not match";
+      _matchColor = Colors.red;
+    }
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color bgColor = isDark ? const Color(0xFF121212) : Colors.grey.shade50;
+    Color textColor = isDark ? Colors.white : Colors.black87;
     Color primaryColor = Theme.of(context).primaryColor;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
-
-    final String schoolId = school['id'];
-    final String name = school['name'] ?? 'Unknown School';
-    final String acronym = school['acronym'] ?? '';
-    final String? address = school['address'];
-    final String? phone = school['contact_phone'];
-    final String? email = school['contact_email'];
-    final String status = school['subscription_status'] ?? 'active';
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: cardColor,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: IconThemeData(color: textColor),
-        title: Text(
-          name,
-          style: TextStyle(
-            color: textColor,
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-          ),
-        ),
       ),
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. HEADER & QUICK CONTACT ACTIONS
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isDark ? Colors.white10 : Colors.grey.shade200,
-                ),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 35,
-                        backgroundColor: primaryColor.withValues(alpha: 0.1),
-                        backgroundImage: school['logo_url'] != null
-                            ? NetworkImage(school['logo_url'])
-                            : null,
-                        child: school['logo_url'] == null
-                            ? Icon(Icons.domain, size: 30, color: primaryColor)
-                            : null,
+      // 枠捗 THE MAGIC SHAPE-SHIFTER: LayoutBuilder
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth > 800) {
+            // 枠捗 DESKTOP: Split Screen
+            return Row(
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          primaryColor.withValues(alpha: 0.8),
+                          primaryColor,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      const SizedBox(width: 20),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              acronym,
-                              style: TextStyle(
-                                color: primaryColor,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.5,
-                              ),
+                    ),
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.domain_add_rounded,
+                            size: 100,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(height: 20),
+                          const Text(
+                            "Partner with Trideta",
+                            style: TextStyle(
+                              fontSize: 42,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              letterSpacing: 2.0,
                             ),
-                            Text(
-                              name,
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: textColor,
-                                height: 1.2,
-                              ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            "Bring your entire school into the cloud today.",
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.white.withValues(alpha: 0.8),
                             ),
-                            const SizedBox(height: 5),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: status == 'active'
-                                    ? Colors.green.withValues(alpha: 0.1)
-                                    : Colors.orange.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                status.toUpperCase(),
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: status == 'active'
-                                      ? Colors.green
-                                      : Colors.orange,
-                                ),
-                              ),
-                            ),
-                          ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 5,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 550),
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 40,
+                          vertical: 20,
+                        ),
+                        child: _buildRegistrationForm(
+                          isDark,
+                          primaryColor,
+                          isMobile: false,
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildQuickAction(
-                        Icons.phone,
-                        "Call",
-                        () => _launchUrl('tel', phone ?? ''),
-                      ),
-                      _buildQuickAction(
-                        Icons.email,
-                        "Email",
-                        () => _launchUrl('mailto', email ?? ''),
-                      ),
-                      _buildQuickAction(
-                        Icons.directions,
-                        "Navigate",
-                        () => _launchMaps(address),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
+              ],
+            );
+          } else {
+            // 枠導 MOBILE: Centered Single Column
+            return Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: _buildRegistrationForm(
+                  isDark,
+                  primaryColor,
+                  isMobile: true,
+                ),
+              ),
+            );
+          }
+        },
+      ),
+    );
+  }
+
+  // 枠圷 EXTRACTED FORM FOR BOTH PLATFORMS
+  Widget _buildRegistrationForm(
+    bool isDark,
+    Color primaryColor, {
+    required bool isMobile,
+  }) {
+    Color textColor = isDark ? Colors.white : Colors.black87;
+    Color subTextColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+    Color fieldColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (isMobile) ...[
+            Icon(Icons.domain_add, size: 80, color: primaryColor),
+            const SizedBox(height: 20),
+          ],
+          Text(
+            "Create School Account",
+            textAlign: isMobile ? TextAlign.center : TextAlign.left,
+            style: TextStyle(
+              fontSize: isMobile ? 24 : 32,
+              fontWeight: FontWeight.bold,
+              color: primaryColor,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            "Enter your administrative details below.",
+            textAlign: isMobile ? TextAlign.center : TextAlign.left,
+            style: TextStyle(color: subTextColor, fontSize: 16),
+          ),
+          const SizedBox(height: 30),
+
+          // 1. SCHOOL NAME
+          TextFormField(
+            controller: _schoolNameController,
+            style: TextStyle(color: textColor),
+            decoration: _inputDecoration(
+              "School Name",
+              Icons.school,
+              fieldColor,
+              subTextColor,
+              primaryColor,
+            ),
+            validator: (value) =>
+                value!.isEmpty ? "Please enter school name" : null,
+          ),
+          const SizedBox(height: 15),
+
+          // 2. EMAIL
+          TextFormField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            style: TextStyle(color: textColor),
+            decoration: _inputDecoration(
+              "Admin Email (Login ID)",
+              Icons.email,
+              fieldColor,
+              subTextColor,
+              primaryColor,
+            ),
+            validator: (value) => value!.isEmpty ? "Please enter email" : null,
+          ),
+          const SizedBox(height: 15),
+
+          // 3. PHONE NUMBER
+          TextFormField(
+            controller: _phoneController,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            maxLength: 11,
+            style: TextStyle(color: textColor),
+            decoration: _inputDecoration(
+              "Admin Phone Number",
+              Icons.phone,
+              fieldColor,
+              subTextColor,
+              primaryColor,
+            ).copyWith(counterText: ""),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return "Please enter phone number";
+              }
+              if (value.length < 11) {
+                return "Phone number must be exactly 11 digits";
+              }
+              return null;
+            },
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0, left: 10.0),
+            child: Text(
+              "* This will be used for administrative contact.",
+              style: TextStyle(
+                fontSize: 12,
+                color: subTextColor,
+                fontStyle: FontStyle.italic,
               ),
             ),
-            const SizedBox(height: 24),
+          ),
+          const SizedBox(height: 20),
 
-            // 2. ADDRESS DISPLAY
-            if (address != null && address.isNotEmpty) ...[
-              Text(
-                "LOCATION",
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: Colors.grey.shade500,
-                  fontSize: 12,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(
-                    color: isDark ? Colors.white10 : Colors.grey.shade200,
+          // 4. PASSWORD
+          TextFormField(
+            controller: _passwordController,
+            obscureText: _isObscure1,
+            style: TextStyle(color: textColor),
+            onChanged: (val) => _checkPasswordStrength(val, primaryColor),
+            decoration:
+                _inputDecoration(
+                  "Create Password",
+                  Icons.lock_outline,
+                  fieldColor,
+                  subTextColor,
+                  primaryColor,
+                ).copyWith(
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _isObscure1 ? Icons.visibility : Icons.visibility_off,
+                      color: subTextColor,
+                    ),
+                    onPressed: () => setState(() => _isObscure1 = !_isObscure1),
                   ),
                 ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.location_on_rounded,
-                      color: Colors.redAccent.shade200,
-                      size: 28,
+            validator: (value) =>
+                value!.isEmpty ? "Please create a password" : null,
+          ),
+          if (_passwordStrength.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0, left: 10.0),
+              child: Text(
+                _passwordStrength,
+                style: TextStyle(
+                  color: _strengthColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          const SizedBox(height: 15),
+
+          // 5. CONFIRM PASSWORD
+          TextFormField(
+            controller: _confirmPasswordController,
+            obscureText: _isObscure2,
+            style: TextStyle(color: textColor),
+            onChanged: _checkMatch,
+            decoration:
+                _inputDecoration(
+                  "Confirm Password",
+                  Icons.lock_reset,
+                  fieldColor,
+                  subTextColor,
+                  primaryColor,
+                ).copyWith(
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _isObscure2 ? Icons.visibility : Icons.visibility_off,
+                      color: subTextColor,
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
+                    onPressed: () => setState(() => _isObscure2 = !_isObscure2),
+                  ),
+                ),
+          ),
+          if (_matchStatus.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0, left: 10.0),
+              child: Text(
+                _matchStatus,
+                style: TextStyle(
+                  color: _matchColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          const SizedBox(height: 30),
+
+          // AGREEMENT CHECKBOX 1: Privacy Policy
+          Row(
+            children: [
+              Checkbox(
+                value: _isAgreed,
+                activeColor: primaryColor,
+                checkColor: Colors.white,
+                side: BorderSide(color: subTextColor),
+                onChanged: (val) => setState(() => _isAgreed = val!),
+              ),
+              Expanded(
+                child: Wrap(
+                  children: [
+                    Text("I agree to the ", style: TextStyle(color: textColor)),
+                    GestureDetector(
+                      onTap: () => _showPrivacyPolicy(primaryColor),
                       child: Text(
-                        address,
+                        "Terms & Privacy Policy",
                         style: TextStyle(
-                          fontSize: 15,
-                          color: textColor,
-                          fontWeight: FontWeight.w500,
+                          color: primaryColor,
+                          fontWeight: FontWeight.bold,
+                          decoration: TextDecoration.underline,
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 30),
             ],
+          ),
 
-            // 3. POPULATION & ENGAGEMENT MATRIX
-            Text(
-              "ENGAGEMENT MATRIX",
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: Colors.grey.shade500,
-                fontSize: 12,
-                letterSpacing: 1.2,
+          // AGREEMENT CHECKBOX 2: Free Tier Acknowledgment (🚨 Restored layout with View Limits link added)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Checkbox(
+                value: _isFreeTierAgreed,
+                activeColor: primaryColor,
+                checkColor: Colors.white,
+                side: BorderSide(color: subTextColor),
+                onChanged: (val) => setState(() => _isFreeTierAgreed = val!),
               ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildCountStreamCard(
-                    context,
-                    "Students",
-                    Icons.school,
-                    Supabase.instance.client
-                        .from('students')
-                        .stream(primaryKey: ['id'])
-                        .map(
-                          (data) => data
-                              .where((d) => d['school_id'] == schoolId)
-                              .toList(),
-                        ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildCountStreamCard(
-                    context,
-                    "Parents",
-                    Icons.family_restroom,
-                    Supabase.instance.client
-                        .from('profiles')
-                        .stream(primaryKey: ['id'])
-                        .map(
-                          (data) => data
-                              .where(
-                                (d) =>
-                                    d['school_id'] == schoolId &&
-                                    d['role'] == 'parent',
-                              )
-                              .toList(),
-                        ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildCountStreamCard(
-                    context,
-                    "Teachers",
-                    Icons.badge,
-                    Supabase.instance.client
-                        .from('profiles')
-                        .stream(primaryKey: ['id'])
-                        .map(
-                          (data) => data
-                              .where(
-                                (d) =>
-                                    d['school_id'] == schoolId &&
-                                    d['role'] == 'teacher',
-                              )
-                              .toList(),
-                        ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-
-                // 🚨 FIXED: Safe Dart mapping to handle multiple roles instead of .inFilter
-                Expanded(
-                  child: _buildCountStreamCard(
-                    context,
-                    "Admins & Bursars",
-                    Icons.admin_panel_settings,
-                    Supabase.instance.client
-                        .from('profiles')
-                        .stream(primaryKey: ['id'])
-                        .map(
-                          (profiles) => profiles
-                              .where(
-                                (p) =>
-                                    p['school_id'] == schoolId &&
-                                    (p['role'] == 'Admin' ||
-                                        p['role'] == 'bursar'),
-                              )
-                              .toList(),
-                        ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 30),
-
-            // 4. FEEDBACK & REPORTS LOG
-            Text(
-              "SCHOOL REPORTS & FEEDBACK",
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: Colors.grey.shade500,
-                fontSize: 12,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Container(
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isDark ? Colors.white10 : Colors.grey.shade200,
-                ),
-              ),
-              child: StreamBuilder<List<Map<String, dynamic>>>(
-                stream: Supabase.instance.client
-                    .from('school_feedbacks')
-                    .stream(primaryKey: ['id'])
-                    .eq('school_id', schoolId)
-                    .order('created_at'),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting)
-                    return const Padding(
-                      padding: EdgeInsets.all(40),
-                      child: Center(child: TridetaLoader()),
-                    );
-
-                  final feedbacks = snapshot.data ?? [];
-                  if (feedbacks.isEmpty) {
-                    return Padding(
-                      padding: const EdgeInsets.all(40.0),
-                      child: Center(
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.check_circle_outline,
-                              size: 40,
-                              color: Colors.grey.shade400,
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              "No pending reports from this school.",
-                              style: TextStyle(
-                                color: Colors.grey.shade500,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 10.0),
+                  child: Wrap(
+                    children: [
+                      Text(
+                        "I acknowledge that TriDeta is currently free for a limited time, and continued usage in the future may require a paid subscription. ",
+                        style: TextStyle(fontSize: 13, color: textColor),
                       ),
-                    );
-                  }
-
-                  return ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: feedbacks.length,
-                    separatorBuilder: (_, _) => Divider(
-                      color: isDark ? Colors.white10 : Colors.grey.shade200,
-                      height: 1,
-                    ),
-                    itemBuilder: (context, index) {
-                      final feedback = feedbacks[index];
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 10,
-                        ),
-                        leading: CircleAvatar(
-                          backgroundColor: feedback['status'] == 'pending'
-                              ? Colors.red.withValues(alpha: 0.1)
-                              : Colors.green.withValues(alpha: 0.1),
-                          child: Icon(
-                            Icons.support_agent,
-                            color: feedback['status'] == 'pending'
-                                ? Colors.red
-                                : Colors.green,
+                      GestureDetector(
+                        onTap: () => _showFreeTierDialog(primaryColor),
+                        child: Text(
+                          "View limits",
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: primaryColor,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.underline,
                           ),
                         ),
-                        title: Text(
-                          feedback['subject'] ?? 'No Subject',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          "${feedback['sender_role'].toString().toUpperCase()} • ${feedback['message']}",
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: Icon(
-                          Icons.chevron_right,
-                          color: Colors.grey.shade400,
-                        ),
-                        onTap: () {
-                          // Room to add full message popup
-                        },
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 40),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuickAction(IconData icon, String label, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(15),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: Colors.blueAccent),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-                color: Colors.blueAccent,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCountStreamCard(
-    BuildContext context,
-    String title,
-    IconData icon,
-    Stream<List<Map<String, dynamic>>> stream,
-  ) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: Colors.grey.shade400, size: 28),
-          const SizedBox(height: 15),
-          StreamBuilder<List<Map<String, dynamic>>>(
-            stream: stream,
-            builder: (context, snapshot) {
-              if (!snapshot.hasData)
-                return const SizedBox(
-                  height: 28,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: SizedBox(
-                      width: 15,
-                      height: 15,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
+                      ),
+                    ],
                   ),
-                );
-              return Text(
-                snapshot.data!.length.toString(),
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  color: isDark ? Colors.white : Colors.black87,
-                  height: 1.0,
                 ),
-              );
-            },
+              ),
+            ],
           ),
-          const SizedBox(height: 5),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey.shade500,
+          const SizedBox(height: 30),
+
+          // SUBMIT BUTTON
+          SizedBox(
+            height: 55,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+              ),
+              onPressed: _isLoading
+                  ? null
+                  : () => _showConfirmationDialog(primaryColor),
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: TridetaLoader(color: Colors.white),
+                    )
+                  : const Text(
+                      "REGISTER SCHOOL",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  // --- UI HELPERS ---
+  InputDecoration _inputDecoration(
+    String label,
+    IconData icon,
+    Color fieldColor,
+    Color hintColor,
+    Color primaryColor,
+  ) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(color: hintColor),
+      prefixIcon: Icon(icon, color: primaryColor),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide(color: primaryColor, width: 2),
+      ),
+      filled: true,
+      fillColor: fieldColor,
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, Color textColor) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(
+              label,
+              style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
+            ),
+          ),
+          Expanded(
+            child: Text(value, style: TextStyle(color: textColor)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- LOGIC ---
+  void _showConfirmationDialog(Color primaryColor) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color popupBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color textColor = isDark ? Colors.white : Colors.black87;
+
+    if (!_formKey.currentState!.validate()) {
+      showAuthErrorDialog("Please fill in all the required fields correctly.");
+      return;
+    }
+
+    String pwd = _passwordController.text;
+    if (pwd.length < 6 ||
+        !RegExp(r'[a-zA-Z]').hasMatch(pwd) ||
+        !RegExp(r'[0-9]').hasMatch(pwd)) {
+      showAuthErrorDialog(
+        "Your password is too weak. It must be at least 6 characters long and contain both letters and numbers.",
+      );
+      return;
+    }
+    if (pwd != _confirmPasswordController.text) {
+      showAuthErrorDialog(
+        "The passwords you entered do not match. Please check them and try again.",
+      );
+      return;
+    }
+
+    if (!_isAgreed || !_isFreeTierAgreed) {
+      showAuthErrorDialog(
+        "You must check both agreement boxes to acknowledge the Terms of Service and Free Access policy before continuing.",
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: popupBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Text(
+          "Confirm Details",
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              "Please verify your details before submitting:",
+              style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+            ),
+            const SizedBox(height: 20),
+            _buildDetailRow("School:", _schoolNameController.text, textColor),
+            _buildDetailRow("Email:", _emailController.text, textColor),
+            _buildDetailRow("Phone:", _phoneController.text, textColor),
+            _buildDetailRow("Password:", "********", textColor),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              "Edit",
+              style: TextStyle(color: isDark ? Colors.white54 : Colors.grey),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: () {
+              Navigator.pop(context);
+              _submitRegistration(primaryColor);
+            },
+            child: const Text(
+              "Submit",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _submitRegistration(Color primaryColor) async {
+    setState(() => _isLoading = true);
+
+    String? error = await _authService.registerSchool(
+      schoolName: _schoolNameController.text.trim(),
+      email: _emailController.text.trim(),
+      password: _passwordController.text.trim(),
+      phone: _phoneController.text.trim(),
+    );
+
+    setState(() => _isLoading = false);
+
+    if (error == null) {
+      if (mounted) _showSuccessDialog(primaryColor);
+    } else {
+      String laymanError = error;
+      if (error.toLowerCase().contains("already registered") ||
+          error.toLowerCase().contains("already exists")) {
+        laymanError =
+            "An account with this email already exists. Please try logging in.";
+      } else if (error.toLowerCase().contains("database error")) {
+        laymanError =
+            "We hit a snag setting up your school profile. Please check your internet and try again.";
+      } else if (error.toLowerCase().contains("timeout") ||
+          error.toLowerCase().contains("socket")) {
+        laymanError =
+            "Poor internet connection. Please check your network and try again.";
+      }
+
+      if (mounted) showAuthErrorDialog(laymanError);
+    }
+  }
+
+  void _showSuccessDialog(Color primaryColor) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color popupBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color textColor = isDark ? Colors.white : Colors.black87;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: popupBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Column(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.green, size: 50),
+            const SizedBox(height: 10),
+            Text(
+              "Success!",
+              style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: Text(
+          "Your school account has been created.\n\nPlease log in to complete the Setup Wizard.",
+          textAlign: TextAlign.center,
+          style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onPressed: () {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
+                );
+              },
+              child: const Text(
+                "GO TO LOGIN",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 🚨 REFACTORED: Privacy text expansion completely removed and replaced with a clear link setup
+  void _showPrivacyPolicy(Color primaryColor) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color textColor = isDark ? Colors.white : Colors.black87;
+    Color hintColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.45,
+        maxChildSize: 0.6,
+        expand: false,
+        builder: (_, controller) => Container(
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SingleChildScrollView(
+            controller: controller,
+            padding: const EdgeInsets.all(25),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 50,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.grey[700] : Colors.grey[300],
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  "Terms & Privacy Policy",
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: primaryColor,
+                  ),
+                ),
+                const SizedBox(height: 15),
+                Text(
+                  "By registering your school on TriDeta, you agree to our comprehensive Terms of Service and Privacy Policy, which dictate how we handle your school's data, communications, and security.",
+                  style: TextStyle(color: textColor, fontSize: 15, height: 1.5),
+                ),
+                const SizedBox(height: 25),
+                GestureDetector(
+                  onTap: () async {
+                    final Uri url = Uri.parse(
+                      'https://trideta.vercel.app/privacy-policy.html',
+                    );
+                    if (await canLaunchUrl(url)) {
+                      await launchUrl(
+                        url,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    } else {
+                      if (mounted) {
+                        showAuthErrorDialog(
+                          "Could not open the privacy policy link.",
+                        );
+                      }
+                    }
+                  },
+                  child: Text(
+                    "Learn more...",
+                    style: TextStyle(
+                      color: primaryColor,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 35),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text(
+                      "I UNDERSTAND",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 🚨 ADDED: Free Tier limit dialog implementation linked to the second check box layout
+  void _showFreeTierDialog(Color primaryColor) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color popupBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color textColor = isDark ? Colors.white : Colors.black87;
+    Color hintColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: popupBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.star_outline, color: primaryColor, size: 30),
+            const SizedBox(width: 10),
+            Text(
+              "Free Tier Limits",
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: textColor,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Your school will be placed on the Free Tier upon registration. Note the following constraints:",
+              style: TextStyle(color: hintColor, fontSize: 14),
+            ),
+            const SizedBox(height: 20),
+            _buildLimitItem(
+              Icons.people,
+              "Maximum of 50 Students",
+              textColor,
+              primaryColor,
+            ),
+            const SizedBox(height: 12),
+            _buildLimitItem(
+              Icons.storage,
+              "500MB Data Storage",
+              textColor,
+              primaryColor,
+            ),
+            const SizedBox(height: 12),
+            _buildLimitItem(
+              Icons.message,
+              "No Mass SMS Messaging",
+              textColor,
+              primaryColor,
+            ),
+            const SizedBox(height: 12),
+            _buildLimitItem(
+              Icons.support_agent,
+              "Standard Support Response",
+              textColor,
+              primaryColor,
+            ),
+          ],
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            height: 45,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                "I UNDERSTAND",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLimitItem(
+    IconData icon,
+    String text,
+    Color textColor,
+    Color iconColor,
+  ) {
+    return Row(
+      children: [
+        Icon(icon, color: iconColor, size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: textColor,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

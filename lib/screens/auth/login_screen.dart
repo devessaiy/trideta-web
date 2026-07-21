@@ -192,12 +192,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
 
       final googleUser = await GoogleSignIn.instance.authenticate();
 
-      if (googleUser == null) {
-        if (mounted) setState(() => _isLoading = false);
-        return;
-      }
-
-      final googleAuth = await googleUser.authentication;
+      final googleAuth = googleUser.authentication;
       final idToken = googleAuth.idToken;
 
       if (idToken == null) {
@@ -262,10 +257,11 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
                 await _biometricService.saveCredentials(loginId, password);
                 await _biometricService.setBiometricEnabled(true);
               } else {
-                if (mounted)
+                if (mounted) {
                   showAuthErrorDialog(
                     "Biometric scan failed. Auto-login was not enabled.",
                   );
+                }
               }
             } else {
               await _biometricService.deleteCredentials();
@@ -451,7 +447,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
             profileCreated = true;
           }
         }
-        if (profileCreated)
+        if (profileCreated) {
           profile = await _supabase
               .from('profiles')
               .select(
@@ -459,6 +455,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
               )
               .eq('id', user.id)
               .maybeSingle();
+        }
       }
 
       if (!mounted) return;
@@ -474,10 +471,11 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
 
       if (profile['is_suspended'] == true) {
         await _supabase.auth.signOut();
-        if (mounted)
+        if (mounted) {
           showAuthErrorDialog(
             "Access Denied. Your account has been suspended for violating community guidelines. Please contact support.",
           );
+        }
         return;
       }
 
@@ -485,10 +483,11 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
         final subStatus = profile['schools']['subscription_status'];
         if (subStatus == 'terminated') {
           await _supabase.auth.signOut();
-          if (mounted)
+          if (mounted) {
             showAuthErrorDialog(
               "Access Denied. Your school's Trideta subscription has been terminated. Please contact your school administrator.",
             );
+          }
           return;
         }
       }

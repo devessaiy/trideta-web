@@ -24,7 +24,7 @@ class AuthService {
     required String schoolName,
     required String email,
     required String password,
-    required String phone, // 🚨 NEW: Added phone as a required parameter!
+    required String phone,
     String? address,
     String? ownerName,
   }) async {
@@ -56,16 +56,17 @@ class AuthService {
 
         final schoolId = schoolData['id'];
 
-        // C. Link Profile
-        await _supabase.from('profiles').insert({
-          'id': userId,
-          'school_id': schoolId,
-          'full_name': ownerName ?? "Admin",
-          'role': 'Admin',
-          'email': email,
-          'phone':
-              phone, // 🚨 NEW: Saving the admin's phone number to the database!
-        });
+        // C. Link Profile (🚨 THE ULTIMATE FIX: Using your SQL Database Function)
+        await _supabase.rpc(
+          'create_admin_profile',
+          params: {
+            'new_id': userId,
+            'new_school_id': schoolId,
+            'new_full_name': ownerName ?? "Admin",
+            'new_email': email,
+            'new_phone': phone,
+          },
+        );
       } on PostgrestException catch (dbError) {
         return "Database Error: ${dbError.message} (Code: ${dbError.code})";
       }

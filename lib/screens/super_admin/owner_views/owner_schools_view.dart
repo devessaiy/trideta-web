@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
-import 'package:trideta_v2/screens/super_admin/owner_views/school_master_details_screen.dart';
 
 class OwnerSchoolsManagementView extends StatefulWidget {
   const OwnerSchoolsManagementView({super.key});
@@ -208,8 +207,7 @@ class _OwnerSchoolsManagementViewState
                       ),
                       child: ListTile(
                         onTap: () {
-                          Navigator.push(
-                            context,
+                          Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) =>
                                   SchoolMasterDetailsScreen(school: school),
@@ -360,6 +358,144 @@ class _OwnerSchoolsManagementViewState
           ),
         ),
       ),
+    );
+  }
+}
+
+class SchoolMasterDetailsScreen extends StatelessWidget {
+  final Map<String, dynamic> school;
+
+  const SchoolMasterDetailsScreen({super.key, required this.school});
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final String status = school['subscription_status']?.toString() ?? 'active';
+    final bool isActive = status == 'active';
+    final bool isPaused = status == 'paused_payment';
+    final bool isTerminated = status == 'terminated';
+    final Color statusColor = isActive
+        ? Colors.green
+        : (isPaused ? Colors.orange : Colors.red);
+    final String displayStatus = isActive
+        ? 'PAID & ACTIVE'
+        : (isPaused ? 'OWING (PAUSED)' : 'LONG OVERDUE (TERMINATED)');
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(school['name']?.toString() ?? 'School details'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black87),
+      ),
+      backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey.shade100,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'School Details',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildDetailRow(
+                    'Name',
+                    school['name']?.toString() ?? 'Unnamed',
+                  ),
+                  const SizedBox(height: 12),
+                  _buildDetailRow(
+                    'Acronym',
+                    school['acronym']?.toString() ?? 'N/A',
+                  ),
+                  const SizedBox(height: 12),
+                  _buildDetailRow(
+                    'Status',
+                    displayStatus,
+                    valueColor: statusColor,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildDetailRow(
+                    'School ID',
+                    school['id']?.toString() ?? 'Unknown',
+                  ),
+                  if (school.containsKey('email') ||
+                      school.containsKey('phone')) ...[
+                    const SizedBox(height: 12),
+                    const Divider(),
+                    const SizedBox(height: 12),
+                    if (school.containsKey('email'))
+                      _buildDetailRow(
+                        'Email',
+                        school['email']?.toString() ?? 'N/A',
+                      ),
+                    if (school.containsKey('phone'))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: _buildDetailRow(
+                          'Phone',
+                          school['phone']?.toString() ?? 'N/A',
+                        ),
+                      ),
+                  ],
+                  if (school.containsKey('subscription_ends_at')) ...[
+                    const SizedBox(height: 12),
+                    _buildDetailRow(
+                      'Subscription Ends',
+                      school['subscription_ends_at']?.toString() ?? 'Unknown',
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, {Color? valueColor}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: Colors.grey.shade500,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            color: valueColor ?? Colors.black87,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
 }

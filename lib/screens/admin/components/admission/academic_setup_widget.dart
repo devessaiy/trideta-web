@@ -7,6 +7,11 @@ class AcademicSetupWidget extends StatelessWidget {
   final String resolvedTerm;
   final String? selectedDepartment;
   final String studentCategory;
+
+  // 🚨 NEW: Added parameters for Admission Year
+  final String? selectedAdmissionYear;
+  final Function(String?) onAdmissionYearChanged;
+
   final Color primaryColor;
   final bool isDark;
   final Color cardColor;
@@ -22,6 +27,11 @@ class AcademicSetupWidget extends StatelessWidget {
     required this.resolvedTerm,
     required this.selectedDepartment,
     required this.studentCategory,
+
+    // 🚨 NEW
+    required this.selectedAdmissionYear,
+    required this.onAdmissionYearChanged,
+
     required this.primaryColor,
     required this.isDark,
     required this.cardColor,
@@ -37,6 +47,13 @@ class AcademicSetupWidget extends StatelessWidget {
         (selectedClass ?? "").toUpperCase().contains("SS") &&
         !(selectedClass ?? "").toUpperCase().contains("JSS");
 
+    // 🚨 Generate a list of the last 10 years for the dropdown
+    final int currentYear = DateTime.now().year;
+    final List<String> recentYears = List.generate(
+      10,
+      (index) => (currentYear - index).toString(),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -46,13 +63,34 @@ class AcademicSetupWidget extends StatelessWidget {
           primaryColor,
         ),
         const SizedBox(height: 20),
-        _buildDropdown(
-          "Class Designation",
-          activeClasses,
-          selectedClass,
-          (v) => onClassChanged(v!),
+
+        // 🚨 FIXED: Placed Class Designation and Admission Year side-by-side
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: _buildDropdown(
+                "Class Designation",
+                activeClasses,
+                selectedClass,
+                (v) => onClassChanged(v!),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              flex: 2,
+              child: _buildDropdown(
+                "Admission Year",
+                recentYears,
+                selectedAdmissionYear ??
+                    currentYear.toString(), // Defaults to current year if null
+                onAdmissionYearChanged,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
+
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(

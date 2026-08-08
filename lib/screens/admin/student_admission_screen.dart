@@ -1,8 +1,13 @@
+import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart'; // Lets us check kIsWeb
+import 'dart:ui' as ui; // Required to read the AI's output
+// import 'package:image_background_remover/image_background_remover.dart';
 import 'dart:async';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:pro_image_editor/pro_image_editor.dart'; // IMPORT FOR CROPPING
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart';
 // import 'package:trideta_v2/utils/subscription_guard.dart'; // 🚨 INJECT THE GUARD
@@ -66,6 +71,8 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
   String _selectedGender = "Male";
   String _studentCategory = "Regular";
   String _generatedID = "---/--/--/---";
+
+  String? _selectedAdmissionYear; // 🚨 NEW STATE FOR ADMISSION YEAR
 
   bool _usePhoneAsLogin = false;
   bool _isObscure1 = true;
@@ -167,7 +174,10 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
         .map((w) => w[0])
         .join()
         .toUpperCase();
-    String year = _resolvedSession.split("/")[0].substring(2);
+
+    // 🚨 UPDATED LOGIC: Using the selected Admission Year to generate the ID
+    String fullYear = _selectedAdmissionYear ?? DateTime.now().year.toString();
+    String year = fullYear.length >= 4 ? fullYear.substring(2) : fullYear;
 
     String cls = _selectedClass!;
     String classCode = "GN";
@@ -216,7 +226,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
 
     try {
       List existing = [];
-      // 🚨 UPDATED LOGIC: Removed .eq('school_id', _schoolId) to allow cross-school parent detection
       if (searchPhone.isNotEmpty && _usePhoneAsLogin) {
         existing = await _supabase
             .from('students')
@@ -245,28 +254,147 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     }
   }
 
+  // 🚨 NEW LOGIC: Hybrid Pipeline (Offline Native + Cloud Web) + Pro Editor
+  // 🚨 NEW LOGIC: Unified Cloud Pipeline (Bypasses Local Security Locks)
   Future<void> _pickImage() async {
     setState(() => isInteractingWithSystem = true);
-    final XFile? image = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 70,
-      maxWidth: 600,
-      maxHeight: 600,
-    );
-    setState(() => isInteractingWithSystem = false);
 
-    if (image != null) {
-      final bytes = await image.readAsBytes();
-      if (bytes.lengthInBytes > 500 * 1024) {
-        showAuthErrorDialog(
-          "Image is too large. Please choose a simpler photo.",
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70,
+        maxWidth: 1000,
+        maxHeight: 1000,
+      );
+
+      if (image != null) {
+        final bytes = await image.readAsBytes();
+        if (!mounted) return;
+
+        Uint8List imageToEdit =
+            bytes; // Defaults to the original image in case of failure
+
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) =>
+              const Center(child: TridetaLoader(color: Colors.white)),
         );
-        return;
+
+        try {
+          // ==========================================
+          // ☁️ UNIFIED CLOUD API (Works seamlessly on Mobile & Web)
+          // ==========================================
+          final request = http.MultipartRequest(
+            'POST',
+            Uri.parse('https://api.remove.bg/v1.0/removebg'),
+          );
+
+          // 🚨 Get a free API key from remove.bg and paste it here
+          request.headers['X-Api-Key'] = 'xDZscf4d861ip44UcfKRuaYN';
+          request.files.add(
+            http.MultipartFile.fromBytes(
+              'image_file',
+              bytes,
+              filename: 'upload.jpg, upload.png, upload.jpeg',
+            ),
+          );
+
+          final response = await request.send();
+
+          if (response.statusCode == 200) {
+            final transparentBytes = await response.stream.toBytes();
+
+            // ==========================================
+            // 🎨 BAKE IN THE TRIDETA BLUE BACKGROUND
+            // ==========================================
+            final codec = await ui.instantiateImageCodec(transparentBytes);
+            final frame = await codec.getNextFrame();
+            final ui.Image aiImage = frame.image;
+
+            final ui.PictureRecorder recorder = ui.PictureRecorder();
+            final ui.Canvas canvas = ui.Canvas(recorder);
+
+            final ui.Paint paint = ui.Paint()
+              ..color = Theme.of(context).primaryColor;
+            final Rect rect = Rect.fromLTWH(
+              0,
+              0,
+              aiImage.width.toDouble(),
+              aiImage.height.toDouble(),
+            );
+            canvas.drawRect(rect, paint);
+
+            canvas.drawImage(aiImage, Offset.zero, ui.Paint());
+
+            final ui.Picture picture = recorder.endRecording();
+            final ui.Image mergedImage = await picture.toImage(
+              aiImage.width,
+              aiImage.height,
+            );
+            final ByteData? byteData = await mergedImage.toByteData(
+              format: ui.ImageByteFormat.png,
+            );
+
+            imageToEdit = byteData!.buffer
+                .asUint8List(); // Overwrite with the blue background version
+          } else {
+            debugPrint("Cloud API Failed. Status: ${response.statusCode}");
+          }
+        } catch (error) {
+          debugPrint("Background Removal Skipped (Network Error): $error");
+        }
+
+        if (mounted) Navigator.pop(context); // Close the AI loader
+
+        // --- STEP 2: POLISH WITH EDITOR ---
+        bool hasPopped =
+            false; // 🚨 MAGIC FLAG: Guarantees only ONE pop happens
+
+        final Uint8List? editedBytes = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (editorContext) => ProImageEditor.memory(
+              imageToEdit,
+              callbacks: ProImageEditorCallbacks(
+                onImageEditingComplete: (Uint8List result) async {
+                  // If we haven't popped yet, do it now and lock the flag
+                  if (!hasPopped) {
+                    hasPopped = true;
+                    Navigator.pop(editorContext, result);
+                  }
+                },
+                onCloseEditor: (mode) {
+                  // If the checkmark already triggered a pop, this ignores the second attempt!
+                  if (!hasPopped) {
+                    hasPopped = true;
+                    Navigator.pop(editorContext, null);
+                  }
+                },
+              ),
+            ),
+          ),
+        );
+
+        // --- STEP 3: SAVE FINAL PASSPORT ---
+        if (editedBytes != null) {
+          if (editedBytes.lengthInBytes > 500 * 1024) {
+            if (mounted) setState(() => isInteractingWithSystem = false);
+            showAuthErrorDialog(
+              "Image is too large. Please choose a simpler photo.",
+            );
+            return;
+          }
+          setState(() {
+            _pickedFile = image;
+            _webImage = editedBytes;
+          });
+        }
       }
-      setState(() {
-        _pickedFile = image;
-        _webImage = bytes;
-      });
+    } catch (e) {
+      debugPrint("Image Picker Error: $e");
+    } finally {
+      if (mounted) setState(() => isInteractingWithSystem = false);
     }
   }
 
@@ -292,8 +420,9 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
       String cleanPhone = rawLoginPhone.replaceAll(' ', '');
       if (cleanPhone.startsWith('0')) {
         cleanPhone = '+234${cleanPhone.substring(1)}';
-      } else if (!cleanPhone.startsWith('+'))
+      } else if (!cleanPhone.startsWith('+')) {
         cleanPhone = '+234$cleanPhone';
+      }
       exactLoginId = "$cleanPhone@trideta.com";
     }
 
@@ -304,7 +433,6 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
           ? rawLoginPhone
           : _parentPhoneController.text.trim();
 
-      // 🚨 UPDATED LOGIC: Removed .eq('school_id', _schoolId) to verify parent status globally
       if (searchPhone.isNotEmpty) {
         existing = await _supabase
             .from('students')
@@ -539,6 +667,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
       _pwdHasNumber = false;
       _pwdMatch = false;
       _isLoading = false;
+      _selectedAdmissionYear = null; // 🚨 Resets the year to avoid lock-in
       _updateSmartID();
     });
   }
@@ -615,6 +744,14 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
               resolvedTerm: _resolvedTerm,
               selectedDepartment: _selectedDepartment,
               studentCategory: _studentCategory,
+
+              // 🚨 NEW LOGIC: Pass down the selected year and listen for updates
+              selectedAdmissionYear: _selectedAdmissionYear,
+              onAdmissionYearChanged: (v) {
+                setState(() => _selectedAdmissionYear = v);
+                _updateSmartID(); // Regenerates the ID immediately on screen
+              },
+
               primaryColor: primaryColor,
               isDark: isDark,
               cardColor: cardColor,

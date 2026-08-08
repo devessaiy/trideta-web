@@ -18,10 +18,8 @@ import 'package:trideta_v2/screens/shared/setup_wizard.dart';
 import 'package:trideta_v2/main.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
-// 🚨 MODULAR UI IMPORTS (Fixed to point to your new components)
+// --- MODULAR UI IMPORTS ---
 import 'package:trideta_v2/screens/auth/components/login_branding_panel.dart';
-import 'package:trideta_v2/screens/auth/components/email_entry_step.dart';
-import 'package:trideta_v2/screens/auth/components/password_entry_step.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -33,6 +31,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   bool _isLoading = false;
   bool _canCheckBiometrics = false;
   int _currentStep = 0; // 0 = Email Step, 1 = Password Step
+  bool _obscurePassword = true; // Added for the new UI password toggle
 
   final _authService = AuthService();
   final _biometricService = BiometricService();
@@ -59,7 +58,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   }
 
   // ============================================================================
-  // 🚨 UI STATE & THEME LOGIC
+  // 🎨 UI STATE & THEME LOGIC
   // ============================================================================
   void _proceedToPassword() {
     if (_emailController.text.trim().isEmpty) {
@@ -161,7 +160,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   }
 
   // ============================================================================
-  // 🚨 AUTHENTICATION LOGIC
+  // 🔐 AUTHENTICATION LOGIC (UNTOUCHED)
   // ============================================================================
   Future<void> _checkBiometrics() async {
     bool canCheck = await _biometricService.isBiometricAvailable();
@@ -171,27 +170,16 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   Future<void> _loginWithGoogle() async {
     setState(() => _isLoading = true);
     try {
-      // ==========================================
-      // 🌐 1. WEB IMPLEMENTATION
-      // ==========================================
       if (kIsWeb) {
-        // On the web, we use Supabase's secure redirect flow
         await _supabase.auth.signInWithOAuth(OAuthProvider.google);
-        // The browser will securely redirect to Google and reload your app,
-        // so we stop execution here.
         return;
       }
 
-      // ==========================================
-      // 📱 2. NATIVE MOBILE IMPLEMENTATION (Android/iOS)
-      // ==========================================
       const webClientId =
           '141687394764-9fm23jupir4196b7h5ku0dvnullt7suu.apps.googleusercontent.com';
 
       await GoogleSignIn.instance.initialize(serverClientId: webClientId);
-
       final googleUser = await GoogleSignIn.instance.authenticate();
-
       final googleAuth = googleUser.authentication;
       final idToken = googleAuth.idToken;
 
@@ -383,7 +371,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   }
 
   // ============================================================================
-  // 🚨 ROUTING LOGIC
+  // 🧭 ROUTING LOGIC (UNTOUCHED)
   // ============================================================================
   Future<void> _checkAndNavigate() async {
     try {
@@ -663,12 +651,12 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   }
 
   // ============================================================================
-  // 🚨 UI BUILDER
+  // 🖼️ NEW UI BUILDER (MATCHING THE SCREENSHOT)
   // ============================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : Colors.white;
+    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF4F6F9);
     Color primaryColor = Theme.of(context).primaryColor;
 
     return Scaffold(
@@ -686,8 +674,10 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
                   flex: 5,
                   child: Center(
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 450),
-                      child: _buildLoginForm(isDark, primaryColor),
+                      constraints: const BoxConstraints(maxWidth: 480),
+                      child: SingleChildScrollView(
+                        child: _buildMainFormContent(isDark, primaryColor),
+                      ),
                     ),
                   ),
                 ),
@@ -697,8 +687,11 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
             return SafeArea(
               child: Center(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: _buildLoginForm(isDark, primaryColor, isMobile: true),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20.0,
+                    vertical: 24.0,
+                  ),
+                  child: _buildMainFormContent(isDark, primaryColor),
                 ),
               ),
             );
@@ -708,72 +701,502 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
     );
   }
 
-  Widget _buildLoginForm(
-    bool isDark,
-    Color primaryColor, {
-    bool isMobile = false,
-  }) {
-    Color textColor = isDark ? Colors.white : Colors.black87;
-    Color hintColor = isDark ? Colors.grey.shade500 : Colors.grey.shade600;
+  Widget _buildMainFormContent(bool isDark, Color primaryColor) {
+    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
 
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        if (isMobile) ...[
-          Icon(Icons.admin_panel_settings, size: 70, color: primaryColor),
-          const SizedBox(height: 10),
-          Text(
-            "TRIDETA",
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: primaryColor,
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 2.0,
+        // --- THE MODERN CARD ---
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: isDark
+                ? []
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Back Button (Only visible on Password Step)
+              AnimatedOpacity(
+                opacity: _currentStep == 1 ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: _currentStep == 1
+                    ? Align(
+                        alignment: Alignment.centerLeft,
+                        child: InkWell(
+                          onTap: () => setState(() => _currentStep = 0),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.arrow_back,
+                                size: 18,
+                                color: isDark ? Colors.white70 : Colors.black87,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                "Back",
+                                style: TextStyle(
+                                  color: isDark
+                                      ? Colors.white70
+                                      : Colors.black87,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : const SizedBox(
+                        height: 24,
+                      ), // Placeholder to keep height consistent
+              ),
+              const SizedBox(height: 16),
+
+              // HEADER: Building Icon & Welcome Text
+              Icon(
+                Icons.account_balance_rounded,
+                size: 54,
+                color: primaryColor,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                "Welcome Back",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : const Color(0xFF111827),
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "Sign in to your school account",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 15,
+                  color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
+                ),
+              ),
+              const SizedBox(height: 40),
+
+              // ANIMATED FORM STEPS
+              AnimatedCrossFade(
+                duration: const Duration(milliseconds: 300),
+                crossFadeState: _currentStep == 0
+                    ? CrossFadeState.showFirst
+                    : CrossFadeState.showSecond,
+                firstChild: _buildEmailStepUI(isDark, primaryColor),
+                secondChild: _buildPasswordStepUI(isDark, primaryColor),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 32),
+
+        // --- BOTTOM TRUST BANNER ---
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.shield_outlined, size: 18, color: Colors.grey),
+            const SizedBox(width: 8),
+            Text(
+              "Secure • Reliable • Trusted",
+              style: TextStyle(
+                color: isDark ? Colors.grey[500] : Colors.grey[600],
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // --- STEP 1: EMAIL ENTRY UI ---
+  Widget _buildEmailStepUI(bool isDark, Color primaryColor) {
+    Color borderColor = isDark ? Colors.white24 : const Color(0xFFE5E7EB);
+    Color labelColor = isDark ? Colors.white : const Color(0xFF111827);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "Login ID",
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: labelColor,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: _emailController,
+          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+          decoration: InputDecoration(
+            hintText: "Enter your email or username",
+            hintStyle: TextStyle(
+              color: isDark ? Colors.white38 : Colors.grey[400],
+            ),
+            prefixIcon: Icon(
+              Icons.person_outline,
+              color: isDark ? Colors.white54 : Colors.grey[500],
+            ),
+            contentPadding: const EdgeInsets.symmetric(vertical: 16),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: borderColor),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: primaryColor, width: 2),
             ),
           ),
-          const SizedBox(height: 40),
-        ],
-        Text(
-          "Welcome Back",
-          textAlign: isMobile ? TextAlign.center : TextAlign.left,
-          style: TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.bold,
-            color: textColor,
-          ),
+          onFieldSubmitted: (_) => _proceedToPassword(),
         ),
-        const SizedBox(height: 10),
-        Text(
-          "Login to your account to continue",
-          textAlign: isMobile ? TextAlign.center : TextAlign.left,
-          style: TextStyle(fontSize: 16, color: hintColor),
-        ),
-        const SizedBox(height: 40),
+        const SizedBox(height: 24),
 
-        AnimatedCrossFade(
-          duration: const Duration(milliseconds: 300),
-          crossFadeState: _currentStep == 0
-              ? CrossFadeState.showFirst
-              : CrossFadeState.showSecond,
-          firstChild: EmailEntryStep(
-            emailController: _emailController,
-            isLoading: _isLoading,
-            canCheckBiometrics: _canCheckBiometrics,
-            onProceed: _proceedToPassword,
-            onGoogleLogin: _loginWithGoogle,
-            onBiometricLogin: _handleBiometricLogin,
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _proceedToPassword,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 0,
+            ),
+            child: _isLoading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "Next",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Icon(Icons.arrow_forward, size: 18),
+                    ],
+                  ),
           ),
-          secondChild: PasswordEntryStep(
-            passwordController: _passwordController,
-            emailText: _emailController.text,
-            isLoading: _isLoading,
-            onLogin: _handleLogin,
-            onEditEmail: () => setState(() => _currentStep = 0),
+        ),
+
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Expanded(child: Divider(color: borderColor)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                "or",
+                style: TextStyle(
+                  color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            Expanded(child: Divider(color: borderColor)),
+          ],
+        ),
+        const SizedBox(height: 24),
+
+        // 🚨 GOOGLE & BIOMETRICS (Preserved Logic in a clean row)
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildSocialButton(
+              Icons.g_mobiledata_rounded,
+              "Google",
+              _loginWithGoogle,
+              isDark,
+              borderColor,
+            ),
+            if (_canCheckBiometrics) ...[
+              const SizedBox(width: 16),
+              _buildSocialButton(
+                Icons.fingerprint_rounded,
+                "Biometrics",
+                _handleBiometricLogin,
+                isDark,
+                borderColor,
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 24),
+
+        Center(
+          child: RichText(
+            text: TextSpan(
+              text: "Dont have an account? ",
+              style: TextStyle(
+                color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
+                fontSize: 13,
+              ),
+              children: [
+                TextSpan(
+                  text: "Sign up here!",
+                  style: TextStyle(
+                    color: primaryColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ],
+    );
+  }
+
+  // --- STEP 2: PASSWORD ENTRY UI ---
+  Widget _buildPasswordStepUI(bool isDark, Color primaryColor) {
+    Color borderColor = isDark ? Colors.white24 : const Color(0xFFE5E7EB);
+    Color labelColor = isDark ? Colors.white : const Color(0xFF111827);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Read-only Email display box with "Change" button
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            border: Border.all(color: borderColor),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.mail_outline,
+                color: isDark ? Colors.white54 : Colors.grey[500],
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _emailController.text,
+                  style: TextStyle(
+                    color: labelColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              TextButton(
+                onPressed: () => setState(() => _currentStep = 0),
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(50, 30),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text("Change", style: TextStyle(color: primaryColor)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        Text(
+          "Password",
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: labelColor,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: _passwordController,
+          obscureText: _obscurePassword,
+          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+          decoration: InputDecoration(
+            hintText: "Enter your password",
+            hintStyle: TextStyle(
+              color: isDark ? Colors.white38 : Colors.grey[400],
+            ),
+            prefixIcon: Icon(
+              Icons.lock_outline,
+              color: isDark ? Colors.white54 : Colors.grey[500],
+            ),
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscurePassword
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                color: isDark ? Colors.white54 : Colors.grey[500],
+              ),
+              onPressed: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
+            ),
+            contentPadding: const EdgeInsets.symmetric(vertical: 16),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: borderColor),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: primaryColor, width: 2),
+            ),
+          ),
+          onFieldSubmitted: (_) => _handleLogin(),
+        ),
+        const SizedBox(height: 12),
+
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: () {}, // Add reset password logic if needed
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(50, 30),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              "Reset password",
+              style: TextStyle(color: primaryColor, fontSize: 13),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _handleLogin,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 0,
+            ),
+            child: _isLoading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "Sign in",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Icon(Icons.arrow_forward, size: 18),
+                    ],
+                  ),
+          ),
+        ),
+
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Expanded(child: Divider(color: borderColor)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                "or",
+                style: TextStyle(
+                  color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            Expanded(child: Divider(color: borderColor)),
+          ],
+        ),
+        const SizedBox(height: 24),
+
+        Center(
+          child: RichText(
+            text: TextSpan(
+              text: "Dont have an account? ",
+              style: TextStyle(
+                color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
+                fontSize: 13,
+              ),
+              children: [
+                TextSpan(
+                  text: "Sign up here!",
+                  style: TextStyle(
+                    color: primaryColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Helper widget to keep the social buttons looking clean and matching the border styling
+  Widget _buildSocialButton(
+    IconData icon,
+    String label,
+    VoidCallback onTap,
+    bool isDark,
+    Color borderColor,
+  ) {
+    return Expanded(
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: Icon(
+          icon,
+          size: 24,
+          color: isDark ? Colors.white : Colors.black87,
+        ),
+        label: Text(
+          label,
+          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+        ),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          side: BorderSide(color: borderColor),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
     );
   }
 }

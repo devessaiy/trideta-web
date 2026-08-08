@@ -12,7 +12,6 @@ import 'package:trideta_v2/main.dart'; // Imports notifiers
 
 // ROUTING IMPORTS
 import 'package:trideta_v2/screens/auth/onboarding_screen.dart';
-
 import 'package:trideta_v2/screens/auth/login_screen.dart';
 
 class BootSplashScreen extends StatefulWidget {
@@ -24,19 +23,12 @@ class BootSplashScreen extends StatefulWidget {
 
 class _BootSplashScreenState extends State<BootSplashScreen>
     with TickerProviderStateMixin {
-  late AnimationController _progressController;
   late AnimationController _pulseController;
   late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
     super.initState();
-
-    // Controls the smooth 5-second loading bar
-    _progressController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 5),
-    );
 
     // Controls the pulsing background/logo effect
     _pulseController = AnimationController(
@@ -53,24 +45,16 @@ class _BootSplashScreenState extends State<BootSplashScreen>
 
   @override
   void dispose() {
-    _progressController.dispose();
     _pulseController.dispose();
     super.dispose();
   }
 
   Future<void> _startBootSequence() async {
-    _progressController.forward(); // Start filling the progress bar
-
-    // Wait for BOTH the initialization logic AND the 5-sec timer concurrently
+    // Wait for BOTH the initialization logic AND a smooth 3-second display
     await Future.wait([
       _initializeAllServices(),
-      Future.delayed(const Duration(seconds: 5)),
+      Future.delayed(const Duration(seconds: 3)),
     ]);
-
-    // Ensure it reaches 100% smoothly if the background init somehow took longer
-    if (!_progressController.isCompleted) {
-      await _progressController.forward();
-    }
 
     _navigateNext();
   }
@@ -109,7 +93,7 @@ class _BootSplashScreenState extends State<BootSplashScreen>
       themeNotifier.value = ThemeMode.system;
     }
 
-    // 🚨 NEW DATABASE COLOR LOGIC
+    // 🚨 DATABASE COLOR LOGIC
     Color finalColor = const Color(0xFF007ACC); // Default Trideta Blue
 
     if (session != null) {
@@ -183,8 +167,6 @@ class _BootSplashScreenState extends State<BootSplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FC),
       body: Stack(
@@ -194,55 +176,12 @@ class _BootSplashScreenState extends State<BootSplashScreen>
             child: CustomPaint(painter: _SplashBackgroundPainter()),
           ),
 
-          // ─── TOP-RIGHT BLOB ────────────────────────────────────
-          Positioned(
-            top: -size.width * 0.15,
-            right: -size.width * 0.15,
-            child: AnimatedBuilder(
-              animation: _pulseController,
-              builder: (context, child) {
-                final scale = 1.0 + (_pulseController.value * 0.03);
-                return Transform.scale(scale: scale, child: child);
-              },
-              child: Container(
-                width: size.width * 0.72,
-                height: size.width * 0.72,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF007ACC), // Trideta Blue
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-          ),
-
-          // ─── BOTTOM-LEFT BLOB ──────────────────────────────────
-          Positioned(
-            bottom: -size.width * 0.18,
-            left: -size.width * 0.18,
-            child: AnimatedBuilder(
-              animation: _pulseController,
-              builder: (context, child) {
-                // Opposite phase from the top blob for a breathing effect
-                final scale = 1.0 + ((1.0 - _pulseController.value) * 0.03);
-                return Transform.scale(scale: scale, child: child);
-              },
-              child: Container(
-                width: size.width * 0.85,
-                height: size.width * 0.85,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF007ACC), // Trideta Blue
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-          ),
-
           // ─── CENTER CONTENT ───────────────────────────────────────────
           Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 🚨 Pulsing School Icon (Replaced Image.asset)
+                // 🚨 TRUE APP LOGO WRAPPED IN A CIRCLE (Pulsing Animation)
                 AnimatedBuilder(
                   animation: _scaleAnimation,
                   builder: (context, child) {
@@ -251,20 +190,44 @@ class _BootSplashScreenState extends State<BootSplashScreen>
                       child: child,
                     );
                   },
-                  child: const Icon(
-                    Icons.school_rounded,
-                    size: 80,
-                    color: Color(0xFF007ACC), // Tinted Trideta Blue
+                  child: Container(
+                    width: 110,
+                    height: 110,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(
+                            0xFF007ACC,
+                          ).withValues(alpha: 0.15),
+                          blurRadius: 24,
+                          spreadRadius: 4,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: Padding(
+                        padding: const EdgeInsets.all(18.0),
+                        // Fallback removed to force actual asset usage.
+                        // Make sure assets/icon/ is in pubspec.yaml!
+                        child: Image.asset(
+                          'assets/icon/app_icon.png',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
 
                 // App Name
                 const Text(
                   'Trideta',
                   style: TextStyle(
                     fontSize: 28,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
                     color: Color(0xFF1A1A2E),
                     letterSpacing: 0.5,
                   ),
@@ -278,7 +241,7 @@ class _BootSplashScreenState extends State<BootSplashScreen>
                   style: TextStyle(
                     fontSize: 12,
                     color: Color(0xFF9098B1),
-                    height: 1.6,
+                    height: 1.5,
                     letterSpacing: 0.3,
                   ),
                 ),
@@ -286,47 +249,12 @@ class _BootSplashScreenState extends State<BootSplashScreen>
             ),
           ),
 
-          // ─── BOTTOM PROGRESS BAR ──────────────────────────────────────
-          Positioned(
-            bottom: 48,
-            left: 60,
-            right: 60,
-            child: Column(
-              children: [
-                AnimatedBuilder(
-                  animation: _progressController,
-                  builder: (context, child) {
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: LinearProgressIndicator(
-                        value: _progressController.value,
-                        backgroundColor: const Color(0xFFE8EAF0),
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                          Color(0xFF007ACC), // Trideta Blue loader
-                        ),
-                        minHeight: 4,
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 10),
-                AnimatedBuilder(
-                  animation: _progressController,
-                  builder: (context, child) {
-                    final pct = (_progressController.value * 100).toInt();
-                    return Text(
-                      'Initializing Core Systems... $pct%',
-                      style: const TextStyle(
-                        color: Color(0xFFB0B8CC),
-                        fontSize: 10,
-                        letterSpacing: 1.2,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
+          // ─── BOTTOM BRANDING ("from SKYNEX" WITH ANIMATED LOOP) ───────
+          const Positioned(
+            bottom: 40,
+            left: 0,
+            right: 0,
+            child: SkynexAnimatedBranding(),
           ),
         ],
       ),
@@ -335,8 +263,101 @@ class _BootSplashScreenState extends State<BootSplashScreen>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// NEW: Meta-Style Animated Skynex Branding Widget
+// ─────────────────────────────────────────────────────────────────────────────
+class SkynexAnimatedBranding extends StatefulWidget {
+  const SkynexAnimatedBranding({super.key});
+
+  @override
+  State<SkynexAnimatedBranding> createState() => _SkynexAnimatedBrandingState();
+}
+
+class _SkynexAnimatedBrandingState extends State<SkynexAnimatedBranding>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _sweepController;
+
+  @override
+  void initState() {
+    super.initState();
+    // Controls the glowing endless loop animation
+    _sweepController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _sweepController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'from',
+          style: TextStyle(
+            fontSize: 12,
+            color: Color(0xFF9098B1),
+            letterSpacing: 0.5,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Animated Endless Loop (Infinity) Icon
+            AnimatedBuilder(
+              animation: _sweepController,
+              builder: (context, child) {
+                return ShaderMask(
+                  shaderCallback: (Rect bounds) {
+                    return SweepGradient(
+                      startAngle: 0.0,
+                      endAngle: math.pi * 2,
+                      colors: const [
+                        Color(0xFF007ACC), // Trideta Blue
+                        Color(0xFF66C2FF), // Highlight / Shimmer
+                        Color(0xFF007ACC),
+                      ],
+                      stops: const [0.0, 0.5, 1.0],
+                      transform: GradientRotation(
+                        _sweepController.value * 2 * math.pi,
+                      ),
+                    ).createShader(bounds);
+                  },
+                  child: const Icon(
+                    Icons.all_inclusive_rounded, // The Endless Loop Shape
+                    size: 26,
+                    color: Colors.white, // Must be white for ShaderMask to work
+                  ),
+                );
+              },
+            ),
+            const SizedBox(width: 8),
+            // Skynex Text
+            const Text(
+              'SKYNEX',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF007ACC), // Trideta Blue
+                letterSpacing: 2.5,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Scattered geometric doodles — circles, diamonds, chevrons, brackets
-// Mirrors the decorative motifs in the reference design
 // ─────────────────────────────────────────────────────────────────────────────
 class _SplashBackgroundPainter extends CustomPainter {
   static const _accentColor = Color(0xFFCDD0E3); // soft blue-grey
@@ -349,7 +370,6 @@ class _SplashBackgroundPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = _strokeW;
 
-    // Precomputed relative positions [x%, y%, size%, rotation°]
     final circles = [
       [0.12, 0.18, 0.04],
       [0.78, 0.35, 0.03],
@@ -371,7 +391,6 @@ class _SplashBackgroundPainter extends CustomPainter {
       [0.90, 0.50, 0.045, 0.2],
     ];
 
-    // Helper dimension
     final minDim = math.min(size.width, size.height);
 
     for (var c in circles) {

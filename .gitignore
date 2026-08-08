@@ -43,3 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Ignore Local Gradle Caches & Build Folders
+android/.gradle_local_cache/
+android/.gradle/

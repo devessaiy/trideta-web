@@ -68,10 +68,15 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
   String _userRole = 'teacher';
 
   // --- FILTERS --- //
-  final List<String> _sessions = ['2024/2025', '2025/2026', '2026/2027'];
+  // 🚨 FIXED: Dynamic Sessions List initialized late
+  late List<String> _sessions;
   final List<String> _terms = ['1st Term', '2nd Term', '3rd Term'];
   String? _selectedSession;
   String? _selectedTerm;
+
+  // 🚨 FIXED: Trackers to hold the global defaults for fallback
+  String? _globalSession;
+  String? _globalTerm;
 
   // Classes & Subjects mappings
   List<Map<String, dynamic>> _activeClasses = [];
@@ -93,6 +98,7 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
   @override
   void initState() {
     super.initState();
+    _sessions = _generateDynamicSessions(); // 🚨 Initialize dynamically
     _fetchInitialData();
   }
 
@@ -111,7 +117,18 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     super.dispose();
   }
 
-  // 🚨 FIXED: Bulletproof RBAC local filtering using 'class_assigned'
+  // 🚨 NEW: Generates an infinite rolling window of academic sessions
+  List<String> _generateDynamicSessions() {
+    int currentYear = DateTime.now().year;
+    List<String> list = [];
+    // Generates a scalable window from 2020 into the future dynamically
+    for (int i = 2020; i <= currentYear + 3; i++) {
+      list.add("$i/${i + 1}");
+    }
+    return list;
+  }
+
+  // 🚨 FIXED: Bulletproof RBAC local filtering using 'class_assigned' & Async Overrides
   Future<void> _fetchInitialData() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -132,11 +149,18 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           .eq('id', _schoolId!)
           .single();
 
+      // 🚨 Store the globals safely (calculates current year fallback just in case)
+      int currentYr = DateTime.now().year;
+      _globalSession =
+          school['current_session'] ?? "$currentYr/${currentYr + 1}";
+      _globalTerm = school['current_term'] ?? _terms[0];
+
       List<Map<String, dynamic>> fetchedClasses = [];
 
+      // 🚨 FIX: Fetch override_session and override_term for Async Calendars
       final allClasses = await _supabase
           .from('classes')
-          .select('id, name')
+          .select('id, name, override_session, override_term')
           .eq('school_id', _schoolId!)
           .order('list_order', ascending: true);
 
@@ -167,8 +191,8 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
 
       if (mounted) {
         setState(() {
-          _selectedSession = school['current_session'] ?? _sessions[1];
-          _selectedTerm = school['current_term'] ?? _terms[0];
+          _selectedSession = _globalSession;
+          _selectedTerm = _globalTerm;
           _activeClasses = fetchedClasses;
           _isLoading = false;
         });
@@ -503,12 +527,19 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
                         primaryColor: primaryColor,
                         onChanged: (val) {
                           if (val != null) {
-                            final clsName = _activeClasses.firstWhere(
+                            final cls = _activeClasses.firstWhere(
                               (c) => c['id'].toString() == val,
-                            )['name'];
+                            );
                             setState(() {
                               _selectedClassId = val;
-                              _selectedClassName = clsName;
+                              _selectedClassName = cls['name'];
+
+                              // 🚨 ASYNC CALENDAR RESOLUTION
+                              // Safely forces the locked dropdowns to update to the class's specific term!
+                              _selectedSession =
+                                  cls['override_session'] ?? _globalSession;
+                              _selectedTerm =
+                                  cls['override_term'] ?? _globalTerm;
                             });
                             _fetchSubjectsForClass(val);
                           }

@@ -18,16 +18,22 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
   String? _schoolId;
   String _userRole = 'teacher';
 
+  // 🚨 FIXED: Dynamic Sessions List initialized late
+  late List<String> _sessions;
+  final List<String> _terms = ['1st Term', '2nd Term', '3rd Term'];
   String? _selectedSession;
   String? _selectedTerm;
-  String? _selectedClass;
 
-  final List<String> _sessions = ['2024/2025', '2025/2026', '2026/2027'];
-  final List<String> _terms = ['1st Term', '2nd Term', '3rd Term'];
+  // 🚨 FIXED: Trackers to hold the global defaults for fallback
+  String? _globalSession;
+  String? _globalTerm;
+
+  String? _selectedClass;
   List<String> _activeClasses = [];
 
-  // 🚨 INJECTED: Dictionary map to translate string names to UUIDs
+  // 🚨 INJECTED: Dictionary maps to translate string names to UUIDs and async overrides
   final Map<String, String> _classNameToIdMap = {};
+  final Map<String, Map<String, String?>> _classOverridesMap = {};
 
   List<Map<String, dynamic>> _students = [];
   final Map<String, Map<String, dynamic>> _affectiveData = {};
@@ -35,7 +41,19 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
   @override
   void initState() {
     super.initState();
+    _sessions = _generateDynamicSessions(); // 🚨 Initialize dynamically
     _fetchInitialData();
+  }
+
+  // 🚨 NEW: Generates an infinite rolling window of academic sessions
+  List<String> _generateDynamicSessions() {
+    int currentYear = DateTime.now().year;
+    List<String> list = [];
+    // Generates a scalable window from 2020 into the future dynamically
+    for (int i = 2020; i <= currentYear + 3; i++) {
+      list.add("$i/${i + 1}");
+    }
+    return list;
   }
 
   // 🚨 FIXED: Only the teacher fetch logic was updated to use class_assigned and class_id safely
@@ -58,24 +76,36 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
           .eq('id', _schoolId!)
           .single();
 
+      // 🚨 Store the globals safely (calculates current year fallback just in case)
+      int currentYr = DateTime.now().year;
+      _globalSession =
+          school['current_session'] ?? "$currentYr/${currentYr + 1}";
+      _globalTerm = school['current_term'] ?? _terms[0];
+
       List<String> fetchedClasses = [];
       _classNameToIdMap.clear();
+      _classOverridesMap.clear();
 
-      if (_userRole == 'admin') {
+      if (_userRole == 'admin' || _userRole == 'principal') {
         final classesData = await _supabase
             .from('classes')
-            .select('id, name')
+            .select('id, name, override_session, override_term')
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
         for (var c in classesData) {
-          _classNameToIdMap[c['name'].toString()] = c['id'].toString();
-          fetchedClasses.add(c['name'].toString());
+          String cName = c['name'].toString();
+          _classNameToIdMap[cName] = c['id'].toString();
+          _classOverridesMap[cName] = {
+            'session': c['override_session']?.toString(),
+            'term': c['override_term']?.toString(),
+          };
+          fetchedClasses.add(cName);
         }
       } else {
         // Teacher Logic: Fetch all classes, then filter locally to seamlessly match text or UUIDs
         final classesData = await _supabase
             .from('classes')
-            .select('id, name')
+            .select('id, name, override_session, override_term')
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
 
@@ -98,6 +128,10 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
 
           if (assignedKeys.contains(cId) || assignedKeys.contains(cName)) {
             _classNameToIdMap[cName] = cId;
+            _classOverridesMap[cName] = {
+              'session': c['override_session']?.toString(),
+              'term': c['override_term']?.toString(),
+            };
             fetchedClasses.add(cName);
           }
         }
@@ -106,8 +140,8 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
 
       if (mounted) {
         setState(() {
-          _selectedSession = school['current_session'] ?? _sessions[1];
-          _selectedTerm = school['current_term'] ?? _terms[0];
+          _selectedSession = _globalSession;
+          _selectedTerm = _globalTerm;
           _activeClasses = fetchedClasses;
           _isLoading = false;
         });
@@ -189,7 +223,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
 
   Future<void> _saveAllTraits() async {
     setState(() => _isLoading = true);
-    bool isAdmin = _userRole == 'admin';
+    bool isAdmin = _userRole == 'admin' || _userRole == 'principal';
 
     try {
       for (var student in _students) {
@@ -269,7 +303,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color primaryColor = Theme.of(context).primaryColor;
 
-    bool isAdmin = _userRole == 'admin';
+    bool isAdmin = _userRole == 'admin' || _userRole == 'principal';
 
     // 🚨 SMART TITLE LOGIC
     String clsLower = (_selectedClass ?? "").toLowerCase();
@@ -416,7 +450,16 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
                 _activeClasses,
                 _selectedClass,
                 (val) {
-                  setState(() => _selectedClass = val);
+                  setState(() {
+                    _selectedClass = val;
+                    if (val != null) {
+                      // 🚨 ASYNC CALENDAR RESOLUTION
+                      _selectedSession =
+                          _classOverridesMap[val]?['session'] ?? _globalSession;
+                      _selectedTerm =
+                          _classOverridesMap[val]?['term'] ?? _globalTerm;
+                    }
+                  });
                   _fetchStudentsAndTraits();
                 },
                 isDark,

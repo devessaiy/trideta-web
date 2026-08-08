@@ -20,16 +20,22 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
   String _userRole = 'teacher';
 
   // --- FILTERS ---
+  // 🚨 FIXED: Dynamic Sessions List initialized late
+  late List<String> _sessions;
+  final List<String> _terms = ['1st Term', '2nd Term', '3rd Term'];
   String? _selectedSession;
   String? _selectedTerm;
-  String? _selectedClass;
 
-  final List<String> _sessions = ['2024/2025', '2025/2026', '2026/2027'];
-  final List<String> _terms = ['1st Term', '2nd Term', '3rd Term'];
+  // 🚨 FIXED: Trackers to hold the global defaults for fallback
+  String? _globalSession;
+  String? _globalTerm;
+
+  String? _selectedClass;
   List<String> _activeClasses = [];
 
-  // 🚨 ADDED: Hidden dictionary map to translate string names to UUIDs
+  // 🚨 ADDED: Dictionary maps to translate string names to UUIDs and async overrides
   final Map<String, String> _classNameToIdMap = {};
+  final Map<String, Map<String, String?>> _classOverridesMap = {};
 
   // --- BROADSHEET DATA ---
   List<String> _classSubjects = []; // Grid Columns
@@ -41,14 +47,26 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
   @override
   void initState() {
     super.initState();
+    _sessions = _generateDynamicSessions(); // 🚨 Initialize dynamically
     _fetchInitialData();
+  }
+
+  // 🚨 NEW: Generates an infinite rolling window of academic sessions
+  List<String> _generateDynamicSessions() {
+    int currentYear = DateTime.now().year;
+    List<String> list = [];
+    // Generates a scalable window from 2020 into the future dynamically
+    for (int i = 2020; i <= currentYear + 3; i++) {
+      list.add("$i/${i + 1}");
+    }
+    return list;
   }
 
   // ===========================================================================
   // 1. INITIALIZATION & DATA FETCHING
   // ===========================================================================
 
-  // 🚨 REWRITTEN: Populates the dictionary and the dropdown
+  // 🚨 REWRITTEN: Populates the dictionary, overrides, and the dropdown
   Future<void> _fetchInitialData() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -69,18 +87,30 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
           .eq('id', _schoolId!)
           .single();
 
+      // 🚨 Store the globals safely (calculates current year fallback just in case)
+      int currentYr = DateTime.now().year;
+      _globalSession =
+          school['current_session'] ?? "$currentYr/${currentYr + 1}";
+      _globalTerm = school['current_term'] ?? _terms[0];
+
       List<String> fetchedClasses = [];
       _classNameToIdMap.clear();
+      _classOverridesMap.clear();
 
-      if (_userRole == 'admin') {
+      if (_userRole == 'admin' || _userRole == 'principal') {
         final classesData = await _supabase
             .from('classes')
-            .select('id, name')
+            .select('id, name, override_session, override_term')
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
         for (var c in classesData) {
-          _classNameToIdMap[c['name'].toString()] = c['id'].toString();
-          fetchedClasses.add(c['name'].toString());
+          String cName = c['name'].toString();
+          _classNameToIdMap[cName] = c['id'].toString();
+          _classOverridesMap[cName] = {
+            'session': c['override_session']?.toString(),
+            'term': c['override_term']?.toString(),
+          };
+          fetchedClasses.add(cName);
         }
       } else {
         // Teachers only see classes they are assigned to
@@ -95,11 +125,16 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
         if (uniqueIds.isNotEmpty) {
           final freshClasses = await _supabase
               .from('classes')
-              .select('id, name')
+              .select('id, name, override_session, override_term')
               .inFilter('id', uniqueIds.toList());
           for (var c in freshClasses) {
-            _classNameToIdMap[c['name'].toString()] = c['id'].toString();
-            fetchedClasses.add(c['name'].toString());
+            String cName = c['name'].toString();
+            _classNameToIdMap[cName] = c['id'].toString();
+            _classOverridesMap[cName] = {
+              'session': c['override_session']?.toString(),
+              'term': c['override_term']?.toString(),
+            };
+            fetchedClasses.add(cName);
           }
           fetchedClasses.sort();
         }
@@ -107,8 +142,8 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
 
       if (mounted) {
         setState(() {
-          _selectedSession = school['current_session'] ?? _sessions[1];
-          _selectedTerm = school['current_term'] ?? _terms[0];
+          _selectedSession = _globalSession;
+          _selectedTerm = _globalTerm;
           _activeClasses = fetchedClasses;
           _isLoading = false;
         });
@@ -258,7 +293,7 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
     if (_selectedClass == null || _students.isEmpty) return;
 
     // Admin authorization check
-    if (_userRole != 'admin') {
+    if (_userRole != 'admin' && _userRole != 'principal') {
       showAuthErrorDialog("Only administrators can Compute & Publish results.");
       return;
     }
@@ -421,6 +456,8 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color primaryColor = Theme.of(context).primaryColor;
 
+    bool isAdmin = _userRole == 'admin' || _userRole == 'principal';
+
     // 🚨 MAIN CONTENT EXTRACTED FOR LAYOUT BUILDER
     Widget mainContent = Column(
       children: [
@@ -446,12 +483,15 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
                       "Session",
                       _sessions,
                       _selectedSession,
-                      (val) {
-                        setState(() {
-                          _selectedSession = val;
-                          _students.clear();
-                        });
-                      },
+                      // 🚨 SECURED: Teachers cannot change sessions manually
+                      isAdmin
+                          ? (val) {
+                              setState(() {
+                                _selectedSession = val;
+                                _students.clear();
+                              });
+                            }
+                          : null,
                       isDark,
                       primaryColor,
                     ),
@@ -462,12 +502,15 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
                       "Term",
                       _terms,
                       _selectedTerm,
-                      (val) {
-                        setState(() {
-                          _selectedTerm = val;
-                          _students.clear();
-                        });
-                      },
+                      // 🚨 SECURED: Teachers cannot change terms manually
+                      isAdmin
+                          ? (val) {
+                              setState(() {
+                                _selectedTerm = val;
+                                _students.clear();
+                              });
+                            }
+                          : null,
                       isDark,
                       primaryColor,
                     ),
@@ -480,7 +523,16 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
                 _activeClasses,
                 _selectedClass,
                 (val) {
-                  setState(() => _selectedClass = val);
+                  setState(() {
+                    _selectedClass = val;
+                    if (val != null) {
+                      // 🚨 ASYNC CALENDAR RESOLUTION
+                      _selectedSession =
+                          _classOverridesMap[val]?['session'] ?? _globalSession;
+                      _selectedTerm =
+                          _classOverridesMap[val]?['term'] ?? _globalTerm;
+                    }
+                  });
                   _generateBroadsheet(); // Automatically loads the grid!
                 },
                 isDark,
@@ -512,7 +564,7 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          if (_students.isNotEmpty && _userRole == 'admin')
+          if (_students.isNotEmpty && isAdmin)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: ElevatedButton.icon(
@@ -755,13 +807,16 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
     String hint,
     List<String> items,
     String? value,
-    Function(String?) onChanged,
+    Function(String?)? onChanged,
     bool isDark,
     Color primaryColor,
   ) {
+    bool isLocked = onChanged == null;
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50],
+        color: isLocked
+            ? (isDark ? Colors.white.withValues(alpha: 0.02) : Colors.grey[200])
+            : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50]),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.grey.shade300,
@@ -780,7 +835,11 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
           ),
           icon: Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: Icon(Icons.arrow_drop_down, color: primaryColor),
+            child: Icon(
+              isLocked ? Icons.lock_outline : Icons.arrow_drop_down,
+              color: isLocked ? Colors.grey : primaryColor,
+              size: isLocked ? 16 : 24,
+            ),
           ),
           items: items
               .map(
@@ -790,9 +849,10 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
                     padding: const EdgeInsets.only(left: 12),
                     child: Text(
                       e,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
+                        color: isLocked ? Colors.grey : null,
                       ),
                     ),
                   ),

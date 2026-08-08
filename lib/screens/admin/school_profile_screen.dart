@@ -27,6 +27,8 @@ class _SchoolProfileScreenState extends State<SchoolProfileScreen>
   // Form Controllers
   final _nameController = TextEditingController();
   final _addressController = TextEditingController();
+  final _emailController = TextEditingController(); // 🚨 NEW
+  final _phoneController = TextEditingController(); // 🚨 NEW
 
   // Image Data
   String? _currentLogoUrl;
@@ -37,6 +39,16 @@ class _SchoolProfileScreenState extends State<SchoolProfileScreen>
   void initState() {
     super.initState();
     _fetchSchoolProfile();
+  }
+
+  @override
+  void dispose() {
+    // 🚨 Added dispose to prevent memory leaks with the new controllers
+    _nameController.dispose();
+    _addressController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    super.dispose();
   }
 
   // --- 1. FETCH EXACT DATA USED BY HOME SCREEN ---
@@ -53,7 +65,9 @@ class _SchoolProfileScreenState extends State<SchoolProfileScreen>
 
         final school = await _supabase
             .from('schools')
-            .select('name, address, logo_url')
+            .select(
+              'name, address, contact_email, contact_phone, logo_url',
+            ) // 🚨 NEW: Added email & phone
             .eq('id', _schoolId!)
             .single();
 
@@ -61,6 +75,8 @@ class _SchoolProfileScreenState extends State<SchoolProfileScreen>
           setState(() {
             _nameController.text = school['name'] ?? '';
             _addressController.text = school['address'] ?? '';
+            _emailController.text = school['contact_email'] ?? ''; // 🚨 NEW
+            _phoneController.text = school['contact_phone'] ?? ''; // 🚨 NEW
             _currentLogoUrl = school['logo_url'];
             _isLoading = false;
           });
@@ -145,6 +161,8 @@ class _SchoolProfileScreenState extends State<SchoolProfileScreen>
           .update({
             'name': _nameController.text.trim(),
             'address': _addressController.text.trim(),
+            'contact_email': _emailController.text.trim(), // 🚨 NEW
+            'contact_phone': _phoneController.text.trim(), // 🚨 NEW
             'logo_url': finalLogoUrl,
           })
           .eq('id', _schoolId!);
@@ -292,6 +310,32 @@ class _SchoolProfileScreenState extends State<SchoolProfileScreen>
                   const SizedBox(height: 20),
 
                   _buildSectionLabel("CONTACT & LOCATION", isDark, tridetaBlue),
+                  // 🚨 NEW: Official Email Field
+                  TextField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: _inputStyle(
+                      "Official Email",
+                      Icons.email_rounded,
+                      isDark,
+                      tridetaBlue,
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+
+                  // 🚨 NEW: Contact Phone Field
+                  TextField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    decoration: _inputStyle(
+                      "Contact Phone",
+                      Icons.phone_rounded,
+                      isDark,
+                      tridetaBlue,
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+
                   TextField(
                     controller: _addressController,
                     maxLines: 3,

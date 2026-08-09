@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
-import 'package:trideta_v2/screens/auth/password_recovery_screens.dart';
+import 'package:trideta_v2/screens/auth/password_recovery_screen.dart';
 
 class PasswordEntryStep extends StatefulWidget {
   final TextEditingController passwordController;

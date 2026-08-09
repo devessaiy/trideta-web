@@ -152,7 +152,7 @@ class _BootSplashScreenState extends State<BootSplashScreen>
     if (mounted) {
       Widget nextScreen = shouldShowOnboarding
           ? const OnboardingScreen()
-          : (kIsWeb ? LoginScreen() : const LoginScreen());
+          : (kIsWeb ? const LoginScreen() : const LoginScreen());
 
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
@@ -208,14 +208,10 @@ class _BootSplashScreenState extends State<BootSplashScreen>
                       ],
                     ),
                     child: ClipOval(
-                      child: Padding(
-                        padding: const EdgeInsets.all(18.0),
-                        // Fallback removed to force actual asset usage.
-                        // Make sure assets/icon/ is in pubspec.yaml!
-                        child: Image.asset(
-                          'assets/icon/app_icon.png',
-                          fit: BoxFit.contain,
-                        ),
+                      // 🚨 FIX 1: Padding removed & BoxFit.cover applied to fill the circle perfectly
+                      child: Image.asset(
+                        'assets/icon/app_icon.png',
+                        fit: BoxFit.cover,
                       ),
                     ),
                   ),

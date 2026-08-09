@@ -18,6 +18,10 @@ import 'package:trideta_v2/screens/shared/setup_wizard.dart';
 import 'package:trideta_v2/main.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+// 🚨 IMPORTED REGISTRATION & RECOVERY SCREENS
+import 'package:trideta_v2/screens/auth/school_registration_screen.dart';
+import 'package:trideta_v2/screens/auth/password_recovery_screen.dart';
+
 // --- MODULAR UI IMPORTS ---
 import 'package:trideta_v2/screens/auth/components/login_branding_panel.dart';
 
@@ -31,7 +35,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   bool _isLoading = false;
   bool _canCheckBiometrics = false;
   int _currentStep = 0; // 0 = Email Step, 1 = Password Step
-  bool _obscurePassword = true; // Added for the new UI password toggle
+  bool _obscurePassword = true;
 
   final _authService = AuthService();
   final _biometricService = BiometricService();
@@ -160,7 +164,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   }
 
   // ============================================================================
-  // 🔐 AUTHENTICATION LOGIC (UNTOUCHED)
+  // 🔐 AUTHENTICATION LOGIC
   // ============================================================================
   Future<void> _checkBiometrics() async {
     bool canCheck = await _biometricService.isBiometricAvailable();
@@ -168,38 +172,45 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   }
 
   Future<void> _loginWithGoogle() async {
-    setState(() => _isLoading = true);
-    try {
-      if (kIsWeb) {
-        await _supabase.auth.signInWithOAuth(OAuthProvider.google);
-        return;
-      }
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color primaryColor = Theme.of(context).primaryColor;
 
-      const webClientId =
-          '141687394764-9fm23jupir4196b7h5ku0dvnullt7suu.apps.googleusercontent.com';
-
-      await GoogleSignIn.instance.initialize(serverClientId: webClientId);
-      final googleUser = await GoogleSignIn.instance.authenticate();
-      final googleAuth = googleUser.authentication;
-      final idToken = googleAuth.idToken;
-
-      if (idToken == null) {
-        throw 'Missing Google Auth Token. Please try again.';
-      }
-
-      await _supabase.auth.signInWithIdToken(
-        provider: OAuthProvider.google,
-        idToken: idToken,
-      );
-
-      await _checkAndNavigate();
-    } catch (e) {
-      if (mounted) {
-        showAuthErrorDialog("Google Sign-In Failed.\n\nError: $e");
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Row(
+          children: [
+            Icon(Icons.info_outline, color: primaryColor),
+            const SizedBox(width: 10),
+            Text(
+              "Coming Soon",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          "Google Sign-In integration is currently in progress. Please use your Login ID and password to sign in for now.",
+          style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              "Got it",
+              style: TextStyle(
+                color: primaryColor,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _handleLogin() async {
@@ -371,7 +382,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   }
 
   // ============================================================================
-  // 🧭 ROUTING LOGIC (UNTOUCHED)
+  // 🧭 ROUTING LOGIC
   // ============================================================================
   Future<void> _checkAndNavigate() async {
     try {
@@ -651,7 +662,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   }
 
   // ============================================================================
-  // 🖼️ NEW UI BUILDER (MATCHING THE SCREENSHOT)
+  // 🖼️ NEW UI BUILDER
   // ============================================================================
   @override
   Widget build(BuildContext context) {
@@ -828,6 +839,42 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
     );
   }
 
+  // Helper widget to handle the clickable Sign Up text block
+  Widget _buildSignUpText(bool isDark, Color primaryColor) {
+    return Center(
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        children: [
+          Text(
+            "Don't have an account? ",
+            style: TextStyle(
+              color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
+              fontSize: 13,
+            ),
+          ),
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const SchoolRegistrationScreen(),
+                ),
+              );
+            },
+            child: Text(
+              "Sign up here!",
+              style: TextStyle(
+                color: primaryColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // --- STEP 1: EMAIL ENTRY UI ---
   Widget _buildEmailStepUI(bool isDark, Color primaryColor) {
     Color borderColor = isDark ? Colors.white24 : const Color(0xFFE5E7EB);
@@ -929,7 +976,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
         ),
         const SizedBox(height: 24),
 
-        // 🚨 GOOGLE & BIOMETRICS (Preserved Logic in a clean row)
+        // 🚨 GOOGLE & BIOMETRICS
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -954,26 +1001,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
         ),
         const SizedBox(height: 24),
 
-        Center(
-          child: RichText(
-            text: TextSpan(
-              text: "Dont have an account? ",
-              style: TextStyle(
-                color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
-                fontSize: 13,
-              ),
-              children: [
-                TextSpan(
-                  text: "Sign up here!",
-                  style: TextStyle(
-                    color: primaryColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        _buildSignUpText(isDark, primaryColor),
       ],
     );
   }
@@ -1070,10 +1098,20 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
         ),
         const SizedBox(height: 12),
 
+        // 🚨 ADDED NAVIGATOR FOR PASSWORD RECOVERY
         Align(
           alignment: Alignment.centerRight,
           child: TextButton(
-            onPressed: () {}, // Add reset password logic if needed
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ForgotPasswordScreen(
+                    initialEmail: _emailController.text.trim(),
+                  ),
+                ),
+              );
+            },
             style: TextButton.styleFrom(
               padding: EdgeInsets.zero,
               minimumSize: const Size(50, 30),
@@ -1145,26 +1183,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
         ),
         const SizedBox(height: 24),
 
-        Center(
-          child: RichText(
-            text: TextSpan(
-              text: "Dont have an account? ",
-              style: TextStyle(
-                color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
-                fontSize: 13,
-              ),
-              children: [
-                TextSpan(
-                  text: "Sign up here!",
-                  style: TextStyle(
-                    color: primaryColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        _buildSignUpText(isDark, primaryColor),
       ],
     );
   }

@@ -21,7 +21,6 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
   bool _isLoading = true;
   bool _hasFees = false;
   String? _schoolId;
-  String _currentSession = "";
 
   final _searchController = TextEditingController();
   List<Map<String, dynamic>> _searchResults = [];
@@ -32,7 +31,6 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
   List<Map<String, dynamic>> _allFeeRules = [];
   List<Map<String, dynamic>> _availableFeeOptions = [];
 
-  // 🚨 NEW: State to hold active classes for the Browse Grid
   List<Map<String, dynamic>> _activeClasses = [];
 
   String? _selectedCategory;
@@ -46,7 +44,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
   }
 
   // ===========================================================================
-  // 🚨 LOGIC ENGINE: STRICTLY UNTOUCHED (Only added lightweight class fetch)
+  // 🚨 ASYNCHRONOUS LOGIC ENGINE
   // ===========================================================================
   Future<void> _initializeData() async {
     try {
@@ -60,29 +58,13 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
           .single();
       _schoolId = profile['school_id'];
 
-      // Fetch School Session
-      final schoolData = await _supabase
-          .from('schools')
-          .select('current_session')
-          .eq('id', _schoolId!)
-          .single();
-      _currentSession = schoolData['current_session'] ?? "";
-
-      // Fetch ALL Fee Structures
+      // 🚨 FIXED: Fetch ALL fees without filtering by global session, because classes are now asynchronous
       final rawFeeData = await _supabase
           .from('fee_structures')
           .select()
           .eq('school_id', _schoolId!);
 
-      List<Map<String, dynamic>> validFees = [];
-      for (var fee in rawFeeData) {
-        String feeSession = (fee['academic_session'] ?? '').toString();
-        if (feeSession == _currentSession || feeSession.isEmpty) {
-          validFees.add(fee);
-        }
-      }
-
-      // 🚨 NEW: Fetch active classes to populate the Browse Grid
+      // Fetch active classes to populate the Browse Grid
       final classesData = await _supabase
           .from('classes')
           .select('id, name')
@@ -92,10 +74,8 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
       if (mounted) {
         setState(() {
           _activeClasses = List<Map<String, dynamic>>.from(classesData);
-          _hasFees = validFees.isNotEmpty;
-          if (_hasFees) {
-            _allFeeRules = validFees;
-          }
+          _allFeeRules = List<Map<String, dynamic>>.from(rawFeeData);
+          _hasFees = _allFeeRules.isNotEmpty;
           _isLoading = false;
         });
       }
@@ -120,11 +100,12 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
     }
   }
 
+  // 🚨 SMART SYNC: Calculates Arrears & Current Term Fees
   Future<void> _syncStudentFinancials(Map<String, dynamic> student) async {
     try {
       final studentData = await _supabase
           .from('students')
-          .select('class_level, class_id, category')
+          .select('class_level, class_id, category, wallet_balance')
           .eq('id', student['id'])
           .single();
 
@@ -132,39 +113,76 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
       String sClassId = (studentData['class_id'] ?? '').toString();
       String sCategory = (studentData['category'] ?? '').toString();
 
+      // 🚨 Fetch the Perpetual Wallet Balance
+      double walletBalance = (studentData['wallet_balance'] ?? 0).toDouble();
+
+      // 🚨 Fetch this exact student's Asynchronous Class Session & Term
+      final classData = await _supabase
+          .from('classes')
+          .select('current_session, current_term')
+          .eq('id', sClassId)
+          .maybeSingle();
+
+      String currentClassSession = classData?['current_session'] ?? "2025/2026";
+      String currentClassTerm = classData?['current_term'] ?? "1st Term";
+
       List<Map<String, dynamic>> applicableFees = [];
       for (var rule in _allFeeRules) {
-        bool classMatch = false;
-        final List<dynamic>? classIdsList = rule['applicable_class_ids'];
+        // 🚨 Verify the fee belongs to the student's CURRENT Session & Term
+        String ruleSession = (rule['academic_session'] ?? '').toString();
+        String ruleTerm = (rule['academic_term'] ?? 'All Terms').toString();
 
-        if (classIdsList != null &&
-            classIdsList.isNotEmpty &&
-            sClassId.isNotEmpty) {
-          classMatch = classIdsList.contains(sClassId);
-        } else {
-          classMatch = _doesItApply(rule['applicable_classes'], sClass);
-        }
+        if (ruleSession == currentClassSession &&
+            (ruleTerm == currentClassTerm || ruleTerm == 'All Terms')) {
+          bool classMatch = false;
+          final List<dynamic>? classIdsList = rule['applicable_class_ids'];
 
-        bool categoryMatch = _doesItApply(
-          rule['applicable_categories'],
-          sCategory,
-          isCategory: true,
-        );
+          if (classIdsList != null &&
+              classIdsList.isNotEmpty &&
+              sClassId.isNotEmpty) {
+            classMatch = classIdsList.contains(sClassId);
+          } else {
+            classMatch = _doesItApply(rule['applicable_classes'], sClass);
+          }
 
-        if (classMatch && categoryMatch) {
-          applicableFees.add(rule);
+          bool categoryMatch = _doesItApply(
+            rule['applicable_categories'],
+            sCategory,
+            isCategory: true,
+          );
+
+          if (classMatch && categoryMatch) {
+            applicableFees.add(rule);
+          }
         }
       }
 
+      // 🚨 Fetch transactions only for their current Session & Term
       final txData = await _supabase
           .from('transactions')
-          .select('category, amount, academic_session, fee_id')
+          .select('category, amount, academic_session, academic_term, fee_id')
           .eq('student_id', student['id'])
+          .eq('academic_session', currentClassSession)
           .eq('school_id', _schoolId!);
 
       List<Map<String, dynamic>> options = [];
       double totalDebt = 0.0;
 
+      // 🚨 INJECT PAST ARREARS (If Wallet is Negative)
+      if (walletBalance < 0) {
+        double arrearsOwed = walletBalance
+            .abs(); // Convert negative debt to positive number for display
+        options.add({
+          'fee_id': 'arrears',
+          'name': 'Past Arrears',
+          'display': 'Past Arrears (Owes ₦${arrearsOwed.toStringAsFixed(0)})',
+          'remaining': arrearsOwed,
+          'is_arrears': true,
+        });
+        totalDebt += arrearsOwed;
+      }
+
+      // Calculate Current Term Fees
       for (var fee in applicableFees) {
         String feeId = fee['id'].toString();
         String feeName = fee['fee_name'].toString();
@@ -172,9 +190,11 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
 
         double paidAmt = 0.0;
         for (var tx in txData) {
-          String txSession = (tx['academic_session'] ?? '').toString();
+          String txTerm = (tx['academic_term'] ?? 'All Terms').toString();
 
-          if (txSession == _currentSession || txSession.isEmpty) {
+          if (txTerm == currentClassTerm ||
+              txTerm == 'All Terms' ||
+              currentClassTerm == 'All Terms') {
             String txFeeId = (tx['fee_id'] ?? '').toString();
             String txCategory = (tx['category'] ?? '').toString();
 
@@ -194,6 +214,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
             'name': feeName,
             'display': '$feeName (Owes ₦${remaining.toStringAsFixed(0)})',
             'remaining': remaining,
+            'is_arrears': false,
           });
           totalDebt += remaining;
         }
@@ -241,19 +262,18 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
         (cleanStudentData.isEmpty || cleanStudentData == 'notfound')) {
       cleanStudentData = 'regular';
     }
-    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound') {
+    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound')
       return false;
-    }
     if (columnData == null) return true;
+
     String colStr = isCategory
         ? columnData.toString().replaceAll(' ', '').toLowerCase()
         : _standardizeClass(columnData.toString());
     if (colStr.isEmpty ||
         colStr == 'all' ||
         colStr == '[]' ||
-        colStr == '["all"]') {
+        colStr == '["all"]')
       return true;
-    }
 
     if (columnData is List) {
       if (columnData.isEmpty) return true;
@@ -316,6 +336,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
     });
   }
 
+  // 🚨 SMART TRANSACTION PROCESSOR
   Future<void> _processPayment() async {
     if (_selectedStudent == null ||
         _selectedCategory == null ||
@@ -332,10 +353,22 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
     final selectedFeeOption = _availableFeeOptions.firstWhere(
       (opt) => opt['name'] == _selectedCategory,
     );
-    String targetFeeId = selectedFeeOption['fee_id'];
+    bool isArrears = selectedFeeOption['is_arrears'] ?? false;
+    String? targetFeeId = isArrears ? null : selectedFeeOption['fee_id'];
 
     setState(() => _isProcessing = true);
     try {
+      // Fetch the class's exact Async Session & Term to log the receipt properly
+      final classData = await _supabase
+          .from('classes')
+          .select('current_session, current_term')
+          .eq('id', _selectedStudent!['class_id'] ?? '')
+          .maybeSingle();
+
+      String txSession = classData?['current_session'] ?? "2025/2026";
+      String txTerm = classData?['current_term'] ?? "1st Term";
+
+      // 1. Create the Transaction Ledger Entry
       final txnData = await _supabase
           .from('transactions')
           .insert({
@@ -348,12 +381,31 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
             'category': _selectedCategory,
             'title': _selectedCategory,
             'payment_method': _paymentMethod,
-            'academic_session': _currentSession,
+            'academic_session': txSession,
+            'academic_term': txTerm, // 🚨 Logs term!
             'receipt_no':
                 "REC-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}",
           })
           .select()
           .single();
+
+      // 🚨 2. SMART WALLET CLEARING (Only if paying Past Arrears)
+      if (isArrears) {
+        final studentData = await _supabase
+            .from('students')
+            .select('wallet_balance')
+            .eq('id', _selectedStudent!['id'])
+            .single();
+        double currentBalance = (studentData['wallet_balance'] ?? 0).toDouble();
+
+        // Add the payment to their wallet to clear the negative debt
+        double newBalance = currentBalance + inputAmount;
+
+        await _supabase
+            .from('students')
+            .update({'wallet_balance': newBalance})
+            .eq('id', _selectedStudent!['id']);
+      }
 
       if (mounted) {
         Navigator.pushReplacement(
@@ -839,7 +891,6 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    // 🚨 NEW: Quick Change Button
                     InkWell(
                       onTap: _clearSelectedStudent,
                       child: Container(
@@ -936,7 +987,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
 }
 
 // ============================================================================
-// 🚨 NEW: CLASS ROSTER BOTTOM SHEET
+// 🚨 CLASS ROSTER BOTTOM SHEET
 // ============================================================================
 class _ClassRosterSheet extends StatefulWidget {
   final Map<String, dynamic> schoolClass;

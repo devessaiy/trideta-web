@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 
 // --- AUTH & SERVICES ---
 import 'package:trideta_v2/services/auth_service.dart';
@@ -16,7 +15,6 @@ import 'package:trideta_v2/screens/admin/finance_dashboard_screen.dart';
 import 'package:trideta_v2/screens/super_admin/trideta_owner_dashboard.dart';
 import 'package:trideta_v2/screens/shared/setup_wizard.dart';
 import 'package:trideta_v2/main.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 // 🚨 IMPORTED REGISTRATION & RECOVERY SCREENS
 import 'package:trideta_v2/screens/auth/school_registration_screen.dart';

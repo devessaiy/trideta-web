@@ -15,15 +15,16 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
   final _supabase = Supabase.instance.client;
 
   String? _schoolId;
-  final List<String> _schoolClasses = [];
 
-  // 🚨 UNTOUCHED: Map to link class names to their UUIDs
-  final Map<String, String> _classNameToIdMap = {};
+  // 🚨 NEW: Stores the complete class data with their asynchronous calendars
+  List<Map<String, dynamic>> _schoolClassesData = [];
 
   bool _isLoading = true;
-
-  // 🚨 UNTOUCHED: RBAC TRACKER
   String _userRole = 'bursar';
+
+  // Anti-Clutter Dashboard Filters
+  String _filterSession = "2025/2026";
+  String _filterTerm = "1st Term";
 
   @override
   void initState() {
@@ -31,9 +32,16 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
     _loadSchoolConfiguration();
   }
 
-  // ===========================================================================
-  // 🚨 LOGIC ENGINE: STRICTLY UNTOUCHED
-  // ===========================================================================
+  // 🚨 INFINITE SESSION GENERATOR
+  List<String> _generateDynamicSessions() {
+    int currentYear = DateTime.now().year;
+    List<String> sessions = [];
+    for (int y = 2023; y <= currentYear + 2; y++) {
+      sessions.add("$y/${y + 1}");
+    }
+    return sessions;
+  }
+
   Future<void> _loadSchoolConfiguration() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -49,23 +57,48 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
       _userRole = profile['role']?.toString().toLowerCase() ?? 'bursar';
 
       if (_schoolId != null) {
+        // Fetch global fallback
+        final schoolData = await _supabase
+            .from('schools')
+            .select('current_session, current_term')
+            .eq('id', _schoolId!)
+            .maybeSingle();
+
+        String globalSession = "2025/2026";
+        String globalTerm = "1st Term";
+
+        if (schoolData != null) {
+          globalSession = schoolData['current_session'] ?? "2025/2026";
+          globalTerm = schoolData['current_term'] ?? "1st Term";
+
+          _filterSession = globalSession;
+          _filterTerm = globalTerm;
+
+          final dynamicSessions = _generateDynamicSessions();
+          if (!dynamicSessions.contains(_filterSession)) {
+            _filterSession = dynamicSessions.last;
+          }
+        }
+
+        // Fetch classes and their asynchronous overrides
         final classesData = await _supabase
             .from('classes')
-            .select('id, name')
+            .select('id, name, override_session, override_term')
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
 
         if (mounted) {
           setState(() {
-            _schoolClasses.clear();
-            _classNameToIdMap.clear();
-
-            for (var c in classesData) {
-              String name = c['name'].toString();
-              String id = c['id'].toString();
-              _schoolClasses.add(name);
-              _classNameToIdMap[name] = id;
-            }
+            _schoolClassesData = List<Map<String, dynamic>>.from(classesData)
+                .map((c) {
+                  return {
+                    'id': c['id'].toString(),
+                    'name': c['name'].toString(),
+                    'current_session': c['override_session'] ?? globalSession,
+                    'current_term': c['override_term'] ?? globalTerm,
+                  };
+                })
+                .toList();
 
             _isLoading = false;
           });
@@ -80,87 +113,165 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
     await _loadSchoolConfiguration();
   }
 
+  // ===========================================================================
+  // 🚨 SMART DELETION & REFUND ENGINE
+  // ===========================================================================
   Future<void> _deleteFee(String id, String feeName) async {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
 
-    bool confirm =
-        await showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: cardColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
+    // 0 = Cancel, 1 = Force Delete, 2 = Refund & Delete
+    int? action = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            SizedBox(width: 10),
+            Text(
+              "Resolve & Delete Fee",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
-            title: const Row(
-              children: [
-                Icon(Icons.delete_sweep_rounded, color: Colors.redAccent),
-                SizedBox(width: 10),
-                Text(
-                  "Remove Fee?",
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            content: Text(
-              "Are you sure you want to remove '$feeName'? This will stop billing new students for this item.",
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "You are about to delete '$feeName'. How would you like to handle students who have already paid this fee?",
               style: TextStyle(
                 color: isDark ? Colors.white70 : Colors.black87,
                 height: 1.4,
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text(
-                  "CANCEL",
-                  style: TextStyle(
-                    color: Colors.grey,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.redAccent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text(
-                  "DELETE",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+            const SizedBox(height: 20),
 
-    if (!confirm) return;
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.account_balance_wallet_rounded,
+                  color: Colors.green,
+                ),
+              ),
+              title: const Text(
+                "Refund to Wallets",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: const Text(
+                "Credit the paid amount to the students' perpetual wallets (clears debt or saves for future fees).",
+                style: TextStyle(fontSize: 12),
+              ),
+              onTap: () => Navigator.pop(ctx, 2),
+            ),
+            const Divider(),
+
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.delete_forever_rounded,
+                  color: Colors.redAccent,
+                ),
+              ),
+              title: const Text(
+                "Force Delete (No Refund)",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: const Text(
+                "Delete the fee and erase all linked payment records. No money is refunded.",
+                style: TextStyle(fontSize: 12),
+              ),
+              onTap: () => Navigator.pop(ctx, 1),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 0),
+            child: const Text(
+              "CANCEL",
+              style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (action == null || action == 0) return;
+
+    setState(() => _isLoading = true);
 
     try {
+      if (action == 2) {
+        // 🚨 REFUND LOGIC
+        final txs = await _supabase
+            .from('transactions')
+            .select('student_id, amount')
+            .eq('fee_id', id);
+
+        if (txs.isNotEmpty) {
+          Map<String, double> refunds = {};
+          for (var tx in txs) {
+            String sId = tx['student_id'].toString();
+            double amt = (tx['amount'] ?? 0).toDouble();
+            refunds[sId] = (refunds[sId] ?? 0) + amt;
+          }
+
+          for (String sId in refunds.keys) {
+            final student = await _supabase
+                .from('students')
+                .select('wallet_balance')
+                .eq('id', sId)
+                .single();
+            double currentBalance = (student['wallet_balance'] ?? 0).toDouble();
+            double newBalance = currentBalance + refunds[sId]!;
+            await _supabase
+                .from('students')
+                .update({'wallet_balance': newBalance})
+                .eq('id', sId);
+          }
+        }
+      }
+
+      // Delete linked transactions to clear database constraints
+      await _supabase.from('transactions').delete().eq('fee_id', id);
       await _supabase.from('fee_structures').delete().eq('id', id);
+
       if (mounted) {
         showSuccessDialog(
           "Fee Removed",
-          "The fee rule '$feeName' has been deleted.",
+          action == 2
+              ? "'$feeName' has been deleted and payments were safely credited to the students' wallets."
+              : "'$feeName' has been force-deleted without refunds.",
         );
       }
     } catch (e) {
-      showAuthErrorDialog(
-        "Could not delete fee. It might be linked to existing transactions.",
-      );
+      if (mounted) {
+        showAuthErrorDialog(
+          "An error occurred while deleting the fee. Please try again.",
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
-  // ===========================================================================
-  // 🚨 PREMIUM UI (REFINED)
-  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -169,6 +280,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
     Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
     Color primaryColor = Theme.of(context).primaryColor;
 
+    // 🚨 RBAC ENFORCEMENT
     bool isAdmin = _userRole == 'admin';
 
     Widget mainContent = _isLoading
@@ -176,48 +288,157 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
         : RefreshIndicator(
             onRefresh: _handleRefresh,
             color: primaryColor,
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _supabase
-                  .from('fee_structures')
-                  .stream(primaryKey: ['id'])
-                  .eq('school_id', _schoolId!),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return const Center(child: Text("Connection error."));
-                }
-                if (!snapshot.hasData) {
-                  return Center(child: TridetaLoader(color: primaryColor));
-                }
-
-                final fees = snapshot.data!;
-
-                if (fees.isEmpty) {
-                  return ListView(
-                    children: [
-                      SizedBox(
-                        height: MediaQuery.of(context).size.height * 0.3,
-                      ),
-                      _buildEmptyState(isDark),
-                    ],
-                  );
-                }
-
-                return ListView.builder(
+            child: Column(
+              children: [
+                // Dashboard Filter Strip
+                Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 24,
-                    vertical: 20,
+                    vertical: 16,
                   ),
-                  itemCount: fees.length,
-                  itemBuilder: (context, index) => _buildFeeRuleCard(
-                    fees[index],
-                    cardColor,
-                    textColor,
-                    isDark,
-                    primaryColor,
-                    isAdmin,
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    border: Border(
+                      bottom: BorderSide(
+                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                      ),
+                    ),
                   ),
-                );
-              },
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _filterSession,
+                          dropdownColor: cardColor,
+                          decoration: InputDecoration(
+                            labelText: "Session",
+                            labelStyle: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade500,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          items: _generateDynamicSessions()
+                              .map(
+                                (e) => DropdownMenuItem(
+                                  value: e,
+                                  child: Text(
+                                    e,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (val) =>
+                              setState(() => _filterSession = val!),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _filterTerm,
+                          dropdownColor: cardColor,
+                          decoration: InputDecoration(
+                            labelText: "Term",
+                            labelStyle: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade500,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          items:
+                              ["1st Term", "2nd Term", "3rd Term", "All Terms"]
+                                  .map(
+                                    (e) => DropdownMenuItem(
+                                      value: e,
+                                      child: Text(
+                                        e,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged: (val) =>
+                              setState(() => _filterTerm = val!),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Streamed List
+                Expanded(
+                  child: StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: _filterTerm == "All Terms"
+                        ? _supabase
+                              .from('fee_structures')
+                              .stream(primaryKey: ['id'])
+                              .eq('school_id', _schoolId!)
+                              .eq('academic_session', _filterSession)
+                        : _supabase
+                              .from('fee_structures')
+                              .stream(primaryKey: ['id'])
+                              .eq('school_id', _schoolId!)
+                              .eq('academic_session', _filterSession)
+                              .eq('academic_term', _filterTerm),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError)
+                        return const Center(child: Text("Connection error."));
+                      if (!snapshot.hasData)
+                        return Center(
+                          child: TridetaLoader(color: primaryColor),
+                        );
+
+                      final fees = snapshot.data!;
+
+                      if (fees.isEmpty) {
+                        return ListView(
+                          children: [
+                            SizedBox(
+                              height: MediaQuery.of(context).size.height * 0.2,
+                            ),
+                            _buildEmptyState(isDark),
+                          ],
+                        );
+                      }
+
+                      return ListView.builder(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 20,
+                        ),
+                        itemCount: fees.length,
+                        itemBuilder: (context, index) => _buildFeeRuleCard(
+                          fees[index],
+                          cardColor,
+                          textColor,
+                          isDark,
+                          primaryColor,
+                          isAdmin,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           );
 
@@ -228,8 +449,8 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
           isAdmin ? "Manage Fee Structure" : "View Fee Structure",
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        backgroundColor: bgColor, // 🚨 FIXED: Now matches the flat background
-        foregroundColor: textColor, // 🚨 FIXED: Adapts to dark/light mode
+        backgroundColor: bgColor,
+        foregroundColor: textColor,
         elevation: 0,
         centerTitle: true,
       ),
@@ -281,7 +502,6 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
     );
   }
 
-  // 🚨 REDESIGNED ULTRA-PREMIUM CARD
   Widget _buildFeeRuleCard(
     Map<String, dynamic> rule,
     Color cardColor,
@@ -290,6 +510,9 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
     Color primaryColor,
     bool isAdmin,
   ) {
+    String displaySession = rule['academic_session'] ?? 'Unknown Session';
+    String displayTerm = rule['academic_term'] ?? 'All Terms';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
@@ -310,7 +533,6 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top Section: Title & Amount
           Padding(
             padding: const EdgeInsets.all(20),
             child: Row(
@@ -352,7 +574,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            rule['academic_session'] ?? 'All Sessions',
+                            "$displaySession • $displayTerm",
                             style: TextStyle(
                               color: Colors.grey.shade600,
                               fontSize: 12,
@@ -364,7 +586,6 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                     ],
                   ),
                 ),
-                // Premium Amount Badge
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 14,
@@ -395,7 +616,6 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
             color: isDark ? Colors.white10 : Colors.grey.shade100,
           ),
 
-          // Bottom Section: Demographics & Actions
           Padding(
             padding: const EdgeInsets.all(20),
             child: Row(
@@ -530,8 +750,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
       constraints: const BoxConstraints(maxWidth: 600),
       builder: (context) => AddFeeForm(
         schoolId: _schoolId!,
-        availableClasses: _schoolClasses,
-        classNameToIdMap: _classNameToIdMap,
+        schoolClassesData: _schoolClassesData,
         primaryColor: primaryColor,
         initialData: initialData,
         onSuccess: (name, isEdit) {
@@ -567,7 +786,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
           ),
           const SizedBox(height: 20),
           const Text(
-            "No fee rules defined yet.",
+            "No fee rules found for this Term.",
             style: TextStyle(
               color: Colors.grey,
               fontSize: 16,
@@ -581,13 +800,11 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
 }
 
 // ============================================================================
-// 🚨 ADD/EDIT FEE FORM (POLISHED)
+// 🚨 ADD/EDIT FEE FORM (WITH REVERSE LOCK UI)
 // ============================================================================
-
 class AddFeeForm extends StatefulWidget {
   final String schoolId;
-  final List<String> availableClasses;
-  final Map<String, String> classNameToIdMap;
+  final List<Map<String, dynamic>> schoolClassesData;
   final Function(String, bool) onSuccess;
   final Color primaryColor;
   final Map<String, dynamic>? initialData;
@@ -595,8 +812,7 @@ class AddFeeForm extends StatefulWidget {
   const AddFeeForm({
     super.key,
     required this.schoolId,
-    required this.availableClasses,
-    required this.classNameToIdMap,
+    required this.schoolClassesData,
     required this.onSuccess,
     required this.primaryColor,
     this.initialData,
@@ -623,6 +839,7 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
   List<String> _selectedCategories = [];
 
   String _selectedSession = "2025/2026";
+  String _selectedTerm = "1st Term";
   bool _isSaving = false;
 
   @override
@@ -632,6 +849,12 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
       _titleController.text = widget.initialData!['fee_name'] ?? '';
       _amountController.text = widget.initialData!['amount']?.toString() ?? '';
       _selectedSession = widget.initialData!['academic_session'] ?? '2025/2026';
+      _selectedTerm = widget.initialData!['academic_term'] ?? '1st Term';
+
+      final dynamicSessions = _generateDynamicSessions();
+      if (!dynamicSessions.contains(_selectedSession)) {
+        _selectedSession = dynamicSessions.last;
+      }
 
       List<dynamic> initialClasses =
           widget.initialData!['applicable_classes'] ?? [];
@@ -640,10 +863,24 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
       List<dynamic> initialCats =
           widget.initialData!['applicable_categories'] ?? [];
       _selectedCategories = initialCats.map((e) => e.toString()).toList();
+    } else {
+      // Set defaults based on the first class's fallback (global session) if available
+      if (widget.schoolClassesData.isNotEmpty) {
+        _selectedSession = widget.schoolClassesData.first['current_session'];
+        _selectedTerm = widget.schoolClassesData.first['current_term'];
+      }
     }
   }
 
-  // 🚨 LOGIC UNTOUCHED
+  List<String> _generateDynamicSessions() {
+    int currentYear = DateTime.now().year;
+    List<String> sessions = [];
+    for (int y = 2023; y <= currentYear + 2; y++) {
+      sessions.add("$y/${y + 1}");
+    }
+    return sessions;
+  }
+
   Future<void> _saveFeeRule() async {
     if (_titleController.text.isEmpty ||
         _amountController.text.isEmpty ||
@@ -660,8 +897,12 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
 
       List<String> applicableClassIds = [];
       for (String cName in _selectedClasses) {
-        if (widget.classNameToIdMap.containsKey(cName)) {
-          applicableClassIds.add(widget.classNameToIdMap[cName]!);
+        final cData = widget.schoolClassesData.firstWhere(
+          (c) => c['name'] == cName,
+          orElse: () => {},
+        );
+        if (cData.isNotEmpty && cData['id'] != null) {
+          applicableClassIds.add(cData['id']);
         }
       }
 
@@ -673,6 +914,7 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
         'applicable_class_ids': applicableClassIds,
         'applicable_categories': _selectedCategories,
         'academic_session': _selectedSession,
+        'academic_term': _selectedTerm,
         'class_level': _selectedClasses.join(', '),
       };
 
@@ -702,6 +944,20 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
     Color pColor = widget.primaryColor;
 
     bool isEdit = widget.initialData != null;
+
+    // 🚨 REVERSE LOCK LOGIC: Filter classes strictly by the selected Calendar
+    List<Map<String, dynamic>> visibleClasses = widget.schoolClassesData.where((
+      c,
+    ) {
+      // Failsafe: Always show already-selected classes so Admin doesn't accidentally wipe them
+      if (_selectedClasses.contains(c['name'])) return true;
+
+      if (c['current_session'] != _selectedSession) return false;
+      if (_selectedTerm != 'All Terms' && c['current_term'] != _selectedTerm)
+        return false;
+
+      return true;
+    }).toList();
 
     return Container(
       padding: EdgeInsets.only(
@@ -736,29 +992,66 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
             const SizedBox(height: 30),
 
             _buildFieldLabel("Basic Information", pColor),
-            DropdownButtonFormField<String>(
-              initialValue: _selectedSession,
-              dropdownColor: cardColor,
-              decoration: _inputStyle(
-                "Academic Session",
-                Icons.history_edu_rounded,
-                isDark,
-                pColor,
-              ),
-              items: ["2024/2025", "2025/2026", "2026/2027"]
-                  .map(
-                    (e) => DropdownMenuItem(
-                      value: e,
-                      child: Text(
-                        e,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
+
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _selectedSession,
+                    dropdownColor: cardColor,
+                    decoration: _inputStyle(
+                      "Session",
+                      Icons.history_edu_rounded,
+                      isDark,
+                      pColor,
                     ),
-                  )
-                  .toList(),
-              onChanged: (val) => setState(() => _selectedSession = val!),
+                    items: _generateDynamicSessions()
+                        .map(
+                          (e) => DropdownMenuItem(
+                            value: e,
+                            child: Text(
+                              e,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (val) => setState(() => _selectedSession = val!),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _selectedTerm,
+                    dropdownColor: cardColor,
+                    decoration: _inputStyle(
+                      "Term",
+                      Icons.calendar_month_rounded,
+                      isDark,
+                      pColor,
+                    ),
+                    items: ["1st Term", "2nd Term", "3rd Term", "All Terms"]
+                        .map(
+                          (e) => DropdownMenuItem(
+                            value: e,
+                            child: Text(
+                              e,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (val) => setState(() => _selectedTerm = val!),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
+
             TextField(
               controller: _titleController,
               decoration: _inputStyle(
@@ -782,13 +1075,30 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
             ),
 
             const SizedBox(height: 30),
-            _buildFieldLabel("Target Students", pColor),
-            _buildSelectionWrap(
-              widget.availableClasses,
-              _selectedClasses,
+            _buildFieldLabel(
+              "Target Students (Filtered by Target Calendar)",
               pColor,
-              isDark,
             ),
+
+            if (visibleClasses.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Text(
+                  "No classes are currently operating in $_selectedSession - $_selectedTerm. Please change the calendar above to assign this fee.",
+                  style: TextStyle(
+                    color: Colors.redAccent.shade100,
+                    fontStyle: FontStyle.italic,
+                    fontSize: 12,
+                  ),
+                ),
+              )
+            else
+              _buildSelectionWrap(
+                visibleClasses.map((c) => c['name'].toString()).toList(),
+                _selectedClasses,
+                pColor,
+                isDark,
+              ),
 
             const SizedBox(height: 24),
             _buildFieldLabel("Category Filtering", pColor),
@@ -810,7 +1120,9 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                onPressed: _isSaving ? null : _saveFeeRule,
+                onPressed: (_isSaving || visibleClasses.isEmpty)
+                    ? null
+                    : _saveFeeRule,
                 child: _isSaving
                     ? const TridetaLoader(color: Colors.white)
                     : Text(

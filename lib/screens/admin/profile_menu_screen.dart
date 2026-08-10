@@ -11,6 +11,7 @@ import 'package:trideta_v2/widgets/color_picker_sheet.dart'; // 🚨 IMPORTED MO
 import 'package:trideta_v2/screens/auth/login_screen.dart';
 import 'package:trideta_v2/screens/admin/school_profile_screen.dart';
 import 'package:trideta_v2/screens/admin/school_configuration_screen.dart';
+import 'package:trideta_v2/screens/admin/end_of_year_processing_screen.dart'; // 🚨 NEW IMPORT
 import 'package:trideta_v2/services/biometric_service.dart';
 import 'package:trideta_v2/main.dart'; // 🚨 IMPORTED TO SYNC THE GLOBAL THEME
 
@@ -504,6 +505,20 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                   ),
                 ),
               ),
+              // 🚨 NEWLY ADDED END OF YEAR PROCESSING LINK
+              _buildSettingsItem(
+                title: "End of Year Proceeding",
+                subtitle: "Promote students & tally debts",
+                icon: Icons.warning_amber_rounded,
+                color: Colors.redAccent,
+                isDark: isDark,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const EndOfYearProcessingScreen(),
+                  ),
+                ),
+              ),
               const SizedBox(height: 30),
 
               // --- DATA & SECURITY SECTION ---
@@ -634,12 +649,65 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                     ),
                   ),
                   onPressed: () async {
-                    showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (ctx) => const Center(child: TridetaLoader()),
-                    );
+                    // 🚨 NEW: Added confirmation dialog before logout
+                    bool confirmLogout =
+                        await showDialog(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: isDark
+                                ? const Color(0xFF1E1E1E)
+                                : Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            title: const Text(
+                              "Confirm Logout",
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            content: const Text(
+                              "Are you sure you want to log out of your account?",
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text(
+                                  "Cancel",
+                                  style: TextStyle(
+                                    color: Colors.grey,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              FilledButton(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.redAccent,
+                                ),
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text(
+                                  "Log Out",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ) ??
+                        false;
+
+                    if (!confirmLogout) return;
+
+                    if (context.mounted) {
+                      showDialog(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (ctx) => const Center(child: TridetaLoader()),
+                      );
+                    }
+
                     await Supabase.instance.client.auth.signOut();
+
                     if (context.mounted) {
                       Navigator.pushAndRemoveUntil(
                         context,

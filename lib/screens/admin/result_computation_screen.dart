@@ -67,18 +67,14 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
   String? _userId;
   String _userRole = 'teacher';
 
-  // --- FILTERS --- //
-  // 🚨 FIXED: Dynamic Sessions List initialized late
   late List<String> _sessions;
   final List<String> _terms = ['1st Term', '2nd Term', '3rd Term'];
   String? _selectedSession;
   String? _selectedTerm;
 
-  // 🚨 FIXED: Trackers to hold the global defaults for fallback
   String? _globalSession;
   String? _globalTerm;
 
-  // Classes & Subjects mappings
   List<Map<String, dynamic>> _activeClasses = [];
   List<Map<String, dynamic>> _classSubjects = [];
 
@@ -88,17 +84,15 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
   String? _selectedSubjectId;
   String? _selectedSubjectName;
 
-  // --- DATA --- //
   List<StudentScore> _students = [];
 
-  // Used for text field focus & cursor management to stop "sticky" typing
   final Map<String, List<FocusNode>> _focusNodes = {};
   final Map<String, List<TextEditingController>> _controllers = {};
 
   @override
   void initState() {
     super.initState();
-    _sessions = _generateDynamicSessions(); // 🚨 Initialize dynamically
+    _sessions = _generateDynamicSessions();
     _fetchInitialData();
   }
 
@@ -117,18 +111,15 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     super.dispose();
   }
 
-  // 🚨 NEW: Generates an infinite rolling window of academic sessions
   List<String> _generateDynamicSessions() {
     int currentYear = DateTime.now().year;
     List<String> list = [];
-    // Generates a scalable window from 2020 into the future dynamically
     for (int i = 2020; i <= currentYear + 3; i++) {
       list.add("$i/${i + 1}");
     }
     return list;
   }
 
-  // 🚨 FIXED: Bulletproof RBAC local filtering using 'class_assigned' & Async Overrides
   Future<void> _fetchInitialData() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -149,7 +140,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           .eq('id', _schoolId!)
           .single();
 
-      // 🚨 Store the globals safely (calculates current year fallback just in case)
       int currentYr = DateTime.now().year;
       _globalSession =
           school['current_session'] ?? "$currentYr/${currentYr + 1}";
@@ -157,17 +147,15 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
 
       List<Map<String, dynamic>> fetchedClasses = [];
 
-      // 🚨 FIX: Fetch override_session and override_term for Async Calendars
       final allClasses = await _supabase
           .from('classes')
-          .select('id, name, override_session, override_term')
+          .select('id, name') // 🚨 FIXED: Stripped overrides
           .eq('school_id', _schoolId!)
           .order('list_order', ascending: true);
 
       if (_userRole == 'admin' || _userRole == 'principal') {
         fetchedClasses = List<Map<String, dynamic>>.from(allClasses);
       } else {
-        // Teacher Logic: Fetch assigned classes
         final assignments = await _supabase
             .from('staff_assignments')
             .select('class_assigned')
@@ -180,7 +168,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           }
         }
 
-        // Locally filter so UUIDs and Text names both match seamlessly
         for (var c in allClasses) {
           if (assignedClasses.contains(c['id'].toString()) ||
               assignedClasses.contains(c['name'].toString())) {
@@ -205,7 +192,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     }
   }
 
-  // 🚨 FIXED: Bulletproof RBAC local filtering using 'subject_assigned'
   Future<void> _fetchSubjectsForClass(String classId) async {
     setState(() {
       _isLoading = true;
@@ -230,7 +216,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
       if (_userRole == 'admin' || _userRole == 'principal') {
         subjects = List<Map<String, dynamic>>.from(allSubjects);
       } else {
-        // Teacher Logic: Get the assigned subject UUIDs or Names
         final assignments = await _supabase
             .from('staff_assignments')
             .select('class_assigned, subject_assigned')
@@ -241,12 +226,11 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
 
         for (var a in assignments) {
           String? cAssigned = a['class_assigned']?.toString();
-          // Match if assigned to this exact UUID or the Class Name
           if (cAssigned == classId || cAssigned == _selectedClassName) {
             if (a['subject_assigned'] != null) {
               assignedSubjects.add(a['subject_assigned'].toString());
             } else {
-              isFormMasterForThisClass = true; // Form master: sees all subjects
+              isFormMasterForThisClass = true;
             }
           }
         }
@@ -287,7 +271,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     });
 
     try {
-      // 1. Get all active students in the class via UUID
       final studentsData = await _supabase
           .from('students')
           .select('id, first_name, last_name, admission_no')
@@ -296,7 +279,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           .eq('is_active', true)
           .order('first_name');
 
-      // 2. Get existing scores via UUID
       final existingScoresData = await _supabase
           .from('exam_scores')
           .select(
@@ -359,22 +341,16 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
   }
 
   Future<void> _saveAllScores() async {
-    // 1. Validate local UI state first
     if (_selectedClassId == null ||
         _selectedSubjectId == null ||
         _students.isEmpty) {
       return;
     }
 
-    // ==========================================
-    // 🚨 2. SUBSCRIPTION CHECK BEFORE SAVING
-    // ==========================================
     final subGuard = SubscriptionGuard();
     bool canProceed = await subGuard.canPerformAction(context);
 
-    // If the guard returns false (school is paused), stop execution completely!
     if (!canProceed) return;
-    // ==========================================
 
     setState(() => _isSaving = true);
 
@@ -426,7 +402,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           "Success",
           "All scores for $_selectedClassName - $_selectedSubjectName have been saved securely.",
         );
-        // Refresh data to get IDs of newly inserted records
         await _fetchStudentsAndScores();
       }
     } catch (e) {
@@ -459,7 +434,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
       ),
       body: Column(
         children: [
-          // --- TOP FILTER PANEL ---
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -534,12 +508,9 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
                               _selectedClassId = val;
                               _selectedClassName = cls['name'];
 
-                              // 🚨 ASYNC CALENDAR RESOLUTION
-                              // Safely forces the locked dropdowns to update to the class's specific term!
-                              _selectedSession =
-                                  cls['override_session'] ?? _globalSession;
-                              _selectedTerm =
-                                  cls['override_term'] ?? _globalTerm;
+                              // 🚨 FIXED: Fallback to Global Strict Sync
+                              _selectedSession = _globalSession;
+                              _selectedTerm = _globalTerm;
                             });
                             _fetchSubjectsForClass(val);
                           }
@@ -574,7 +545,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
             ),
           ),
 
-          // --- STUDENTS LIST ---
           Expanded(
             child: _isLoading
                 ? Center(child: TridetaLoader(color: primaryColor))
@@ -714,7 +684,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     );
   }
 
-  // Custom Dropdown for Classes using UUID mappings
   Widget _buildClassDropdown({
     required String hint,
     required String? value,
@@ -770,7 +739,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     );
   }
 
-  // Custom Dropdown for Subjects using UUID mappings
   Widget _buildSubjectDropdown({
     required String hint,
     required String? value,
@@ -838,7 +806,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     bool isDark,
     Color primaryColor,
   ) {
-    // Initialize persistent controllers to prevent typing format jumps
     if (!_controllers.containsKey(s.id)) {
       String fmt(double val) {
         if (val == 0) return "";
@@ -879,7 +846,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Header: Name & Total
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -939,7 +905,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
             ),
             const SizedBox(height: 15),
 
-            // Input Fields
             Row(
               children: [
                 Expanded(
@@ -982,7 +947,7 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  flex: 2, // Make Exam wider
+                  flex: 2,
                   child: _buildScoreInput(
                     label: "Exam (60)",
                     ctrl: ctrlExm,
@@ -1042,8 +1007,8 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
             onChanged: (val) {
               double num = double.tryParse(val) ?? 0;
               if (num > maxVal) {
-                num = maxVal; // Prevent entering score higher than max
-                ctrl.text = maxVal.toStringAsFixed(0); // Clamp visually
+                num = maxVal;
+                ctrl.text = maxVal.toStringAsFixed(0);
                 ctrl.selection = TextSelection.fromPosition(
                   TextPosition(offset: ctrl.text.length),
                 );

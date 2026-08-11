@@ -4,7 +4,7 @@ import 'dart:convert';
 class ParentFinancialService {
   final _supabase = Supabase.instance.client;
 
-  /// Fetches expected fees, total paid, and outstanding balance for a specific session.
+  /// Fetches expected fees, total paid, and true outstanding balance factoring in wallet credit.
   Future<Map<String, double>> getFinancialSummary({
     required String schoolId,
     required String studentId,
@@ -24,13 +24,26 @@ class ParentFinancialService {
         .select()
         .eq('student_id', studentId);
 
-    // 3. Group payments by Category (The Admin Itemized Math)
-    Map<String, double> categoryPayments = {};
+    // 3. Fetch Wallet Balance
+    final studentData = await _supabase
+        .from('students')
+        .select('wallet_balance')
+        .eq('id', studentId)
+        .single();
+
+    double walletBalance = (studentData['wallet_balance'] ?? 0).toDouble();
+    double availableCredit = walletBalance > 0 ? walletBalance : 0.0;
+
+    // 🚨 Arrears form the baseline of the debt
+    double outstanding = walletBalance < 0 ? walletBalance.abs() : 0.0;
     double totalPaid = 0.0;
+    double totalExpected = outstanding;
+
+    // Group payments by Category
+    Map<String, double> categoryPayments = {};
 
     for (var tx in txData) {
       String txSession = (tx['academic_session'] ?? '').toString();
-      // Apply Legacy Safeguard
       if (txSession == session || txSession.isEmpty) {
         String cat = (tx['category'] ?? '').toString();
         double amt = (tx['amount'] ?? 0).toDouble();
@@ -40,14 +53,10 @@ class ParentFinancialService {
       }
     }
 
-    // 4. Calculate Expected & Outstanding per individual fee category
-    double totalExpected = 0.0;
-    double outstanding = 0.0;
-
+    // Calculate Expected & True Outstanding with Credit Offset
     for (var fee in rawFeeData) {
       String feeSession = (fee['academic_session'] ?? '').toString();
 
-      // Apply Legacy Safeguard
       if (feeSession == session || feeSession.isEmpty) {
         bool classMatch = doesItApply(fee['applicable_classes'], sClass);
         bool catMatch = doesItApply(
@@ -65,7 +74,18 @@ class ParentFinancialService {
 
           double remaining = expectedAmt - paidAmt;
           if (remaining > 0) {
-            outstanding += remaining;
+            // 🚨 ABSORB CREDIT ON PARENT UI
+            if (availableCredit >= remaining) {
+              availableCredit -= remaining;
+              remaining = 0;
+            } else if (availableCredit > 0) {
+              remaining -= availableCredit;
+              availableCredit = 0;
+            }
+
+            if (remaining > 0) {
+              outstanding += remaining;
+            }
           }
         }
       }
@@ -78,7 +98,7 @@ class ParentFinancialService {
     };
   }
 
-  // --- 🚨 SYNCHRONIZED WITH ADMIN MATH ENGINE 🚨 ---
+  // --- SYNCHRONIZED MATCHER ---
   bool doesItApply(
     dynamic columnData,
     String studentData, {
@@ -102,7 +122,6 @@ class ParentFinancialService {
         ? columnData.toString().replaceAll(' ', '').toLowerCase()
         : _standardizeClass(columnData.toString());
 
-    // If 'all', instantly approve
     if (colStr.isEmpty ||
         colStr == 'all' ||
         colStr == '[]' ||

@@ -178,7 +178,6 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
       }
 
       // 🚨 PERFECTLY ALIGNED EDGE FUNCTION TRIGGER 🚨
-      // Replace 'create-staff-account' below with your actual Edge Function name if it is different!
       await _supabase.functions.invoke(
         'create-staff-account',
         body: {
@@ -204,7 +203,6 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
         );
       }
     } on FunctionException catch (e) {
-      // Handles specific Edge Function errors sent back from your catch block
       setState(() => _isLoading = false);
       showAuthErrorDialog("Server Error: ${e.details ?? e.reasonPhrase}");
     } catch (e) {
@@ -241,7 +239,8 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          if (constraints.maxWidth > 800) {
+          bool isDesktop = constraints.maxWidth > 800;
+          if (isDesktop) {
             // 💻 DESKTOP LAYOUT
             return Center(
               child: ConstrainedBox(
@@ -269,6 +268,7 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
                       primaryColor,
                       textColor,
                       subTextColor,
+                      isDesktop,
                     ),
                   ),
                 ),
@@ -281,6 +281,7 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
               primaryColor,
               textColor,
               subTextColor,
+              isDesktop,
             );
           }
         },
@@ -293,6 +294,7 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
     Color primaryColor,
     Color textColor,
     Color subTextColor,
+    bool isDesktop,
   ) {
     return Form(
       key: _formKey,
@@ -335,7 +337,7 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
             ),
             const SizedBox(height: 40),
 
-            // --- STAFF ROLE (Cleaned up: No Class Assignment here) ---
+            // --- STAFF ROLE ---
             _buildSectionTitle("Employment Information", Icons.work_outline),
             const SizedBox(height: 15),
             Row(
@@ -367,27 +369,49 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
             // --- PERSONAL DETAILS ---
             _buildSectionTitle("Personal Details", Icons.person_outline),
             const SizedBox(height: 15),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildTextField(
+
+            // 🚨 FIXED: Responsive Name Layout
+            if (isDesktop)
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildTextField(
+                      _firstNameController,
+                      "First Name",
+                      Icons.badge,
+                      isDark,
+                    ),
+                  ),
+                  const SizedBox(width: 15),
+                  Expanded(
+                    child: _buildTextField(
+                      _lastNameController,
+                      "Last Name",
+                      null,
+                      isDark,
+                    ),
+                  ),
+                ],
+              )
+            else
+              Column(
+                children: [
+                  _buildTextField(
                     _firstNameController,
                     "First Name",
                     Icons.badge,
                     isDark,
                   ),
-                ),
-                const SizedBox(width: 15),
-                Expanded(
-                  child: _buildTextField(
+                  const SizedBox(height: 15),
+                  _buildTextField(
                     _lastNameController,
                     "Last Name",
-                    null,
+                    Icons.badge_outlined,
                     isDark,
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+
             const SizedBox(height: 15),
             _buildTextField(
               _phoneController,

@@ -4,6 +4,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+// 🚨 IMPORT: Points to the separated UI components
+import '../school_configuration_widgets.dart';
+
 class SchoolConfigurationScreen extends StatefulWidget {
   const SchoolConfigurationScreen({super.key});
 
@@ -42,7 +45,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   }
 
   // ===========================================================================
-  // 🚨 LOGIC ENGINE (100% UNTOUCHED)
+  // 🚨 LOGIC ENGINE (GLOBAL CALENDAR ENFORCED)
   // ===========================================================================
   Future<void> _fetchRelationalConfig() async {
     try {
@@ -62,11 +65,10 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
           .eq('id', _schoolId!)
           .single();
 
+      // 🚨 REMOVED override_session and override_term from fetch
       final classesData = await _supabase
           .from('classes')
-          .select(
-            'id, name, override_session, override_term, list_order, promotion_criteria',
-          )
+          .select('id, name, list_order, promotion_criteria')
           .eq('school_id', _schoolId!)
           .order('list_order', ascending: true);
 
@@ -81,8 +83,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
             return {
               'id': c['id'],
               'name': c['name'],
-              'override_session': c['override_session'],
-              'override_term': c['override_term'],
               'promotion_criteria':
                   c['promotion_criteria'] ??
                   {'pass_mark': 40, 'core_subjects': []},
@@ -107,8 +107,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                   _classes.add({
                     'id': null,
                     'name': cName,
-                    'override_session': null,
-                    'override_term': null,
                     'promotion_criteria': {
                       'pass_mark': 40,
                       'core_subjects': [],
@@ -227,8 +225,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
           classesToInsert.add({
             'school_id': _schoolId,
             'name': c['name'],
-            'override_session': c['override_session'],
-            'override_term': c['override_term'],
             'promotion_criteria': c['promotion_criteria'],
             'list_order': i,
           });
@@ -237,8 +233,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
             'id': c['id'],
             'school_id': _schoolId,
             'name': c['name'],
-            'override_session': c['override_session'],
-            'override_term': c['override_term'],
             'promotion_criteria': c['promotion_criteria'],
             'list_order': i,
           });
@@ -290,10 +284,12 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
         }
       }
 
-      if (subjectsToInsert.isNotEmpty)
+      if (subjectsToInsert.isNotEmpty) {
         await _supabase.from('class_subjects').insert(subjectsToInsert);
-      if (subjectsToUpdate.isNotEmpty)
+      }
+      if (subjectsToUpdate.isNotEmpty) {
         await _supabase.from('class_subjects').upsert(subjectsToUpdate);
+      }
 
       await _supabase
           .from('schools')
@@ -358,8 +354,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
           if (_selectedClassName == oldName) _selectedClassName = newName;
         }
 
-        cls['override_session'] = result['session'];
-        cls['override_term'] = result['term'];
         cls['promotion_criteria'] = result['promo_criteria'];
       });
     }
@@ -376,8 +370,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
       _classes.add({
         'id': null,
         'name': clsName,
-        'override_session': null,
-        'override_term': null,
         'promotion_criteria': {'pass_mark': 40, 'core_subjects': []},
         'list_order': _classes.length,
       });
@@ -775,548 +767,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
           ),
         ),
       ),
-    );
-  }
-}
-
-class ClassesPanel extends StatelessWidget {
-  final List<Map<String, dynamic>> classes;
-  final TextEditingController classController;
-  final bool isDark;
-  final Color primaryColor;
-  final VoidCallback onAddClass;
-  final Future<void> Function(Map<String, dynamic>) onEditClass;
-  final void Function(Map<String, dynamic>) onRemoveClass;
-  final void Function(int, int) onReorder;
-
-  const ClassesPanel({
-    super.key,
-    required this.classes,
-    required this.classController,
-    required this.isDark,
-    required this.primaryColor,
-    required this.onAddClass,
-    required this.onEditClass,
-    required this.onRemoveClass,
-    required this.onReorder,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: classController,
-                textCapitalization: TextCapitalization.characters,
-                decoration: InputDecoration(
-                  hintText: 'New class name',
-                  filled: true,
-                  fillColor: isDark ? Colors.white10 : Colors.grey.shade100,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: primaryColor,
-                minimumSize: const Size(120, 52),
-              ),
-              onPressed: onAddClass,
-              child: const Text('Add'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: classes.isEmpty
-              ? Center(
-                  child: Text(
-                    'No classes configured yet.',
-                    style: TextStyle(
-                      color: isDark ? Colors.white70 : Colors.black54,
-                    ),
-                  ),
-                )
-              : ReorderableListView.builder(
-                  onReorder: onReorder,
-                  itemCount: classes.length,
-                  itemBuilder: (context, index) {
-                    final cls = classes[index];
-                    final displayName = cls['name']?.toString() ?? '';
-                    final session = cls['override_session']?.toString() ?? '';
-                    final term = cls['override_term']?.toString() ?? '';
-                    final subtitle = [
-                      if (session.isNotEmpty) 'Session: $session',
-                      if (term.isNotEmpty) 'Term: $term',
-                    ].join(' • ');
-
-                    return Card(
-                      key: ValueKey(cls['id'] ?? displayName),
-                      color: isDark ? Colors.white10 : Colors.white,
-                      margin: const EdgeInsets.symmetric(vertical: 6),
-                      child: ListTile(
-                        title: Text(
-                          displayName,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: subtitle.isNotEmpty ? Text(subtitle) : null,
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined),
-                              color: primaryColor,
-                              onPressed: () => onEditClass(cls),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline),
-                              color: Colors.redAccent,
-                              onPressed: () => onRemoveClass(cls),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-}
-
-class SubjectsPanel extends StatelessWidget {
-  final List<Map<String, dynamic>> classes;
-  final List<Map<String, dynamic>> classSubjects;
-  final TextEditingController subjectController;
-  final String? selectedClassName;
-  final String subjectType;
-  final bool isDark;
-  final Color primaryColor;
-  final ValueChanged<String?> onTargetClassChanged;
-  final ValueChanged<String?> onSubjectTypeChanged;
-  final VoidCallback onAddSubject;
-  final Future<void> Function(Map<String, dynamic>) onEditSubject;
-  final void Function(Map<String, dynamic>) onRemoveSubject;
-  final VoidCallback onCopySubjects;
-
-  const SubjectsPanel({
-    super.key,
-    required this.classes,
-    required this.classSubjects,
-    required this.subjectController,
-    required this.selectedClassName,
-    required this.subjectType,
-    required this.isDark,
-    required this.primaryColor,
-    required this.onTargetClassChanged,
-    required this.onSubjectTypeChanged,
-    required this.onAddSubject,
-    required this.onEditSubject,
-    required this.onRemoveSubject,
-    required this.onCopySubjects,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final filteredSubjects = selectedClassName == null
-        ? <Map<String, dynamic>>[]
-        : classSubjects
-              .where((s) => s['class_name'] == selectedClassName)
-              .toList();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                value: selectedClassName,
-                items: classes
-                    .map(
-                      (cls) => DropdownMenuItem(
-                        value: cls['name']?.toString(),
-                        child: Text(cls['name']?.toString() ?? ''),
-                      ),
-                    )
-                    .toList(),
-                onChanged: onTargetClassChanged,
-                decoration: InputDecoration(
-                  labelText: 'Class',
-                  filled: true,
-                  fillColor: isDark ? Colors.white10 : Colors.grey.shade100,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                value: subjectType,
-                items: const [
-                  DropdownMenuItem(
-                    value: 'Compulsory',
-                    child: Text('Compulsory'),
-                  ),
-                  DropdownMenuItem(value: 'Elective', child: Text('Elective')),
-                ],
-                onChanged: onSubjectTypeChanged,
-                decoration: InputDecoration(
-                  labelText: 'Type',
-                  filled: true,
-                  fillColor: isDark ? Colors.white10 : Colors.grey.shade100,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: subjectController,
-                textCapitalization: TextCapitalization.characters,
-                decoration: InputDecoration(
-                  hintText: 'New subject name',
-                  filled: true,
-                  fillColor: isDark ? Colors.white10 : Colors.grey.shade100,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: primaryColor,
-                minimumSize: const Size(120, 52),
-              ),
-              onPressed: onAddSubject,
-              child: const Text('Add'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              selectedClassName == null
-                  ? 'Subjects'
-                  : 'Subjects for $selectedClassName',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-            ),
-            TextButton.icon(
-              onPressed: onCopySubjects,
-              icon: Icon(Icons.copy_all_outlined, color: primaryColor),
-              label: Text(
-                'Copy Subjects',
-                style: TextStyle(color: primaryColor),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Expanded(
-          child: filteredSubjects.isEmpty
-              ? Center(
-                  child: Text(
-                    selectedClassName == null
-                        ? 'Please select a class first.'
-                        : 'No subjects registered for this class.',
-                    style: TextStyle(
-                      color: isDark ? Colors.white70 : Colors.black54,
-                    ),
-                  ),
-                )
-              : ListView.separated(
-                  itemCount: filteredSubjects.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final subject = filteredSubjects[index];
-                    return Card(
-                      color: isDark ? Colors.white10 : Colors.white,
-                      child: ListTile(
-                        title: Text(
-                          subject['subject_name']?.toString() ?? '',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(subject['type']?.toString() ?? ''),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined),
-                              color: primaryColor,
-                              onPressed: () => onEditSubject(subject),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline),
-                              color: Colors.redAccent,
-                              onPressed: () => onRemoveSubject(subject),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-}
-
-class EditClassDialog extends StatefulWidget {
-  final Map<String, dynamic> schoolClass;
-  final List<String> availableSubjects;
-  final Color primaryColor;
-  final bool isDark;
-
-  const EditClassDialog({
-    super.key,
-    required this.schoolClass,
-    required this.availableSubjects,
-    required this.primaryColor,
-    required this.isDark,
-  });
-
-  @override
-  State<EditClassDialog> createState() => _EditClassDialogState();
-}
-
-class _EditClassDialogState extends State<EditClassDialog> {
-  late final TextEditingController _nameController;
-  late final TextEditingController _sessionController;
-  late final TextEditingController _termController;
-  late final TextEditingController _passMarkController;
-
-  @override
-  void initState() {
-    super.initState();
-    final promoCriteria = widget.schoolClass['promotion_criteria'] ?? {};
-    _nameController = TextEditingController(
-      text: widget.schoolClass['name']?.toString() ?? '',
-    );
-    _sessionController = TextEditingController(
-      text: widget.schoolClass['override_session']?.toString() ?? '',
-    );
-    _termController = TextEditingController(
-      text: widget.schoolClass['override_term']?.toString() ?? '',
-    );
-    _passMarkController = TextEditingController(
-      text: promoCriteria['pass_mark']?.toString() ?? '40',
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final background = widget.isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    return AlertDialog(
-      backgroundColor: background,
-      title: const Text('Edit Class'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _nameController,
-              textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(labelText: 'Class name'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _sessionController,
-              decoration: const InputDecoration(labelText: 'Override session'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _termController,
-              decoration: const InputDecoration(labelText: 'Override term'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _passMarkController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Promotion pass mark',
-              ),
-            ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Subjects: ${widget.availableSubjects.length}',
-                style: TextStyle(
-                  color: widget.isDark ? Colors.white70 : Colors.black54,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: widget.primaryColor),
-          onPressed: () {
-            final newName = _nameController.text.trim().toUpperCase();
-            final promoCriteria = {
-              'pass_mark': int.tryParse(_passMarkController.text) ?? 40,
-              'core_subjects':
-                  widget.schoolClass['promotion_criteria']?['core_subjects'] ??
-                  [],
-            };
-            Navigator.of(context).pop({
-              'newName': newName,
-              'session': _sessionController.text.trim(),
-              'term': _termController.text.trim(),
-              'promo_criteria': promoCriteria,
-            });
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
-}
-
-class EditSubjectDialog extends StatefulWidget {
-  final String initialName;
-  final Color primaryColor;
-  final bool isDark;
-
-  const EditSubjectDialog({
-    super.key,
-    required this.initialName,
-    required this.primaryColor,
-    required this.isDark,
-  });
-
-  @override
-  State<EditSubjectDialog> createState() => _EditSubjectDialogState();
-}
-
-class _EditSubjectDialogState extends State<EditSubjectDialog> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialName);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final background = widget.isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    return AlertDialog(
-      backgroundColor: background,
-      title: const Text('Edit Subject'),
-      content: TextField(
-        controller: _controller,
-        textCapitalization: TextCapitalization.characters,
-        decoration: const InputDecoration(labelText: 'Subject name'),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: widget.primaryColor),
-          onPressed: () {
-            Navigator.of(context).pop(_controller.text.trim().toUpperCase());
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
-}
-
-class CopySubjectsDialog extends StatefulWidget {
-  final String sourceClassName;
-  final List<String> availableClasses;
-  final Color primaryColor;
-  final bool isDark;
-
-  const CopySubjectsDialog({
-    super.key,
-    required this.sourceClassName,
-    required this.availableClasses,
-    required this.primaryColor,
-    required this.isDark,
-  });
-
-  @override
-  State<CopySubjectsDialog> createState() => _CopySubjectsDialogState();
-}
-
-class _CopySubjectsDialogState extends State<CopySubjectsDialog> {
-  final Set<String> _selectedClasses = {};
-
-  @override
-  Widget build(BuildContext context) {
-    final background = widget.isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    return AlertDialog(
-      backgroundColor: background,
-      title: Text('Copy subjects from ${widget.sourceClassName}'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: widget.availableClasses.map((className) {
-            return CheckboxListTile(
-              value: _selectedClasses.contains(className),
-              title: Text(className),
-              onChanged: (checked) {
-                setState(() {
-                  if (checked == true) {
-                    _selectedClasses.add(className);
-                  } else {
-                    _selectedClasses.remove(className);
-                  }
-                });
-              },
-            );
-          }).toList(),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: widget.primaryColor),
-          onPressed: () => Navigator.of(context).pop(_selectedClasses.toList()),
-          child: const Text('Copy'),
-        ),
-      ],
     );
   }
 }

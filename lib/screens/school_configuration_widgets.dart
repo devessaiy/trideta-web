@@ -155,9 +155,6 @@ class ClassesPanel extends StatelessWidget {
                     onReorder: onReorder,
                     itemBuilder: (ctx, i) {
                       var cls = classes[i];
-                      bool hasCustomCal =
-                          cls['override_session'] != null ||
-                          cls['override_term'] != null;
 
                       Map<String, dynamic> promoCriteria =
                           cls['promotion_criteria'] ?? {};
@@ -174,11 +171,9 @@ class ClassesPanel extends StatelessWidget {
                               : Colors.grey.shade50,
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: hasCustomCal
-                                ? Colors.orange.withValues(alpha: 0.3)
-                                : (isDark
-                                      ? Colors.white10
-                                      : Colors.grey.shade200),
+                            color: isDark
+                                ? Colors.white10
+                                : Colors.grey.shade200,
                           ),
                         ),
                         child: ListTile(
@@ -195,24 +190,6 @@ class ClassesPanel extends StatelessWidget {
                                   fontSize: 14,
                                 ),
                               ),
-                              if (hasCustomCal) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.orange.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: const Icon(
-                                    Icons.calendar_month_rounded,
-                                    color: Colors.orange,
-                                    size: 12,
-                                  ),
-                                ),
-                              ],
                               if (hasCoreRules) ...[
                                 const SizedBox(width: 6),
                                 Container(
@@ -583,7 +560,7 @@ class SubjectsPanel extends StatelessWidget {
 }
 
 // ===========================================================================
-// 🚨 EDIT CLASS DIALOG (PROMOTION STANDARDS)
+// 🚨 EDIT CLASS DIALOG (PROMOTION STANDARDS ONLY)
 // ===========================================================================
 class EditClassDialog extends StatefulWidget {
   final Map<String, dynamic> schoolClass;
@@ -605,9 +582,6 @@ class EditClassDialog extends StatefulWidget {
 
 class _EditClassDialogState extends State<EditClassDialog> {
   late TextEditingController editController;
-  late bool usesCustomCalendar;
-  late String customSession;
-  late String customTerm;
   late double passMark;
   late List<String> coreSubjects;
 
@@ -616,10 +590,6 @@ class _EditClassDialogState extends State<EditClassDialog> {
     super.initState();
     final cls = widget.schoolClass;
     editController = TextEditingController(text: cls['name']);
-    usesCustomCalendar =
-        cls['override_session'] != null || cls['override_term'] != null;
-    customSession = cls['override_session'] ?? '2025/2026';
-    customTerm = cls['override_term'] ?? '1st Term';
 
     Map<String, dynamic> promoCriteria = cls['promotion_criteria'] != null
         ? Map<String, dynamic>.from(cls['promotion_criteria'])
@@ -660,97 +630,6 @@ class _EditClassDialogState extends State<EditClassDialog> {
                 Icons.class_rounded,
                 widget.isDark,
                 widget.primaryColor,
-              ),
-            ),
-            const SizedBox(height: 25),
-
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: widget.isDark
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: usesCustomCalendar
-                      ? widget.primaryColor.withValues(alpha: 0.5)
-                      : (widget.isDark ? Colors.white10 : Colors.grey.shade200),
-                ),
-              ),
-              child: Column(
-                children: [
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text(
-                      "Custom Academic Calendar",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
-                    subtitle: Text(
-                      usesCustomCalendar
-                          ? "Independent from global school calendar."
-                          : "Inheriting global school calendar.",
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                    activeThumbColor: widget.primaryColor,
-                    value: usesCustomCalendar,
-                    onChanged: (val) =>
-                        setState(() => usesCustomCalendar = val),
-                  ),
-                  if (usesCustomCalendar) ...[
-                    const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(
-                      initialValue: customSession,
-                      dropdownColor: cardColor,
-                      decoration: buildConfigInputStyle(
-                        "Session",
-                        Icons.calendar_month_rounded,
-                        widget.isDark,
-                        widget.primaryColor,
-                      ),
-                      items: ['2024/2025', '2025/2026', '2026/2027']
-                          .map(
-                            (e) => DropdownMenuItem(
-                              value: e,
-                              child: Text(
-                                e,
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (val) => setState(() => customSession = val!),
-                    ),
-                    const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(
-                      initialValue: customTerm,
-                      dropdownColor: cardColor,
-                      decoration: buildConfigInputStyle(
-                        "Term",
-                        Icons.history_edu_rounded,
-                        widget.isDark,
-                        widget.primaryColor,
-                      ),
-                      items: ['1st Term', '2nd Term', '3rd Term']
-                          .map(
-                            (e) => DropdownMenuItem(
-                              value: e,
-                              child: Text(
-                                e,
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (val) => setState(() => customTerm = val!),
-                    ),
-                  ],
-                ],
               ),
             ),
             const SizedBox(height: 25),
@@ -889,8 +768,8 @@ class _EditClassDialogState extends State<EditClassDialog> {
           onPressed: () {
             Navigator.pop(context, {
               'newName': editController.text.trim().toUpperCase(),
-              'session': usesCustomCalendar ? customSession : null,
-              'term': usesCustomCalendar ? customTerm : null,
+              'session': null, // 🚨 Forces database to wipe old async calendars
+              'term': null, // 🚨 Forces database to wipe old async calendars
               'promo_criteria': {
                 'pass_mark': passMark.toInt(),
                 'core_subjects': coreSubjects,

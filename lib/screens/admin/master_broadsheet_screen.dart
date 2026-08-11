@@ -19,54 +19,40 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
   String? _schoolId;
   String _userRole = 'teacher';
 
-  // --- FILTERS ---
-  // 🚨 FIXED: Dynamic Sessions List initialized late
   late List<String> _sessions;
   final List<String> _terms = ['1st Term', '2nd Term', '3rd Term'];
   String? _selectedSession;
   String? _selectedTerm;
 
-  // 🚨 FIXED: Trackers to hold the global defaults for fallback
   String? _globalSession;
   String? _globalTerm;
 
   String? _selectedClass;
   List<String> _activeClasses = [];
 
-  // 🚨 ADDED: Dictionary maps to translate string names to UUIDs and async overrides
   final Map<String, String> _classNameToIdMap = {};
-  final Map<String, Map<String, String?>> _classOverridesMap = {};
 
-  // --- BROADSHEET DATA ---
-  List<String> _classSubjects = []; // Grid Columns
-  List<Map<String, dynamic>> _students = []; // Grid Rows
+  List<String> _classSubjects = [];
+  List<Map<String, dynamic>> _students = [];
 
-  // Map of Student ID -> Their Computed Data
   final Map<String, Map<String, dynamic>> _broadsheetData = {};
 
   @override
   void initState() {
     super.initState();
-    _sessions = _generateDynamicSessions(); // 🚨 Initialize dynamically
+    _sessions = _generateDynamicSessions();
     _fetchInitialData();
   }
 
-  // 🚨 NEW: Generates an infinite rolling window of academic sessions
   List<String> _generateDynamicSessions() {
     int currentYear = DateTime.now().year;
     List<String> list = [];
-    // Generates a scalable window from 2020 into the future dynamically
     for (int i = 2020; i <= currentYear + 3; i++) {
       list.add("$i/${i + 1}");
     }
     return list;
   }
 
-  // ===========================================================================
-  // 1. INITIALIZATION & DATA FETCHING
-  // ===========================================================================
-
-  // 🚨 REWRITTEN: Populates the dictionary, overrides, and the dropdown
   Future<void> _fetchInitialData() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -87,7 +73,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
           .eq('id', _schoolId!)
           .single();
 
-      // 🚨 Store the globals safely (calculates current year fallback just in case)
       int currentYr = DateTime.now().year;
       _globalSession =
           school['current_session'] ?? "$currentYr/${currentYr + 1}";
@@ -95,25 +80,19 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
 
       List<String> fetchedClasses = [];
       _classNameToIdMap.clear();
-      _classOverridesMap.clear();
 
       if (_userRole == 'admin' || _userRole == 'principal') {
         final classesData = await _supabase
             .from('classes')
-            .select('id, name, override_session, override_term')
+            .select('id, name') // 🚨 FIXED: Stripped overrides
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
         for (var c in classesData) {
           String cName = c['name'].toString();
           _classNameToIdMap[cName] = c['id'].toString();
-          _classOverridesMap[cName] = {
-            'session': c['override_session']?.toString(),
-            'term': c['override_term']?.toString(),
-          };
           fetchedClasses.add(cName);
         }
       } else {
-        // Teachers only see classes they are assigned to
         final assignments = await _supabase
             .from('staff_assignments')
             .select('class_id')
@@ -125,15 +104,11 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
         if (uniqueIds.isNotEmpty) {
           final freshClasses = await _supabase
               .from('classes')
-              .select('id, name, override_session, override_term')
+              .select('id, name') // 🚨 FIXED: Stripped overrides
               .inFilter('id', uniqueIds.toList());
           for (var c in freshClasses) {
             String cName = c['name'].toString();
             _classNameToIdMap[cName] = c['id'].toString();
-            _classOverridesMap[cName] = {
-              'session': c['override_session']?.toString(),
-              'term': c['override_term']?.toString(),
-            };
             fetchedClasses.add(cName);
           }
           fetchedClasses.sort();
@@ -171,12 +146,10 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
 
   Future<void> _fetchBroadsheetData() async {
     try {
-      // 1. Get all active students in the selected class
       final studentsData = await _supabase
           .from('students')
           .select('id, first_name, last_name, admission_no')
           .eq('school_id', _schoolId!)
-          // 🚨 TRANSLATED TO UUID
           .eq('class_id', _classNameToIdMap[_selectedClass]!)
           .order('first_name', ascending: true);
 
@@ -185,17 +158,14 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
         return;
       }
 
-      // 2. Fetch ALL exam scores for this class + session + term
       final scoresData = await _supabase
           .from('exam_scores')
           .select('student_id, subject_name, total_score')
           .eq('school_id', _schoolId!)
           .eq('academic_session', _selectedSession!)
           .eq('term', _selectedTerm!)
-          // 🚨 TRANSLATED TO UUID
           .eq('class_id', _classNameToIdMap[_selectedClass]!);
 
-      // 3. Extract unique subjects taught in this class
       Set<String> uniqueSubjects = {};
       for (var score in scoresData) {
         if (score['subject_name'] != null) {
@@ -205,7 +175,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
       List<String> subjectList = uniqueSubjects.toList();
       subjectList.sort();
 
-      // 4. Fetch existing published positions/averages (if any)
       final termResultsData = await _supabase
           .from('term_results')
           .select(
@@ -214,14 +183,12 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
           .eq('school_id', _schoolId!)
           .eq('academic_session', _selectedSession!)
           .eq('term', _selectedTerm!)
-          // 🚨 TRANSLATED TO UUID
           .eq('class_id', _classNameToIdMap[_selectedClass]!);
 
       Map<String, dynamic> existingResults = {
         for (var item in termResultsData) item['student_id'].toString(): item,
       };
 
-      // 5. Structure the Grid Data
       Map<String, Map<String, dynamic>> tempGrid = {};
 
       for (var student in studentsData) {
@@ -237,13 +204,11 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
           'PositionSuffix': existingResults[sId]?['position_suffix'] ?? '',
         };
 
-        // Initialize all subjects with null (meaning no score entered yet)
         for (String sub in subjectList) {
           tempGrid[sId]![sub] = null;
         }
       }
 
-      // 6. Populate grid with scores and compute raw totals
       for (var score in scoresData) {
         String sId = score['student_id'].toString();
         String subject = score['subject_name'].toString();
@@ -257,7 +222,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
         }
       }
 
-      // Compute simple averages locally for display (before official publish)
       for (var sId in tempGrid.keys) {
         int subjectsTaken = 0;
         for (String sub in subjectList) {
@@ -285,14 +249,9 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
     }
   }
 
-  // ===========================================================================
-  // 2. COMPUTATION & PUBLISHING LOGIC
-  // ===========================================================================
-
   Future<void> _computeAndSaveMasterBroadsheet() async {
     if (_selectedClass == null || _students.isEmpty) return;
 
-    // Admin authorization check
     if (_userRole != 'admin' && _userRole != 'principal') {
       showAuthErrorDialog("Only administrators can Compute & Publish results.");
       return;
@@ -304,15 +263,13 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
     setState(() => _isComputing = true);
 
     try {
-      // 1. Sort students by Total Score (Descending) to find positions
       List<String> rankedStudentIds = _broadsheetData.keys.toList();
       rankedStudentIds.sort((a, b) {
         double totalA = _broadsheetData[a]!['Total'];
         double totalB = _broadsheetData[b]!['Total'];
-        return totalB.compareTo(totalA); // Highest first
+        return totalB.compareTo(totalA);
       });
 
-      // 2. Assign positions (handling ties properly)
       int currentRank = 1;
       int nextRank = 1;
       double previousScore = -1.0;
@@ -334,12 +291,10 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
         nextRank++;
       }
 
-      // 3. Save to `term_results` table so Parents/Report Cards can see it
       for (String sId in rankedStudentIds) {
         var stData = _broadsheetData[sId]!;
         int position = int.parse(stData['Position']);
 
-        // Check if record exists
         final existing = await _supabase
             .from('term_results')
             .select('id')
@@ -349,15 +304,13 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
             .maybeSingle();
 
         if (existing == null) {
-          // Insert
           await _supabase.from('term_results').insert({
             'school_id': _schoolId,
             'student_id': sId,
             'academic_session': _selectedSession,
             'term': _selectedTerm,
-            // 🚨 TRANSLATED TO UUID
             'class_id': _classNameToIdMap[_selectedClass],
-            'class_level': _selectedClass, // Kept for readable db records
+            'class_level': _selectedClass,
             'total_score': stData['Total'],
             'average_score': stData['Average'],
             'position': position,
@@ -365,7 +318,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
             'updated_at': DateTime.now().toIso8601String(),
           });
         } else {
-          // Update
           await _supabase
               .from('term_results')
               .update({
@@ -378,7 +330,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
               .eq('student_id', sId)
               .eq('academic_session', _selectedSession!)
               .eq('term', _selectedTerm!)
-              // 🚨 TRANSLATED TO UUID
               .eq('class_id', _classNameToIdMap[_selectedClass]!);
         }
       }
@@ -390,7 +341,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
             backgroundColor: Colors.green,
           ),
         );
-        // Refresh grid to show new positions
         await _generateBroadsheet();
       }
     } catch (e) {
@@ -445,10 +395,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
     return res ?? false;
   }
 
-  // ===========================================================================
-  // 3. UI BUILDING
-  // ===========================================================================
-
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -458,10 +404,8 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
 
     bool isAdmin = _userRole == 'admin' || _userRole == 'principal';
 
-    // 🚨 MAIN CONTENT EXTRACTED FOR LAYOUT BUILDER
     Widget mainContent = Column(
       children: [
-        // 1. FILTER HEADER
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -483,7 +427,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
                       "Session",
                       _sessions,
                       _selectedSession,
-                      // 🚨 SECURED: Teachers cannot change sessions manually
                       isAdmin
                           ? (val) {
                               setState(() {
@@ -502,7 +445,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
                       "Term",
                       _terms,
                       _selectedTerm,
-                      // 🚨 SECURED: Teachers cannot change terms manually
                       isAdmin
                           ? (val) {
                               setState(() {
@@ -526,14 +468,12 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
                   setState(() {
                     _selectedClass = val;
                     if (val != null) {
-                      // 🚨 ASYNC CALENDAR RESOLUTION
-                      _selectedSession =
-                          _classOverridesMap[val]?['session'] ?? _globalSession;
-                      _selectedTerm =
-                          _classOverridesMap[val]?['term'] ?? _globalTerm;
+                      // 🚨 FIXED: Fallback to Global Strict Sync
+                      _selectedSession = _globalSession;
+                      _selectedTerm = _globalTerm;
                     }
                   });
-                  _generateBroadsheet(); // Automatically loads the grid!
+                  _generateBroadsheet();
                 },
                 isDark,
                 primaryColor,
@@ -542,7 +482,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
           ),
         ),
 
-        // 2. DATATABLE SPREADSHEET
         Expanded(
           child: _isLoading
               ? Center(child: TridetaLoader(color: primaryColor))
@@ -596,7 +535,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 1000) {
-            // DESKTOP/WEB LAYOUT: Center it and add margins
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1200),
@@ -624,17 +562,12 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
               ),
             );
           } else {
-            // MOBILE/TABLET LAYOUT: Full width
             return mainContent;
           }
         },
       ),
     );
   }
-
-  // ===========================================================================
-  // 4. WIDGET HELPERS
-  // ===========================================================================
 
   Widget _buildBroadsheetGrid(
     bool isDark,
@@ -674,9 +607,7 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
               ),
             ),
 
-            // Dynamic Subject Columns
             ..._classSubjects.map((sub) {
-              // Extract first 4 letters for compact header
               String compactTitle = sub.length > 5
                   ? sub.substring(0, 5).toUpperCase()
                   : sub.toUpperCase();
@@ -688,11 +619,10 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
                     color: primaryColor,
                   ),
                 ),
-                tooltip: sub, // Full name on hover
+                tooltip: sub,
               );
             }),
 
-            // Summary Columns
             const DataColumn(
               label: Text(
                 "TOTAL",
@@ -739,7 +669,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
                   ),
                 ),
 
-                // Dynamic Subject Scores
                 ..._classSubjects.map((sub) {
                   var score = rowData[sub];
                   return DataCell(
@@ -757,7 +686,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
                   );
                 }),
 
-                // Summary Data Cells
                 DataCell(
                   Text(
                     (rowData['Total'] as double).toStringAsFixed(1),

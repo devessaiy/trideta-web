@@ -22,33 +22,44 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
   bool _isExecuting = false;
   String? _schoolId;
 
+  // Global Calendar
+  String _currentSession = "";
+  late String _nextSession;
+  final String _nextTerm = "1st Term"; // Hardcoded reset
+
+  // Pipeline State
   List<Map<String, dynamic>> _allClasses = [];
-  String? _sourceClassId;
-  String? _destinationClassId;
+  String _terminalAction = 'graduate'; // 'graduate' or 'create_class'
+  final _newClassNameController = TextEditingController();
 
-  late String _targetSession;
-  final String _targetTerm = "1st Term"; // Always resets to 1st Term
-
-  // Analysis Results (RAM)
-  List<Map<String, dynamic>> _analyzedStudents = [];
+  // Unified Analytics Results (RAM)
+  List<Map<String, dynamic>> _classSummaries = [];
+  int _totalPromoted = 0;
+  int _totalRetained = 0;
+  int _totalGraduating = 0;
   double _totalDebtToLock = 0.0;
-  int _promotedCount = 0;
-  int _retainedCount = 0;
+
+  // Payloads for Atomic RPC
+  List<Map<String, dynamic>> _promotionsPayload = [];
+  List<String> _graduationsPayload = [];
+  List<Map<String, dynamic>> _debtsPayload = [];
 
   @override
   void initState() {
     super.initState();
-    _targetSession = _generateDynamicSessions().last;
     _fetchInitialData();
   }
 
-  List<String> _generateDynamicSessions() {
-    int currentYear = DateTime.now().year;
-    List<String> sessions = [];
-    for (int y = 2023; y <= currentYear + 2; y++) {
-      sessions.add("$y/${y + 1}");
+  String _calculateNextSession(String session) {
+    try {
+      List<String> parts = session.split('/');
+      int startYear = int.parse(parts[0]);
+      int endYear = int.parse(parts[1]);
+      return "${startYear + 1}/${endYear + 1}";
+    } catch (e) {
+      int currentYear = DateTime.now().year;
+      return "$currentYear/${currentYear + 1}";
     }
-    return sessions;
   }
 
   Future<void> _fetchInitialData() async {
@@ -63,20 +74,19 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
           .single();
       _schoolId = profile['school_id'];
 
+      // Fetch Global Calendar
       final schoolData = await _supabase
           .from('schools')
-          .select('current_session, current_term')
+          .select('current_session')
           .eq('id', _schoolId!)
-          .maybeSingle();
+          .single();
+      _currentSession = schoolData['current_session'] ?? "2025/2026";
+      _nextSession = _calculateNextSession(_currentSession);
 
-      String globalSession = schoolData?['current_session'] ?? 'Unknown';
-      String globalTerm = schoolData?['current_term'] ?? 'Unknown';
-
+      // Fetch Classes Ordered by Hierarchy
       final classesData = await _supabase
           .from('classes')
-          .select(
-            'id, name, override_session, override_term, promotion_criteria',
-          )
+          .select('id, name, list_order, promotion_criteria')
           .eq('school_id', _schoolId!)
           .order('list_order', ascending: true);
 
@@ -85,176 +95,204 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
           _allClasses = List<Map<String, dynamic>>.from(classesData).map((c) {
             return {
               'id': c['id'].toString(),
-              'name': c['name'],
-              'current_session': c['override_session'] ?? globalSession,
-              'current_term': c['override_term'] ?? globalTerm,
+              'name': c['name'].toString(),
+              'list_order': c['list_order'],
               'promotion_criteria':
                   c['promotion_criteria'] ??
                   {'pass_mark': 40, 'core_subjects': []},
             };
           }).toList();
-
-          if (_allClasses.isNotEmpty) {
-            _sourceClassId = _allClasses.first['id'];
-          }
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        showAuthErrorDialog("Failed to load school data.");
+        showAuthErrorDialog("Failed to load school progression pipeline.");
       }
     }
   }
 
   // ===========================================================================
-  // 🚨 THE GRAND AUDIT (RAM CALCULATIONS)
+  // 🚨 THE UNIFIED SCHOOL-WIDE AUDIT (RAM)
   // ===========================================================================
-  Future<void> _runAnalytics() async {
-    if (_sourceClassId == null) return;
+  Future<void> _runUnifiedAnalytics() async {
+    if (_allClasses.isEmpty) {
+      showAuthErrorDialog("No classes found to process.");
+      return;
+    }
+
+    if (_terminalAction == 'create_class' &&
+        _newClassNameController.text.trim().isEmpty) {
+      showAuthErrorDialog("Please enter a name for the new terminal class.");
+      return;
+    }
 
     setState(() {
       _isAnalyzing = true;
-      _analyzedStudents.clear();
+      _classSummaries.clear();
+      _promotionsPayload.clear();
+      _graduationsPayload.clear();
+      _debtsPayload.clear();
+      _totalPromoted = 0;
+      _totalRetained = 0;
+      _totalGraduating = 0;
       _totalDebtToLock = 0.0;
-      _promotedCount = 0;
-      _retainedCount = 0;
     });
 
     try {
-      final sourceClass = _allClasses.firstWhere(
-        (c) => c['id'] == _sourceClassId,
-      );
-      Map<String, dynamic> promoCriteria = sourceClass['promotion_criteria'];
-      double passMark = (promoCriteria['pass_mark'] ?? 40).toDouble();
-      List<String> coreSubjects = List<String>.from(
-        promoCriteria['core_subjects'] ?? [],
-      );
-
-      // 1. Fetch Students
+      // 1. Fetch EVERYTHING for the current session
       final studentsData = await _supabase
           .from('students')
-          .select('id, first_name, last_name, category')
-          .eq('class_id', _sourceClassId!);
-
-      if (studentsData.isEmpty) {
-        showAuthErrorDialog("No students found in ${sourceClass['name']}.");
-        setState(() => _isAnalyzing = false);
-        return;
-      }
-
-      final studentIds = studentsData.map((s) => s['id']).toList();
-
-      // 2. Fetch 3rd Term Fees & Transactions
-      final allFeesRes = await _supabase
-          .from('fee_structures')
-          .select()
+          .select('id, first_name, last_name, category, class_id')
           .eq('school_id', _schoolId!);
-      final allFees = List<Map<String, dynamic>>.from(allFeesRes);
-
-      final classFees = allFees.where((fee) {
-        if (fee['academic_session'] != sourceClass['current_session'])
-          return false;
-        if (fee['academic_term'] != sourceClass['current_term'] &&
-            fee['academic_term'] != 'All Terms')
-          return false;
-
-        bool classMatch = false;
-        final List<dynamic>? classIdsList = fee['applicable_class_ids'];
-        if (classIdsList != null && classIdsList.isNotEmpty) {
-          classMatch = classIdsList.contains(_sourceClassId);
-        } else {
-          classMatch = _doesItApply(
-            fee['applicable_classes'],
-            sourceClass['name'],
-          );
-        }
-        return classMatch;
-      }).toList();
-
       final txData = await _supabase
           .from('transactions')
           .select('student_id, fee_id, category, amount')
-          .eq('academic_session', sourceClass['current_session'])
-          .eq('academic_term', sourceClass['current_term'])
-          .inFilter('student_id', studentIds);
+          .eq('school_id', _schoolId!)
+          .eq('academic_session', _currentSession);
+      final allFeesRes = await _supabase
+          .from('fee_structures')
+          .select()
+          .eq('school_id', _schoolId!)
+          .eq('academic_session', _currentSession);
+      final allFees = List<Map<String, dynamic>>.from(allFeesRes);
 
-      // 3. 🚨 NEW: Fetch Live Cumulative Grades from the Database
+      final studentIds = studentsData.map((s) => s['id']).toList();
       final studentGrades = await _fetchStudentGrades(
         studentIds,
-        sourceClass['current_session'],
+        _currentSession,
       );
 
-      List<Map<String, dynamic>> analyticsBuffer = [];
+      List<Map<String, dynamic>> summaries = [];
 
-      for (var student in studentsData) {
-        // --- DEBT CHECK ---
-        double totalUnpaid = 0.0;
-        String sCategory = (student['category'] ?? '').toString();
+      // 2. Process Class by Class (Following the Hierarchy)
+      for (int i = 0; i < _allClasses.length; i++) {
+        var currentClass = _allClasses[i];
+        String currentClassName = currentClass['name'];
 
-        for (var fee in classFees) {
-          if (_doesItApply(
-            fee['applicable_categories'],
-            sCategory,
-            isCategory: true,
-          )) {
-            double expected = (fee['amount'] ?? 0).toDouble();
-            double paid = 0.0;
+        // Determine Destination
+        String destinationName;
+        bool isTerminal = i == _allClasses.length - 1;
 
-            for (var tx in txData) {
-              if (tx['student_id'] == student['id']) {
-                if (tx['fee_id'] == fee['id'] ||
-                    tx['category'] == fee['fee_name']) {
+        if (isTerminal) {
+          destinationName = _terminalAction == 'graduate'
+              ? "GRADUATION"
+              : _newClassNameController.text.trim().toUpperCase();
+        } else {
+          destinationName = _allClasses[i + 1]['name'];
+        }
+
+        Map<String, dynamic> promoCriteria = currentClass['promotion_criteria'];
+        double passMark = (promoCriteria['pass_mark'] ?? 40).toDouble();
+        List<String> coreSubjects = List<String>.from(
+          promoCriteria['core_subjects'] ?? [],
+        );
+
+        // Filter students & fees for this specific class
+        var classStudents = studentsData
+            .where((s) => s['class_id'] == currentClass['id'])
+            .toList();
+        var classFees = allFees
+            .where(
+              (f) =>
+                  _doesItApply(f['applicable_class_ids'], currentClass['id']) ||
+                  _doesItApply(f['applicable_classes'], currentClassName),
+            )
+            .toList();
+
+        int classPromoted = 0;
+        int classRetained = 0;
+        int classGraduating = 0;
+
+        for (var student in classStudents) {
+          // --- DEBT CHECK ---
+          double totalUnpaid = 0.0;
+          String sCategory = (student['category'] ?? '').toString();
+
+          for (var fee in classFees) {
+            if (_doesItApply(
+              fee['applicable_categories'],
+              sCategory,
+              isCategory: true,
+            )) {
+              double expected = (fee['amount'] ?? 0).toDouble();
+              double paid = 0.0;
+              for (var tx in txData) {
+                if (tx['student_id'] == student['id'] &&
+                    (tx['fee_id'] == fee['id'] ||
+                        tx['category'] == fee['fee_name'])) {
                   paid += (tx['amount'] ?? 0).toDouble();
                 }
               }
+              double remaining = expected - paid;
+              if (remaining > 0) totalUnpaid += remaining;
             }
-            double remaining = expected - paid;
-            if (remaining > 0) totalUnpaid += remaining;
+          }
+
+          if (totalUnpaid > 0) {
+            _debtsPayload.add({
+              'student_id': student['id'],
+              'unpaid_amount': totalUnpaid,
+            });
+            _totalDebtToLock += totalUnpaid;
+          }
+
+          // --- ACADEMIC CHECK ---
+          bool hasPassed = true;
+          Map<String, dynamic> grades = studentGrades[student['id']] ?? {};
+          double average = (grades['average'] ?? 0.0).toDouble();
+
+          if (average < passMark) {
+            hasPassed = false;
+          } else {
+            for (String coreSub in coreSubjects) {
+              double coreScore =
+                  (grades['subjects']?[coreSub.toUpperCase().trim()] ?? 0.0)
+                      .toDouble();
+              if (coreScore < passMark) {
+                hasPassed = false;
+                break;
+              }
+            }
+          }
+
+          if (hasPassed) {
+            if (isTerminal && _terminalAction == 'graduate') {
+              _graduationsPayload.add(student['id']);
+              classGraduating++;
+              _totalGraduating++;
+            } else {
+              _promotionsPayload.add({
+                'student_id': student['id'],
+                'new_class_level': destinationName,
+              });
+              classPromoted++;
+              _totalPromoted++;
+            }
+          } else {
+            // Retained in same class
+            _promotionsPayload.add({
+              'student_id': student['id'],
+              'new_class_level': currentClassName,
+            });
+            classRetained++;
+            _totalRetained++;
           }
         }
 
-        // --- ACADEMIC CHECK ---
-        bool hasPassed = true;
-        Map<String, dynamic> grades = studentGrades[student['id']] ?? {};
-        double average = (grades['average'] ?? 0.0).toDouble();
-
-        // Check overall cumulative average
-        if (average < passMark) {
-          hasPassed = false;
-        } else {
-          // Check specific core subjects
-          for (String coreSub in coreSubjects) {
-            String cleanCore = coreSub.toUpperCase().trim();
-            double coreScore = (grades['subjects']?[cleanCore] ?? 0.0)
-                .toDouble();
-            if (coreScore < passMark) {
-              hasPassed = false;
-              break;
-            }
-          }
-        }
-
-        if (hasPassed) {
-          _promotedCount++;
-        } else {
-          _retainedCount++;
-        }
-        _totalDebtToLock += totalUnpaid;
-
-        analyticsBuffer.add({
-          'id': student['id'],
-          'name': "${student['first_name']} ${student['last_name']}",
-          'debt': totalUnpaid,
-          'average': average,
-          'passed': hasPassed,
+        summaries.add({
+          'class_name': currentClassName,
+          'destination': destinationName,
+          'promoted': classPromoted,
+          'retained': classRetained,
+          'graduating': classGraduating,
         });
       }
 
       if (mounted) {
         setState(() {
-          _analyzedStudents = analyticsBuffer;
+          _classSummaries = summaries;
           _isAnalyzing = false;
         });
       }
@@ -266,19 +304,15 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
     }
   }
 
-  // 🚨 THE LIVE DATABASE INTEGRATION
   Future<Map<String, Map<String, dynamic>>> _fetchStudentGrades(
     List<dynamic> studentIds,
     String targetSession,
   ) async {
-    // 1. Fetch every exam score for these students across the entire session (all terms)
     final response = await _supabase
         .from('exam_scores')
         .select('student_id, subject_name, total_score')
         .eq('academic_session', targetSession)
         .inFilter('student_id', studentIds);
-
-    // 2. Group the raw scores by Student -> Subject
     Map<String, Map<String, List<double>>> rawScores = {};
 
     for (var row in response) {
@@ -288,58 +322,35 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
           .toUpperCase()
           .trim();
       double score = (row['total_score'] ?? 0).toDouble();
-
       if (!rawScores.containsKey(sId)) rawScores[sId] = {};
       if (!rawScores[sId]!.containsKey(subName)) rawScores[sId]![subName] = [];
-
       rawScores[sId]![subName]!.add(score);
     }
 
     Map<String, Map<String, dynamic>> finalGrades = {};
-
-    // 3. Process the cumulative averages
     for (String sId in rawScores.keys) {
       double overallSum = 0;
       int subjectCount = 0;
       Map<String, double> subjectAverages = {};
-
       for (String subName in rawScores[sId]!.keys) {
         List<double> termScores = rawScores[sId]![subName]!;
-
-        // Calculate the cumulative average for this specific subject across all terms
         double subAvg = termScores.reduce((a, b) => a + b) / termScores.length;
-
         subjectAverages[subName] = subAvg;
         overallSum += subAvg;
         subjectCount++;
       }
-
-      // Calculate the overall cumulative average across all subjects
-      double cumulativeAverage = subjectCount > 0
-          ? (overallSum / subjectCount)
-          : 0.0;
-
       finalGrades[sId] = {
-        'average': cumulativeAverage,
+        'average': subjectCount > 0 ? (overallSum / subjectCount) : 0.0,
         'subjects': subjectAverages,
       };
     }
-
     return finalGrades;
   }
 
   // ===========================================================================
   // 🚨 THE ATOMIC TRIGGER
   // ===========================================================================
-  Future<void> _executeTrigger() async {
-    if (_destinationClassId == null) {
-      showAuthErrorDialog(
-        "Please select a Destination Class for promoted students.",
-      );
-      return;
-    }
-
-    // Double Confirmation Type-to-Confirm Dialog
+  Future<void> _executeUnifiedTrigger() async {
     final confirmController = TextEditingController();
     bool isConfirmed =
         await showDialog(
@@ -350,7 +361,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                 ? const Color(0xFF1E1E1E)
                 : Colors.white,
             title: const Text(
-              "IRREVERSIBLE ACTION",
+              "IRREVERSIBLE SCHOOL-WIDE ACTION",
               style: TextStyle(
                 color: Colors.redAccent,
                 fontWeight: FontWeight.bold,
@@ -361,7 +372,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  "You are about to modify academic and financial records for an entire class. To proceed, type CONFIRM below.",
+                  "You are about to advance the entire school to the next academic session. Debts will be locked to wallets, students will be promoted/retained, and seniors will be processed. To proceed, type CONFIRM below.",
                 ),
                 const SizedBox(height: 15),
                 TextField(
@@ -387,12 +398,10 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                   backgroundColor: Colors.redAccent,
                 ),
                 onPressed: () {
-                  if (confirmController.text.trim().toUpperCase() ==
-                      "CONFIRM") {
+                  if (confirmController.text.trim().toUpperCase() == "CONFIRM")
                     Navigator.pop(ctx, true);
-                  }
                 },
-                child: const Text("EXECUTE"),
+                child: const Text("EXECUTE PIPELINE"),
               ),
             ],
           ),
@@ -404,48 +413,39 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
     setState(() => _isExecuting = true);
 
     try {
-      final destClass = _allClasses.firstWhere(
-        (c) => c['id'] == _destinationClassId,
-      );
-      List<Map<String, dynamic>> promotionsPayload = [];
-      List<Map<String, dynamic>> debtsPayload = [];
-
-      for (var student in _analyzedStudents) {
-        if (student['debt'] > 0) {
-          debtsPayload.add({
-            'student_id': student['id'],
-            'unpaid_amount': student['debt'],
-          });
-        }
-        if (student['passed'] == true) {
-          promotionsPayload.add({
-            'student_id': student['id'],
-            'new_class_id': destClass['id'],
-            'new_class_level': destClass['name'],
-          });
-        }
+      List<Map<String, dynamic>> newClassesPayload = [];
+      if (_terminalAction == 'create_class' &&
+          _newClassNameController.text.trim().isNotEmpty) {
+        newClassesPayload.add({
+          'name': _newClassNameController.text.trim().toUpperCase(),
+          'list_order': _allClasses.length,
+          'promotion_criteria': {
+            'pass_mark': 40,
+            'core_subjects': [],
+          }, // Default criteria for new class
+        });
       }
 
-      // 🚨 ATOMIC FIRE
       await _supabase.rpc(
         'execute_end_of_year_proceedings',
         params: {
           'p_school_id': _schoolId,
-          'p_source_class_id': _sourceClassId,
-          'p_new_session': _targetSession,
-          'p_new_term': _targetTerm,
-          'p_promotions': promotionsPayload,
-          'p_debts': debtsPayload,
+          'p_new_session': _nextSession,
+          'p_new_term': _nextTerm,
+          'p_new_classes': newClassesPayload,
+          'p_promotions': _promotionsPayload,
+          'p_graduations': _graduationsPayload,
+          'p_debts': _debtsPayload,
         },
       );
 
       if (mounted) {
         showSuccessDialog(
           "Success",
-          "End of year processing completed successfully.",
+          "School successfully advanced to $_nextSession.",
         );
         setState(() {
-          _analyzedStudents.clear();
+          _classSummaries.clear();
           _isExecuting = false;
         });
         _fetchInitialData();
@@ -460,7 +460,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
     }
   }
 
-  // Helper matching logic...
+  // Matching Utils
   String _standardizeClass(String val) {
     String v = val.replaceAll(' ', '').toLowerCase();
     v = v
@@ -492,7 +492,6 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
     if (cleanStudentData.isEmpty || cleanStudentData == 'notfound')
       return false;
     if (columnData == null) return true;
-
     String colStr = isCategory
         ? columnData.toString().replaceAll(' ', '').toLowerCase()
         : _standardizeClass(columnData.toString());
@@ -501,7 +500,6 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
         colStr == '[]' ||
         colStr == '["all"]')
       return true;
-
     if (columnData is List) {
       if (columnData.isEmpty) return true;
       for (var item in columnData) {
@@ -532,6 +530,24 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
       );
     }
 
+    if (_allClasses.isEmpty) {
+      return Scaffold(
+        backgroundColor: bgColor,
+        appBar: AppBar(
+          title: const Text("End of Year Processing"),
+          backgroundColor: bgColor,
+          elevation: 0,
+        ),
+        body: const Center(
+          child: Text(
+            "No classes configured. Please setup your school structure first.",
+          ),
+        ),
+      );
+    }
+
+    String terminalClassName = _allClasses.last['name'];
+
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
@@ -552,7 +568,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // STEP 1: CONFIGURATION
+                // STEP 1: PIPELINE CONFIGURATION
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
@@ -566,39 +582,31 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        "Step 1: Configure Progression Pipeline",
+                        "Step 1: Unified Progression Pipeline",
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 15),
+                      Text(
+                        "The system will automatically advance the school calendar and process all classes simultaneously based on their hierarchy.",
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 13,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 25),
+
+                      // Calendar Advance UI
                       Row(
                         children: [
                           Expanded(
-                            child: DropdownButtonFormField<String>(
-                              isExpanded: true,
-                              value: _sourceClassId,
-                              dropdownColor: cardColor,
-                              decoration: _inputStyle(
-                                "Source Class (Current)",
-                                isDark,
-                              ),
-                              items: _allClasses
-                                  .map(
-                                    (c) => DropdownMenuItem<String>(
-                                      value: c['id'],
-                                      child: Text(
-                                        c['name'],
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (val) =>
-                                  setState(() => _sourceClassId = val),
+                            child: _buildInfoField(
+                              "Closing Session",
+                              _currentSession,
+                              isDark,
                             ),
                           ),
                           const Padding(
@@ -609,73 +617,123 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                             ),
                           ),
                           Expanded(
-                            child: DropdownButtonFormField<String>(
-                              isExpanded: true,
-                              value: _destinationClassId,
-                              dropdownColor: cardColor,
-                              decoration: _inputStyle(
-                                "Destination Class (Promotion)",
-                                isDark,
-                              ),
-                              items: _allClasses
-                                  .map(
-                                    (c) => DropdownMenuItem<String>(
-                                      value: c['id'],
-                                      child: Text(
-                                        c['name'],
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                        ),
+                            child: _buildInfoField(
+                              "Opening Session",
+                              _nextSession,
+                              isDark,
+                              highlight: true,
+                              color: primaryColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 25),
+
+                      // Terminal Class Config
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.orange.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.school_rounded,
+                                  color: Colors.orange,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  "Terminal Class Action: $terminalClassName",
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: Colors.orange,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 15),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: RadioListTile<String>(
+                                    title: const Text(
+                                      "Graduate Seniors",
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
                                       ),
                                     ),
-                                  )
-                                  .toList(),
-                              onChanged: (val) =>
-                                  setState(() => _destinationClassId = val),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: _targetSession,
-                              dropdownColor: cardColor,
-                              decoration: _inputStyle(
-                                "New Academic Session",
-                                isDark,
-                              ),
-                              items: _generateDynamicSessions()
-                                  .map(
-                                    (e) => DropdownMenuItem(
-                                      value: e,
-                                      child: Text(e),
+                                    subtitle: const Text(
+                                      "Move to Alumni",
+                                      style: TextStyle(fontSize: 11),
                                     ),
-                                  )
-                                  .toList(),
-                              onChanged: (val) =>
-                                  setState(() => _targetSession = val!),
+                                    value: 'graduate',
+                                    groupValue: _terminalAction,
+                                    activeColor: Colors.orange,
+                                    contentPadding: EdgeInsets.zero,
+                                    onChanged: (val) =>
+                                        setState(() => _terminalAction = val!),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: RadioListTile<String>(
+                                    title: const Text(
+                                      "Create Next Class",
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    subtitle: const Text(
+                                      "Expand hierarchy",
+                                      style: TextStyle(fontSize: 11),
+                                    ),
+                                    value: 'create_class',
+                                    groupValue: _terminalAction,
+                                    activeColor: Colors.orange,
+                                    contentPadding: EdgeInsets.zero,
+                                    onChanged: (val) =>
+                                        setState(() => _terminalAction = val!),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: TextFormField(
-                              initialValue: "1st Term (Locked)",
-                              enabled: false,
-                              decoration: _inputStyle(
-                                "New Academic Term",
-                                isDark,
+                            if (_terminalAction == 'create_class') ...[
+                              const SizedBox(height: 15),
+                              TextField(
+                                controller: _newClassNameController,
+                                textCapitalization:
+                                    TextCapitalization.characters,
+                                decoration: InputDecoration(
+                                  labelText: "Name of new class (e.g. SS 2)",
+                                  filled: true,
+                                  fillColor: isDark
+                                      ? Colors.black26
+                                      : Colors.white,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        ],
+                            ],
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 20),
+
+                      const SizedBox(height: 25),
                       SizedBox(
                         width: double.infinity,
-                        height: 50,
+                        height: 55,
                         child: FilledButton.icon(
                           style: FilledButton.styleFrom(
                             backgroundColor: primaryColor,
@@ -683,7 +741,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          onPressed: _isAnalyzing ? null : _runAnalytics,
+                          onPressed: _isAnalyzing ? null : _runUnifiedAnalytics,
                           icon: _isAnalyzing
                               ? const SizedBox(
                                   width: 16,
@@ -696,8 +754,8 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                               : const Icon(Icons.analytics_rounded),
                           label: Text(
                             _isAnalyzing
-                                ? "ANALYZING..."
-                                : "GENERATE ANALYTICS PREVIEW",
+                                ? "ANALYZING ENTIRE SCHOOL..."
+                                : "GENERATE PIPELINE PREVIEW",
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
@@ -707,26 +765,33 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                 ),
 
                 // STEP 2: ANALYTICS RESULTS
-                if (_analyzedStudents.isNotEmpty) ...[
+                if (_classSummaries.isNotEmpty) ...[
                   const SizedBox(height: 30),
                   Row(
                     children: [
                       _buildMetricCard(
                         "PROMOTED",
-                        "$_promotedCount",
+                        "$_totalPromoted",
                         Colors.green,
                         isDark,
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 12),
                       _buildMetricCard(
                         "RETAINED",
-                        "$_retainedCount",
+                        "$_totalRetained",
                         Colors.orange,
                         isDark,
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 12),
                       _buildMetricCard(
-                        "DEBT TO LOCK",
+                        "GRADUATING",
+                        "$_totalGraduating",
+                        Colors.purple,
+                        isDark,
+                      ),
+                      const SizedBox(width: 12),
+                      _buildMetricCard(
+                        "DEBT LOCKED",
                         "₦${_totalDebtToLock.toStringAsFixed(0)}",
                         Colors.redAccent,
                         isDark,
@@ -736,7 +801,6 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                   const SizedBox(height: 30),
 
                   Container(
-                    height: 300,
                     decoration: BoxDecoration(
                       color: cardColor,
                       borderRadius: BorderRadius.circular(20),
@@ -744,36 +808,73 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                         color: isDark ? Colors.white10 : Colors.grey.shade200,
                       ),
                     ),
-                    child: ListView.builder(
-                      itemCount: _analyzedStudents.length,
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _classSummaries.length,
+                      separatorBuilder: (ctx, i) => Divider(
+                        height: 1,
+                        color: isDark ? Colors.white10 : Colors.grey.shade100,
+                      ),
                       itemBuilder: (ctx, i) {
-                        var s = _analyzedStudents[i];
-                        bool passed = s['passed'];
+                        var sum = _classSummaries[i];
+                        bool isGrad = sum['destination'] == 'GRADUATION';
                         return ListTile(
-                          title: Text(
-                            s['name'],
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
                           ),
-                          subtitle: Text(
-                            "Average: ${s['average'].toStringAsFixed(1)}% | Debt: ₦${s['debt']}",
+                          title: Row(
+                            children: [
+                              Text(
+                                sum['class_name'],
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 8),
+                                child: Icon(
+                                  Icons.arrow_forward_rounded,
+                                  size: 16,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isGrad
+                                      ? Colors.purple.withValues(alpha: 0.1)
+                                      : primaryColor.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  sum['destination'],
+                                  style: TextStyle(
+                                    color: isGrad
+                                        ? Colors.purple
+                                        : primaryColor,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          trailing: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: passed
-                                  ? Colors.green.withValues(alpha: 0.1)
-                                  : Colors.orange.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 8),
                             child: Text(
-                              passed ? "PROMOTED" : "RETAINED",
+                              "${sum['promoted']} Promoted • ${sum['retained']} Retained" +
+                                  (isGrad
+                                      ? " • ${sum['graduating']} Graduating"
+                                      : ""),
                               style: TextStyle(
-                                color: passed ? Colors.green : Colors.orange,
+                                color: Colors.grey.shade600,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 12,
                               ),
                             ),
                           ),
@@ -793,7 +894,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      onPressed: _isExecuting ? null : _executeTrigger,
+                      onPressed: _isExecuting ? null : _executeUnifiedTrigger,
                       icon: _isExecuting
                           ? const SizedBox(
                               width: 16,
@@ -810,7 +911,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                       label: Text(
                         _isExecuting
                             ? "EXECUTING ATOMIC TRANSACTION..."
-                            : "EXECUTE END OF YEAR PROCEEDING",
+                            : "EXECUTE SCHOOL-WIDE PROCEEDING",
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -828,6 +929,55 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
     );
   }
 
+  Widget _buildInfoField(
+    String label,
+    String value,
+    bool isDark, {
+    bool highlight = false,
+    Color? color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: highlight
+            ? color!.withValues(alpha: 0.1)
+            : (isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.grey.shade50),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: highlight
+              ? color!.withValues(alpha: 0.3)
+              : (isDark ? Colors.white10 : Colors.grey.shade200),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: highlight ? color : Colors.grey.shade500,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              color: highlight
+                  ? color
+                  : (isDark ? Colors.white : Colors.black87),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMetricCard(
     String label,
     String value,
@@ -836,7 +986,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
   ) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(16),
@@ -848,7 +998,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
               label,
               style: TextStyle(
                 color: color,
-                fontSize: 10,
+                fontSize: 9,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 1.0,
               ),
@@ -865,26 +1015,6 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  InputDecoration _inputStyle(String label, bool isDark) {
-    return InputDecoration(
-      labelText: label,
-      filled: true,
-      fillColor: isDark
-          ? Colors.white.withValues(alpha: 0.05)
-          : Colors.grey.shade50,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
         ),
       ),
     );

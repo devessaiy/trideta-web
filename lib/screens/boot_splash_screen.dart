@@ -93,7 +93,7 @@ class _BootSplashScreenState extends State<BootSplashScreen>
       themeNotifier.value = ThemeMode.system;
     }
 
-    // 🚨 DATABASE COLOR LOGIC
+    // DATABASE COLOR LOGIC
     Color finalColor = const Color(0xFF007ACC); // Default Trideta Blue
 
     if (session != null) {
@@ -113,10 +113,9 @@ class _BootSplashScreenState extends State<BootSplashScreen>
 
           if (dbColorStr != null && dbColorStr.isNotEmpty) {
             try {
-              // TRANSLATOR: Convert "#HEX" from DB to Flutter Color
               dbColorStr = dbColorStr.replaceAll('#', '');
               if (dbColorStr.length == 6) {
-                dbColorStr = 'FF$dbColorStr'; // Add 100% opacity prefix
+                dbColorStr = 'FF$dbColorStr';
               }
               finalColor = Color(int.parse(dbColorStr, radix: 16));
             } catch (e) {
@@ -126,29 +125,23 @@ class _BootSplashScreenState extends State<BootSplashScreen>
         }
       } catch (e) {
         debugPrint("Offline or failed to fetch color: $e");
-        // Fallback to local memory if they have no internet
         int? savedColor = prefs.getInt('app_primary_color');
         if (savedColor != null) finalColor = Color(savedColor);
       }
     } else {
-      // Not logged in yet
       int? savedColor = prefs.getInt('app_primary_color');
       if (savedColor != null) finalColor = Color(savedColor);
     }
 
-    appColorNotifier.value = finalColor; // 👈 Injects the color globally!
-    // ==========================================
+    appColorNotifier.value = finalColor;
   }
 
   void _navigateNext() async {
     final prefs = await SharedPreferences.getInstance();
-    // THE ROUTING INTELLIGENCE
     final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
 
-    // If Web -> Force false (skip onboarding). If Mobile -> check if they've seen it.
     final bool shouldShowOnboarding = kIsWeb ? false : !hasSeenOnboarding;
 
-    // NAVIGATE TO THE CORRECT SCREEN
     if (mounted) {
       Widget nextScreen = shouldShowOnboarding
           ? const OnboardingScreen()
@@ -167,13 +160,25 @@ class _BootSplashScreenState extends State<BootSplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    // 🚨 THE FIX: Listen to the active theme from the MaterialApp
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Swap colors dynamically
+    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FC);
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+    Color shadowColor = const Color(
+      0xFF007ACC,
+    ).withValues(alpha: isDark ? 0.3 : 0.15);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
+      backgroundColor: bgColor, // Dynamic Background
       body: Stack(
         children: [
           // ─── BACKGROUND DECORATIVE PAINTER ───────────────────────────
           Positioned.fill(
-            child: CustomPaint(painter: _SplashBackgroundPainter()),
+            child: CustomPaint(
+              painter: _SplashBackgroundPainter(isDark: isDark),
+            ), // Pass theme to doodles
           ),
 
           // ─── CENTER CONTENT ───────────────────────────────────────────
@@ -181,7 +186,7 @@ class _BootSplashScreenState extends State<BootSplashScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 🚨 TRUE APP LOGO WRAPPED IN A CIRCLE (Pulsing Animation)
+                // 🚨 TRUE APP LOGO WRAPPED IN A CIRCLE
                 AnimatedBuilder(
                   animation: _scaleAnimation,
                   builder: (context, child) {
@@ -195,12 +200,11 @@ class _BootSplashScreenState extends State<BootSplashScreen>
                     height: 110,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white,
+                      color: Colors
+                          .white, // Keep the circle background white for logo pop
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(
-                            0xFF007ACC,
-                          ).withValues(alpha: 0.15),
+                          color: shadowColor, // Dynamic shadow intensity
                           blurRadius: 24,
                           spreadRadius: 4,
                           offset: const Offset(0, 8),
@@ -208,7 +212,6 @@ class _BootSplashScreenState extends State<BootSplashScreen>
                       ],
                     ),
                     child: ClipOval(
-                      // 🚨 FIX 1: Padding removed & BoxFit.cover applied to fill the circle perfectly
                       child: Image.asset(
                         'assets/icon/app_icon.png',
                         fit: BoxFit.cover,
@@ -219,12 +222,12 @@ class _BootSplashScreenState extends State<BootSplashScreen>
                 const SizedBox(height: 20),
 
                 // App Name
-                const Text(
+                Text(
                   'Trideta',
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF1A1A2E),
+                    color: textColor, // Dynamic Text Color
                     letterSpacing: 0.5,
                   ),
                 ),
@@ -236,7 +239,9 @@ class _BootSplashScreenState extends State<BootSplashScreen>
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF9098B1),
+                    color: Color(
+                      0xFF9098B1,
+                    ), // This grey looks good on both light & dark
                     height: 1.5,
                     letterSpacing: 0.3,
                   ),
@@ -245,7 +250,7 @@ class _BootSplashScreenState extends State<BootSplashScreen>
             ),
           ),
 
-          // ─── BOTTOM BRANDING ("from SKYNEX" WITH ANIMATED LOOP) ───────
+          // ─── BOTTOM BRANDING ───────
           const Positioned(
             bottom: 40,
             left: 0,
@@ -259,7 +264,7 @@ class _BootSplashScreenState extends State<BootSplashScreen>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NEW: Meta-Style Animated Skynex Branding Widget
+// Meta-Style Animated Skynex Branding Widget
 // ─────────────────────────────────────────────────────────────────────────────
 class SkynexAnimatedBranding extends StatefulWidget {
   const SkynexAnimatedBranding({super.key});
@@ -275,7 +280,6 @@ class _SkynexAnimatedBrandingState extends State<SkynexAnimatedBranding>
   @override
   void initState() {
     super.initState();
-    // Controls the glowing endless loop animation
     _sweepController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000),
@@ -306,7 +310,6 @@ class _SkynexAnimatedBrandingState extends State<SkynexAnimatedBranding>
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Animated Endless Loop (Infinity) Icon
             AnimatedBuilder(
               animation: _sweepController,
               builder: (context, child) {
@@ -316,8 +319,8 @@ class _SkynexAnimatedBrandingState extends State<SkynexAnimatedBranding>
                       startAngle: 0.0,
                       endAngle: math.pi * 2,
                       colors: const [
-                        Color(0xFF007ACC), // Trideta Blue
-                        Color(0xFF66C2FF), // Highlight / Shimmer
+                        Color(0xFF007ACC),
+                        Color(0xFF66C2FF),
                         Color(0xFF007ACC),
                       ],
                       stops: const [0.0, 0.5, 1.0],
@@ -327,21 +330,20 @@ class _SkynexAnimatedBrandingState extends State<SkynexAnimatedBranding>
                     ).createShader(bounds);
                   },
                   child: const Icon(
-                    Icons.all_inclusive_rounded, // The Endless Loop Shape
+                    Icons.all_inclusive_rounded,
                     size: 26,
-                    color: Colors.white, // Must be white for ShaderMask to work
+                    color: Colors.white,
                   ),
                 );
               },
             ),
             const SizedBox(width: 8),
-            // Skynex Text
             const Text(
               'SKYNEX',
               style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w900,
-                color: Color(0xFF007ACC), // Trideta Blue
+                color: Color(0xFF007ACC),
                 letterSpacing: 2.5,
               ),
             ),
@@ -353,16 +355,22 @@ class _SkynexAnimatedBrandingState extends State<SkynexAnimatedBranding>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Scattered geometric doodles — circles, diamonds, chevrons, brackets
+// Scattered geometric doodles
 // ─────────────────────────────────────────────────────────────────────────────
 class _SplashBackgroundPainter extends CustomPainter {
-  static const _accentColor = Color(0xFFCDD0E3); // soft blue-grey
+  final bool isDark; // 🚨 Added theme awareness
+
+  _SplashBackgroundPainter({required this.isDark});
+
   static const _strokeW = 1.2;
 
   @override
   void paint(Canvas canvas, Size size) {
+    // 🚨 Soften the doodles drastically on Dark Mode so they don't look muddy
     final paint = Paint()
-      ..color = _accentColor
+      ..color = isDark
+          ? Colors.white.withValues(alpha: 0.05)
+          : const Color(0xFFCDD0E3)
       ..style = PaintingStyle.stroke
       ..strokeWidth = _strokeW;
 
@@ -470,5 +478,5 @@ class _SplashBackgroundPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

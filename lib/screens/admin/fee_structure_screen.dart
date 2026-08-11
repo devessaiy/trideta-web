@@ -16,7 +16,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
 
   String? _schoolId;
 
-  // 🚨 NEW: Stores the complete class data with their asynchronous calendars
+  // Stores the complete class data mapped to the Global Calendar
   List<Map<String, dynamic>> _schoolClassesData = [];
 
   bool _isLoading = true;
@@ -80,10 +80,10 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
           }
         }
 
-        // Fetch classes and their asynchronous overrides
+        // 🚨 FIXED: Completely stripped the deleted override columns
         final classesData = await _supabase
             .from('classes')
-            .select('id, name, override_session, override_term')
+            .select('id, name') // Only fetch id and name!
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
 
@@ -94,8 +94,8 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                   return {
                     'id': c['id'].toString(),
                     'name': c['name'].toString(),
-                    'current_session': c['override_session'] ?? globalSession,
-                    'current_term': c['override_term'] ?? globalTerm,
+                    'current_session': globalSession, // Locked to global
+                    'current_term': globalTerm, // Locked to global
                   };
                 })
                 .toList();
@@ -308,7 +308,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: _filterSession,
+                          initialValue: _filterSession,
                           dropdownColor: cardColor,
                           decoration: InputDecoration(
                             labelText: "Session",
@@ -345,7 +345,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                       const SizedBox(width: 12),
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: _filterTerm,
+                          initialValue: _filterTerm,
                           dropdownColor: cardColor,
                           decoration: InputDecoration(
                             labelText: "Term",
@@ -400,12 +400,14 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                               .eq('academic_session', _filterSession)
                               .eq('academic_term', _filterTerm),
                     builder: (context, snapshot) {
-                      if (snapshot.hasError)
+                      if (snapshot.hasError) {
                         return const Center(child: Text("Connection error."));
-                      if (!snapshot.hasData)
+                      }
+                      if (!snapshot.hasData) {
                         return Center(
                           child: TridetaLoader(color: primaryColor),
                         );
+                      }
 
                       final fees = snapshot.data!;
 
@@ -800,7 +802,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
 }
 
 // ============================================================================
-// 🚨 ADD/EDIT FEE FORM (WITH REVERSE LOCK UI)
+// 🚨 ADD/EDIT FEE FORM (GLOBAL CALENDAR ONLY)
 // ============================================================================
 class AddFeeForm extends StatefulWidget {
   final String schoolId;
@@ -864,7 +866,6 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
           widget.initialData!['applicable_categories'] ?? [];
       _selectedCategories = initialCats.map((e) => e.toString()).toList();
     } else {
-      // Set defaults based on the first class's fallback (global session) if available
       if (widget.schoolClassesData.isNotEmpty) {
         _selectedSession = widget.schoolClassesData.first['current_session'];
         _selectedTerm = widget.schoolClassesData.first['current_term'];
@@ -944,20 +945,6 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
     Color pColor = widget.primaryColor;
 
     bool isEdit = widget.initialData != null;
-
-    // 🚨 REVERSE LOCK LOGIC: Filter classes strictly by the selected Calendar
-    List<Map<String, dynamic>> visibleClasses = widget.schoolClassesData.where((
-      c,
-    ) {
-      // Failsafe: Always show already-selected classes so Admin doesn't accidentally wipe them
-      if (_selectedClasses.contains(c['name'])) return true;
-
-      if (c['current_session'] != _selectedSession) return false;
-      if (_selectedTerm != 'All Terms' && c['current_term'] != _selectedTerm)
-        return false;
-
-      return true;
-    }).toList();
 
     return Container(
       padding: EdgeInsets.only(
@@ -1075,30 +1062,17 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
             ),
 
             const SizedBox(height: 30),
-            _buildFieldLabel(
-              "Target Students (Filtered by Target Calendar)",
-              pColor,
-            ),
+            _buildFieldLabel("Target Students", pColor),
 
-            if (visibleClasses.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Text(
-                  "No classes are currently operating in $_selectedSession - $_selectedTerm. Please change the calendar above to assign this fee.",
-                  style: TextStyle(
-                    color: Colors.redAccent.shade100,
-                    fontStyle: FontStyle.italic,
-                    fontSize: 12,
-                  ),
-                ),
-              )
-            else
-              _buildSelectionWrap(
-                visibleClasses.map((c) => c['name'].toString()).toList(),
-                _selectedClasses,
-                pColor,
-                isDark,
-              ),
+            // 🚨 REVERSE LOCK COMPLETELY REMOVED: Displays all global classes
+            _buildSelectionWrap(
+              widget.schoolClassesData
+                  .map((c) => c['name'].toString())
+                  .toList(),
+              _selectedClasses,
+              pColor,
+              isDark,
+            ),
 
             const SizedBox(height: 24),
             _buildFieldLabel("Category Filtering", pColor),
@@ -1120,9 +1094,9 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                onPressed: (_isSaving || visibleClasses.isEmpty)
+                onPressed: _isSaving
                     ? null
-                    : _saveFeeRule,
+                    : _saveFeeRule, // 🚨 Lockout check removed
                 child: _isSaving
                     ? const TridetaLoader(color: Colors.white)
                     : Text(

@@ -18,22 +18,18 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
   String? _schoolId;
   String _userRole = 'teacher';
 
-  // 🚨 FIXED: Dynamic Sessions List initialized late
   late List<String> _sessions;
   final List<String> _terms = ['1st Term', '2nd Term', '3rd Term'];
   String? _selectedSession;
   String? _selectedTerm;
 
-  // 🚨 FIXED: Trackers to hold the global defaults for fallback
   String? _globalSession;
   String? _globalTerm;
 
   String? _selectedClass;
   List<String> _activeClasses = [];
 
-  // 🚨 INJECTED: Dictionary maps to translate string names to UUIDs and async overrides
   final Map<String, String> _classNameToIdMap = {};
-  final Map<String, Map<String, String?>> _classOverridesMap = {};
 
   List<Map<String, dynamic>> _students = [];
   final Map<String, Map<String, dynamic>> _affectiveData = {};
@@ -41,22 +37,19 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
   @override
   void initState() {
     super.initState();
-    _sessions = _generateDynamicSessions(); // 🚨 Initialize dynamically
+    _sessions = _generateDynamicSessions();
     _fetchInitialData();
   }
 
-  // 🚨 NEW: Generates an infinite rolling window of academic sessions
   List<String> _generateDynamicSessions() {
     int currentYear = DateTime.now().year;
     List<String> list = [];
-    // Generates a scalable window from 2020 into the future dynamically
     for (int i = 2020; i <= currentYear + 3; i++) {
       list.add("$i/${i + 1}");
     }
     return list;
   }
 
-  // 🚨 FIXED: Only the teacher fetch logic was updated to use class_assigned and class_id safely
   Future<void> _fetchInitialData() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -76,7 +69,6 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
           .eq('id', _schoolId!)
           .single();
 
-      // 🚨 Store the globals safely (calculates current year fallback just in case)
       int currentYr = DateTime.now().year;
       _globalSession =
           school['current_session'] ?? "$currentYr/${currentYr + 1}";
@@ -84,28 +76,22 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
 
       List<String> fetchedClasses = [];
       _classNameToIdMap.clear();
-      _classOverridesMap.clear();
 
       if (_userRole == 'admin' || _userRole == 'principal') {
         final classesData = await _supabase
             .from('classes')
-            .select('id, name, override_session, override_term')
+            .select('id, name') // 🚨 FIXED: Stripped overrides
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
         for (var c in classesData) {
           String cName = c['name'].toString();
           _classNameToIdMap[cName] = c['id'].toString();
-          _classOverridesMap[cName] = {
-            'session': c['override_session']?.toString(),
-            'term': c['override_term']?.toString(),
-          };
           fetchedClasses.add(cName);
         }
       } else {
-        // Teacher Logic: Fetch all classes, then filter locally to seamlessly match text or UUIDs
         final classesData = await _supabase
             .from('classes')
-            .select('id, name, override_session, override_term')
+            .select('id, name') // 🚨 FIXED: Stripped overrides
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
 
@@ -128,10 +114,6 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
 
           if (assignedKeys.contains(cId) || assignedKeys.contains(cName)) {
             _classNameToIdMap[cName] = cId;
-            _classOverridesMap[cName] = {
-              'session': c['override_session']?.toString(),
-              'term': c['override_term']?.toString(),
-            };
             fetchedClasses.add(cName);
           }
         }
@@ -166,7 +148,6 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
           .eq('class_id', _classNameToIdMap[_selectedClass]!)
           .order('first_name', ascending: true);
 
-      // Fetch both traits AND term results (to get the principal's remark)
       final traitsData = await _supabase
           .from('affective_traits')
           .select()
@@ -202,8 +183,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
           'peer_relationship': trait?['peer_relationship'] ?? 3,
           'manual_dexterity': trait?['manual_dexterity'] ?? 3,
           'class_teacher_remark': trait?['class_teacher_remark'] ?? "",
-          'principal_remark':
-              result?['principal_remark'] ?? "", // 🚨 Added Principal Remark
+          'principal_remark': result?['principal_remark'] ?? "",
         };
       }
 
@@ -230,7 +210,6 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
         String sId = student['id'].toString();
         var data = _affectiveData[sId]!;
 
-        // 1. Manually check if a record already exists for this term
         final existing = await _supabase
             .from('affective_traits')
             .select('id')
@@ -239,14 +218,13 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
             .eq('term', _selectedTerm!)
             .maybeSingle();
 
-        // 2. Prepare the Payload (Sending both ID and Text to prevent Not-Null errors)
         final payload = {
           'school_id': _schoolId,
           'student_id': sId,
           'academic_session': _selectedSession,
           'term': _selectedTerm,
-          'class_id': _classNameToIdMap[_selectedClass], // The new UUID
-          'class_level': _selectedClass, // Fallback for DB safety
+          'class_id': _classNameToIdMap[_selectedClass],
+          'class_level': _selectedClass,
           'punctuality': data['punctuality'],
           'neatness': data['neatness'],
           'honesty': data['honesty'],
@@ -255,17 +233,15 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
           'class_teacher_remark': data['class_teacher_remark'],
         };
 
-        // 3. Smart Insert or Update (Bypasses the 400 Upsert Error)
         if (existing == null) {
           await _supabase.from('affective_traits').insert(payload);
         } else {
           await _supabase
               .from('affective_traits')
               .update(payload)
-              .eq('id', existing['id']); // Update using the exact row ID
+              .eq('id', existing['id']);
         }
 
-        // 🚨 Admin Only: Update the principal's remark in the term_results table
         if (isAdmin &&
             data['principal_remark'] != null &&
             data['principal_remark'].toString().isNotEmpty) {
@@ -305,7 +281,6 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
 
     bool isAdmin = _userRole == 'admin' || _userRole == 'principal';
 
-    // 🚨 SMART TITLE LOGIC
     String clsLower = (_selectedClass ?? "").toLowerCase();
     bool isPrimary =
         clsLower.contains('primary') ||
@@ -325,11 +300,9 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      // 🚨 SHAPE-SHIFTER: LayoutBuilder
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 800) {
-            // 💻 DESKTOP LAYOUT (Constrained Center Column)
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 800),
@@ -363,7 +336,6 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
               ),
             );
           } else {
-            // 📱 MOBILE LAYOUT (Full Width)
             return _buildMainContent(
               isDark,
               primaryColor,
@@ -391,7 +363,6 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
     );
   }
 
-  // 🚨 EXTRACTED MAIN CONTENT FOR REUSABILITY IN RESPONSIVE LAYOUT
   Widget _buildMainContent(
     bool isDark,
     Color primaryColor,
@@ -453,11 +424,9 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
                   setState(() {
                     _selectedClass = val;
                     if (val != null) {
-                      // 🚨 ASYNC CALENDAR RESOLUTION
-                      _selectedSession =
-                          _classOverridesMap[val]?['session'] ?? _globalSession;
-                      _selectedTerm =
-                          _classOverridesMap[val]?['term'] ?? _globalTerm;
+                      // 🚨 FIXED: Fallback to Global Strict Sync
+                      _selectedSession = _globalSession;
+                      _selectedTerm = _globalTerm;
                     }
                   });
                   _fetchStudentsAndTraits();
@@ -626,7 +595,6 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
             ),
             const SizedBox(height: 15),
 
-            // Class Teacher Remark (Editable by everyone)
             TextFormField(
               initialValue: data['class_teacher_remark'],
               onChanged: (val) =>
@@ -647,7 +615,6 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
             ),
             const SizedBox(height: 10),
 
-            // 🚨 Principal/Headmaster Remark (Editable ONLY by Admin)
             TextFormField(
               initialValue: data['principal_remark'],
               onChanged: isAdmin

@@ -122,7 +122,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
           .single();
       final classesData = await _supabase
           .from('classes')
-          .select('id, name, override_session, override_term')
+          .select('id, name') // ✅ SANITIZED: Only fetch id and name
           .eq('school_id', sId)
           .order('list_order', ascending: true);
 
@@ -154,14 +154,10 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
   }
 
   void _resolveSessionForClass(String className) {
-    final classData = _allClassesData.firstWhere(
-      (c) => c['name'] == className,
-      orElse: () => <String, dynamic>{},
-    );
     setState(() {
       _selectedClass = className;
-      _resolvedSession = classData['override_session'] ?? _globalSession;
-      _resolvedTerm = classData['override_term'] ?? _globalTerm;
+      _resolvedSession = _globalSession; // ✅ LOCKED TO GLOBAL
+      _resolvedTerm = _globalTerm; // ✅ LOCKED TO GLOBAL
     });
     _updateSmartID();
   }

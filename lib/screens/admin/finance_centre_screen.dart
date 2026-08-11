@@ -29,9 +29,10 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
   double _rawDebt = 0.0;
   int _invoiceCount = 0;
   String _activeSessionLabel = "CURRENT TERM";
-  String _currentSession = "";
 
-  // 🚨 ADDED TO HOLD OFFICIAL CLASSES
+  String _currentSession = "";
+  String _currentTerm = "1st Term";
+
   List<String> _officialClasses = [];
 
   @override
@@ -41,7 +42,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
   }
 
   // ===========================================================================
-  // 🚨 LOGIC ENGINE: STRICTLY UNTOUCHED
+  // 🚨 STRICT GLOBAL LOGIC ENGINE
   // ===========================================================================
   Future<void> _fetchFinanceData() async {
     setState(() => _isLoading = true);
@@ -56,16 +57,17 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
           .single();
       final schoolId = profile['school_id'];
 
-      // 1. FETCH ACTIVE SESSION FIRST
+      // 🚨 1. FETCH GLOBAL ACTIVE SESSION AND TERM
       final schoolData = await _supabase
           .from('schools')
-          .select('current_session')
+          .select('current_session, current_term')
           .eq('id', schoolId)
           .single();
 
       _currentSession = schoolData['current_session'] ?? "";
+      _currentTerm = schoolData['current_term'] ?? "1st Term";
 
-      // 1.5 🚨 FETCH OFFICIAL CLASSES FROM RELATIONAL TABLE
+      // Fetch official classes
       final classesData = await _supabase
           .from('classes')
           .select('name')
@@ -74,48 +76,54 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
 
       _officialClasses = classesData.map((c) => c['name'].toString()).toList();
 
-      // 2. FETCH FEE STRUCTURE (NOW FETCHING id)
+      // 2. FETCH FEE STRUCTURE (STRICTLY GLOBAL)
       final rawFeeData = await _supabase
           .from('fee_structures')
           .select(
-            'id, fee_name, amount, applicable_classes, applicable_class_ids, applicable_categories, academic_session',
+            'id, fee_name, amount, applicable_classes, applicable_class_ids, applicable_categories, academic_session, academic_term',
           )
           .eq('school_id', schoolId);
 
-      // Filter fees locally
       List<Map<String, dynamic>> feeData = [];
       for (var fee in rawFeeData) {
         String feeSession = (fee['academic_session'] ?? '').toString();
-        if (feeSession == _currentSession || feeSession.isEmpty) {
+        String feeTerm = (fee['academic_term'] ?? 'All Terms').toString();
+
+        if ((feeSession == _currentSession || feeSession.isEmpty) &&
+            (feeTerm == _currentTerm || feeTerm == 'All Terms')) {
           feeData.add(fee);
         }
       }
 
       if (feeData.isNotEmpty) {
-        _activeSessionLabel = _currentSession.toUpperCase();
+        _activeSessionLabel = "$_currentSession • $_currentTerm".toUpperCase();
       }
 
-      // 3. FETCH TRANSACTIONS (NOW FETCHING fee_id)
+      // 3. FETCH TRANSACTIONS (STRICTLY GLOBAL)
       final txData = await _supabase
           .from('transactions')
-          .select('student_id, category, amount, academic_session, fee_id')
+          .select(
+            'student_id, category, amount, academic_session, academic_term, fee_id',
+          )
           .eq('school_id', schoolId);
 
-      // 🚨 GROUP PAYMENTS NATIVELY BY fee_id
       Map<String, Map<String, double>> studentCategoryPayments = {};
       double totalCollected = 0.0;
       int validInvoiceCount = 0;
 
       for (var tx in txData) {
         String txSession = (tx['academic_session'] ?? '').toString();
+        String txTerm = (tx['academic_term'] ?? 'All Terms').toString();
 
-        if (txSession == _currentSession || txSession.isEmpty) {
+        if ((txSession == _currentSession || txSession.isEmpty) &&
+            (txTerm == _currentTerm ||
+                txTerm == 'All Terms' ||
+                _currentTerm == 'All Terms')) {
           String sId = tx['student_id'].toString();
           String txFeeId = (tx['fee_id'] ?? '').toString();
           String txCategory = (tx['category'] ?? '').toString();
           double amt = (tx['amount'] ?? 0).toDouble();
 
-          // 🚨 HYBRID GROUPING: Uses UUID if available, falls back to text if the migration script missed it
           String paymentKey = txFeeId.isNotEmpty ? txFeeId : txCategory;
 
           studentCategoryPayments.putIfAbsent(sId, () => {});
@@ -150,12 +158,12 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
 
           bool classMatch = false;
 
-          // Match by UUID first
-          final List<dynamic>? classIdsList = fee['applicable_class_ids'];
-          if (classIdsList != null &&
-              classIdsList.isNotEmpty &&
+          if (fee['applicable_class_ids'] != null &&
+              (fee['applicable_class_ids'] as List).isNotEmpty &&
               sClassId.isNotEmpty) {
-            classMatch = classIdsList.contains(sClassId);
+            classMatch = (fee['applicable_class_ids'] as List).contains(
+              sClassId,
+            );
           } else {
             classMatch = _doesItApply(
               fee['applicable_classes'],
@@ -171,7 +179,6 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
           );
 
           if (classMatch && categoryMatch) {
-            // 🚨 NATIVE UUID LOOKUP: Checks for payments under the UUID, falls back to text name lookup
             double paidAmt =
                 (studentCategoryPayments[sId]?[feeId] ?? 0.0) +
                 (studentCategoryPayments[sId]?[feeName] ?? 0.0);
@@ -387,15 +394,12 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                         subtitle: "Archive & Reset",
                         icon: Icons.archive_rounded,
                         color: Colors.deepPurple,
-                        onTap: () =>
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const SessionArchiveScreen(),
-                              ),
-                            ).then(
-                              (_) => _fetchFinanceData(),
-                            ), // Refreshes dashboard if session changed
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const SessionArchiveScreen(),
+                          ),
+                        ).then((_) => _fetchFinanceData()),
                       ),
                     ],
                   ),

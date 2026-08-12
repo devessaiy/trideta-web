@@ -77,11 +77,70 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
       // Fetch Global Calendar
       final schoolData = await _supabase
           .from('schools')
-          .select('current_session')
+          .select('current_session, current_term')
           .eq('id', _schoolId!)
           .single();
+
       _currentSession = schoolData['current_session'] ?? "2025/2026";
+      String currentTerm = schoolData['current_term'] ?? "";
       _nextSession = _calculateNextSession(_currentSession);
+
+      // ==========================================
+      // 🚨 END OF YEAR CONSTRAINT LOGIC
+      // ==========================================
+      if (currentTerm != '3rd Term') {
+        if (mounted) {
+          setState(() => _isLoading = false);
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: const Row(
+                children: [
+                  Icon(Icons.block_rounded, color: Colors.redAccent, size: 28),
+                  SizedBox(width: 10),
+                  Text(
+                    "Action Locked",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.redAccent,
+                    ),
+                  ),
+                ],
+              ),
+              content: Text(
+                "You cannot run End of Year Proceedings during the $currentTerm.\n\nPlease use the 'End of Term Proceedings' module to advance the term first.",
+                style: const TextStyle(height: 1.5, fontSize: 14),
+              ),
+              actions: [
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.pop(
+                      context,
+                    ); // Kick admin completely off the screen
+                  },
+                  child: const Text(
+                    "Go Back",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+      // ==========================================
 
       // Fetch Classes Ordered by Hierarchy
       final classesData = await _supabase
@@ -141,7 +200,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
     });
 
     try {
-      // 1. Fetch EVERYTHING for the current session
+      // 1. Fetch Shared Dependencies
       final studentsData = await _supabase
           .from('students')
           .select('id, first_name, last_name, category, class_id')
@@ -158,18 +217,19 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
           .eq('academic_session', _currentSession);
       final allFees = List<Map<String, dynamic>>.from(allFeesRes);
 
-      final studentIds = studentsData.map((s) => s['id']).toList();
-      final studentGrades = await _fetchStudentGrades(
-        studentIds,
-        _currentSession,
-      );
-
       List<Map<String, dynamic>> summaries = [];
 
-      // 2. Process Class by Class (Following the Hierarchy)
+      // 2. 🚨 Process Class by Class to prevent Row Limits and URL lengths!
       for (int i = 0; i < _allClasses.length; i++) {
         var currentClass = _allClasses[i];
+        String currentClassId = currentClass['id'];
         String currentClassName = currentClass['name'];
+
+        // Fetch grades safely ONLY for this specific class
+        final classGrades = await _fetchClassGrades(
+          currentClassId,
+          _currentSession,
+        );
 
         // Determine Destination
         String destinationName;
@@ -191,12 +251,12 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
 
         // Filter students & fees for this specific class
         var classStudents = studentsData
-            .where((s) => s['class_id'] == currentClass['id'])
+            .where((s) => s['class_id'] == currentClassId)
             .toList();
         var classFees = allFees
             .where(
               (f) =>
-                  _doesItApply(f['applicable_class_ids'], currentClass['id']) ||
+                  _doesItApply(f['applicable_class_ids'], currentClassId) ||
                   _doesItApply(f['applicable_classes'], currentClassName),
             )
             .toList();
@@ -240,7 +300,8 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
 
           // --- ACADEMIC CHECK ---
           bool hasPassed = true;
-          Map<String, dynamic> grades = studentGrades[student['id']] ?? {};
+          // Look up from the safely fetched classGrades map
+          Map<String, dynamic> grades = classGrades[student['id']] ?? {};
           double average = (grades['average'] ?? 0.0).toDouble();
 
           if (average < passMark) {
@@ -304,15 +365,17 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
     }
   }
 
-  Future<Map<String, Map<String, dynamic>>> _fetchStudentGrades(
-    List<dynamic> studentIds,
+  // 🚨 FIXED: Safe, segmented database fetching
+  Future<Map<String, Map<String, dynamic>>> _fetchClassGrades(
+    String classId,
     String targetSession,
   ) async {
     final response = await _supabase
         .from('exam_scores')
         .select('student_id, subject_name, total_score')
-        .eq('academic_session', targetSession)
-        .inFilter('student_id', studentIds);
+        .eq('class_id', classId)
+        .eq('academic_session', targetSession);
+
     Map<String, Map<String, List<double>>> rawScores = {};
 
     for (var row in response) {
@@ -398,8 +461,10 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                   backgroundColor: Colors.redAccent,
                 ),
                 onPressed: () {
-                  if (confirmController.text.trim().toUpperCase() == "CONFIRM")
+                  if (confirmController.text.trim().toUpperCase() ==
+                      "CONFIRM") {
                     Navigator.pop(ctx, true);
+                  }
                 },
                 child: const Text("EXECUTE PIPELINE"),
               ),
@@ -487,10 +552,12 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
         ? studentData.replaceAll(' ', '').toLowerCase()
         : _standardizeClass(studentData);
     if (isCategory &&
-        (cleanStudentData.isEmpty || cleanStudentData == 'notfound'))
+        (cleanStudentData.isEmpty || cleanStudentData == 'notfound')) {
       cleanStudentData = 'regular';
-    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound')
+    }
+    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound') {
       return false;
+    }
     if (columnData == null) return true;
     String colStr = isCategory
         ? columnData.toString().replaceAll(' ', '').toLowerCase()
@@ -498,8 +565,9 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
     if (colStr.isEmpty ||
         colStr == 'all' ||
         colStr == '[]' ||
-        colStr == '["all"]')
+        colStr == '["all"]') {
       return true;
+    }
     if (columnData is List) {
       if (columnData.isEmpty) return true;
       for (var item in columnData) {

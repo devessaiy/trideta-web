@@ -69,21 +69,36 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
       final String sClass = widget.childData['class_level']?.toString() ?? '';
       final String sCategory =
           widget.childData['category']?.toString() ?? 'Regular';
+
+      // 🚨 FIXED: Fetch real-time active session and term directly from the database!
+      final schoolData = await _supabase
+          .from('schools')
+          .select('current_session, current_term')
+          .eq('id', schoolId)
+          .single();
+
       final String currentSession =
-          widget.childData['schools']['current_session']?.toString() ?? '';
+          schoolData['current_session']?.toString() ?? '';
+      final String currentTerm =
+          schoolData['current_term']?.toString() ?? '1st Term';
 
       // --- ACADEMICS ---
+      // 🚨 RESTORED: Now safely queries the new database columns!
       final classAttRes = await _supabase
           .from('attendance')
           .select('date')
-          .eq('class_level', sClass);
+          .eq('class_level', sClass)
+          .eq('academic_session', currentSession)
+          .eq('term', currentTerm);
       final uniqueDates = classAttRes.map((r) => r['date'].toString()).toSet();
       int totalSchoolDays = uniqueDates.length;
 
       final stuAttRes = await _supabase
           .from('attendance')
           .select('status')
-          .eq('student_id', studentId);
+          .eq('student_id', studentId)
+          .eq('academic_session', currentSession)
+          .eq('term', currentTerm);
       int presentCount = stuAttRes
           .where((r) => r['status'] == 'Punctual' || r['status'] == 'Late')
           .length;
@@ -96,10 +111,14 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
         _attendancePercentage = "No Class Records";
       }
 
+      // 🚨 FIXED: Filter exam scores precisely by active Session and Term
       final scoresRes = await _supabase
           .from('exam_scores')
           .select('subject_name, total_score, grade')
-          .eq('student_id', studentId);
+          .eq('student_id', studentId)
+          .eq('academic_session', currentSession)
+          .eq('term', currentTerm);
+
       if (scoresRes.isNotEmpty) {
         double totalSum = 0;
         List<Map<String, dynamic>> parsedGrades = [];
@@ -115,6 +134,9 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
         _gradeAverage = "${(totalSum / scoresRes.length).toStringAsFixed(1)}%";
         parsedGrades.sort((a, b) => a['subject'].compareTo(b['subject']));
         _subjectGrades = parsedGrades;
+      } else {
+        _subjectGrades = [];
+        _gradeAverage = "N/A";
       }
 
       // --- FINANCES ---
@@ -123,7 +145,7 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
         studentId: studentId,
         sClass: sClass,
         sCategory: sCategory,
-        session: currentSession,
+        session: currentSession, // Works perfectly with the service logic
       );
 
       final paymentsRes = await _supabase
@@ -165,18 +187,29 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
 
       final schoolData = await _supabase
           .from('schools')
-          .select('name, address, logo_url')
+          .select(
+            'name, address, logo_url, current_session, current_term',
+          ) // 🚨 Fetched dynamically
           .eq('id', schoolId)
           .single();
+
+      final String currentSession =
+          schoolData['current_session']?.toString() ?? '';
+      final String currentTerm =
+          schoolData['current_term']?.toString() ?? '1st Term';
+
       final termResults = await _supabase
           .from('term_results')
           .select()
           .eq('student_id', studentId)
           .order('academic_session', ascending: false);
+
       final attendanceData = await _supabase
           .from('attendance')
           .select('status')
-          .eq('student_id', studentId);
+          .eq('student_id', studentId)
+          .eq('academic_session', currentSession)
+          .eq('term', currentTerm);
 
       List<dynamic> financeData = [];
       try {
@@ -536,9 +569,7 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color primaryColor = Theme.of(context).primaryColor;
-    Color schoolColor = _getSchoolColor(
-      primaryColor,
-    ); // 🚨 Uses School Brand Color
+    Color schoolColor = _getSchoolColor(primaryColor);
 
     String fName = widget.childData['first_name'] ?? '';
     String lName = widget.childData['last_name'] ?? '';

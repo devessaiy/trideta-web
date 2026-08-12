@@ -116,10 +116,12 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
         ? studentData.replaceAll(' ', '').toLowerCase()
         : _standardizeClass(studentData);
     if (isCategory &&
-        (cleanStudentData.isEmpty || cleanStudentData == 'notfound'))
+        (cleanStudentData.isEmpty || cleanStudentData == 'notfound')) {
       cleanStudentData = 'regular';
-    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound')
+    }
+    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound') {
       return false;
+    }
     if (columnData == null) return true;
 
     String colStr = isCategory
@@ -128,8 +130,9 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
     if (colStr.isEmpty ||
         colStr == 'all' ||
         colStr == '[]' ||
-        colStr == '["all"]')
+        colStr == '["all"]') {
       return true;
+    }
 
     if (columnData is List) {
       if (columnData.isEmpty) return true;
@@ -194,8 +197,9 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
       final classFees = allFees.where((fee) {
         if (fee['academic_session'] != _selectedArchiveSession) return false;
         if (fee['academic_term'] != _selectedArchiveTerm &&
-            fee['academic_term'] != 'All Terms')
+            fee['academic_term'] != 'All Terms') {
           return false;
+        }
 
         bool classMatch = false;
         final List<dynamic>? classIdsList = fee['applicable_class_ids'];
@@ -543,7 +547,7 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
                         isExpanded: true,
-                        value: _selectedArchiveClassId,
+                        initialValue: _selectedArchiveClassId,
                         dropdownColor: cardColor,
                         decoration: _inputStyle(
                           "Target Class",

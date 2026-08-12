@@ -5,15 +5,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trideta_v2/screens/admin/school_data_export_screen.dart';
-import 'package:trideta_v2/widgets/color_picker_sheet.dart'; // 🚨 IMPORTED MODULAR COLOR PICKER
+import 'package:trideta_v2/widgets/color_picker_sheet.dart';
 
-// 🚨 UPDATED ABSOLUTE IMPORTS
 import 'package:trideta_v2/screens/auth/login_screen.dart';
 import 'package:trideta_v2/screens/admin/school_profile_screen.dart';
 import 'package:trideta_v2/screens/admin/school_configuration_screen.dart';
-import 'package:trideta_v2/screens/admin/end_of_year_processing_screen.dart'; // 🚨 NEW IMPORT
+import 'package:trideta_v2/screens/admin/end_of_year_processing_screen.dart';
+import 'package:trideta_v2/screens/admin/end_of_term_proceedings_screen.dart';
 import 'package:trideta_v2/services/biometric_service.dart';
-import 'package:trideta_v2/main.dart'; // 🚨 IMPORTED TO SYNC THE GLOBAL THEME
+import 'package:trideta_v2/main.dart';
 
 class ProfileMenuScreen extends StatefulWidget {
   const ProfileMenuScreen({super.key});
@@ -24,14 +24,54 @@ class ProfileMenuScreen extends StatefulWidget {
 
 class _ProfileMenuScreenState extends State<ProfileMenuScreen>
     with AuthErrorHandler {
-  // 🚨 Tracker for the new Termination Hub
   final Set<String> _downloadedTables = {};
   final int _totalRequiredTables = 14;
+
+  // 🚨 NEW: Dynamic Subscription Tracker
+  String _subscriptionStatus = "Checking...";
+  bool _isLoadingStatus = true;
 
   @override
   void initState() {
     super.initState();
     _loadSavedColor();
+    _fetchSubscriptionStatus(); // 🚨 Fetch from DB on load
+  }
+
+  // 🚨 NEW: Fetch dynamic subscription status
+  Future<void> _fetchSubscriptionStatus() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
+
+      final profile = await supabase
+          .from('profiles')
+          .select('school_id')
+          .eq('id', user.id)
+          .single();
+
+      final school = await supabase
+          .from('schools')
+          .select('subscription_status')
+          .eq('id', profile['school_id'])
+          .single();
+
+      if (mounted) {
+        setState(() {
+          _subscriptionStatus =
+              school['subscription_status'] ?? 'Unknown Status';
+          _isLoadingStatus = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _subscriptionStatus = "Error fetching status";
+          _isLoadingStatus = false;
+        });
+      }
+    }
   }
 
   // --- LOAD SAVED BRAND COLOR ---
@@ -123,7 +163,6 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
     );
   }
 
-  // --- NEW CONTACT SUPPORT OPTIONS (EMAIL & WHATSAPP) ---
   void _showContactSupportOptions(
     BuildContext context,
     bool isDark,
@@ -211,11 +250,9 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
     );
   }
 
-  // --- ORIGINAL DELETE LOGIC ---
   Future<void> _handleDeleteSchool(BuildContext context) async {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // 🚨 GATEKEEPER CHECK: Ensure they have downloaded their data
     if (_downloadedTables.length < _totalRequiredTables) {
       showAuthErrorDialog(
         "Action Prohibited.\n\nYou must first use the 'Export All Data (CSV)' module in Data & Security to backup all $_totalRequiredTables tables before the system will allow account deletion.",
@@ -315,7 +352,6 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
         throw "Could not identify your school ID.";
       }
 
-      // 🚨 FIXING THE 409 CONFLICT: Wipe all 13 child records sequentially FIRST
       final List<String> safeDeletionOrder = [
         'alert_reads',
         'alerts',
@@ -337,20 +373,16 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
         } catch (_) {}
       }
 
-      // NOW we can safely delete the core school record without Foreign Key blocks
       await supabase.from('schools').delete().eq('id', schoolId);
-
-      // Sign the user out
       await supabase.auth.signOut();
 
       if (context.mounted) {
-        Navigator.pop(context); // Close loader
+        Navigator.pop(context);
         showSuccessDialog(
           "School Deleted",
           "Your school and all associated data have been permanently removed from TriDeta.",
         );
 
-        // Redirect to login after 2 seconds
         Future.delayed(const Duration(seconds: 2), () {
           if (context.mounted) {
             Navigator.pushAndRemoveUntil(
@@ -363,12 +395,25 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
       }
     } catch (e) {
       if (context.mounted) {
-        Navigator.pop(context); // Close loader
+        Navigator.pop(context);
         showAuthErrorDialog(
           "Failed to delete school. Please contact support. Error: $e",
         );
       }
     }
+  }
+
+  // 🚨 NEW: Dynamic color logic for subscription badge
+  Color _getSubscriptionColor(String status) {
+    status = status.toLowerCase();
+    if (status.contains('active') || status.contains('trial')) {
+      return Colors.green;
+    } else if (status.contains('terminated') ||
+        status.contains('suspended') ||
+        status.contains('paused')) {
+      return Colors.redAccent;
+    }
+    return Colors.orange;
   }
 
   @override
@@ -378,6 +423,8 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
 
     final user = Supabase.instance.client.auth.currentUser;
     String email = user?.email ?? 'admin@trideta.com';
+
+    Color subColor = _getSubscriptionColor(_subscriptionStatus);
 
     return Scaffold(
       body: SafeArea(
@@ -411,27 +458,36 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                     const SizedBox(height: 5),
                     Text(email, style: const TextStyle(color: Colors.grey)),
                     const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.green.withValues(alpha: 0.3),
+
+                    // 🚨 DYNAMIC SUBSCRIPTION BADGE
+                    if (_isLoadingStatus)
+                      const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: subColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: subColor.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Text(
+                          _subscriptionStatus.toUpperCase(),
+                          style: TextStyle(
+                            color: subColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                      child: const Text(
-                        "Active Subscription",
-                        style: TextStyle(
-                          color: Colors.green,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -454,7 +510,6 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                   _showThemeSelectionPopup(prefs);
                 },
               ),
-              // 🚨 MODULARIZED COLOR PICKER ROUTE
               _buildSettingsItem(
                 title: "School Brand Color",
                 subtitle: "Change the primary color of the app",
@@ -505,10 +560,24 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                   ),
                 ),
               ),
-              // 🚨 NEWLY ADDED END OF YEAR PROCESSING LINK
+              // 🚨 NEWLY ADDED END OF TERM PROCESSING LINK
               _buildSettingsItem(
-                title: "End of Year Proceeding",
-                subtitle: "Promote students & tally debts",
+                title: "End of Term Proceedings",
+                subtitle: "Process term closures & freeze data",
+                icon: Icons.update_rounded,
+                color: const Color(0xFF96B703),
+                isDark: isDark,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const EndOfTermProceedingsScreen(),
+                  ),
+                ),
+              ),
+              // 🚨 EXISTING END OF YEAR PROCESSING LINK
+              _buildSettingsItem(
+                title: "End of Year Proceedings",
+                subtitle: "Promote students & graduate seniors",
                 icon: Icons.warning_amber_rounded,
                 color: Colors.redAccent,
                 isDark: isDark,
@@ -527,7 +596,6 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 10),
-              // 🚨 EXPORT DATA ROUTE (OPENS THE NEW HUB)
               _buildSettingsItem(
                 title: "Export All Data (CSV)",
                 subtitle: "Download school records and reports",
@@ -553,7 +621,6 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                           ),
                         ),
                       );
-                      // Sync the downloaded status back so the Delete button knows!
                       if (result != null && result is Set<String>) {
                         setState(() {
                           _downloadedTables.addAll(result);
@@ -649,7 +716,6 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                     ),
                   ),
                   onPressed: () async {
-                    // 🚨 NEW: Added confirmation dialog before logout
                     bool confirmLogout =
                         await showDialog(
                           context: context,
@@ -843,7 +909,6 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
     if (user != null) {
       bool passedChallenge = await _biometricService.authenticate();
       if (passedChallenge) {
-        // We prompt user to enter their password one time to save it securely
         if (mounted) _showBiometricPasswordPrompt(user.email!);
       } else {
         if (mounted) {
@@ -987,7 +1052,6 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
                   UserAttributes(password: passCtrl.text.trim()),
                 );
 
-                // If they change password, biometric stored password becomes invalid. Wipe it.
                 await _biometricService.deleteCredentials();
                 await _biometricService.setBiometricEnabled(false);
                 _loadSecurityPreferences();
@@ -1023,10 +1087,8 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
         backgroundColor: dynamicPrimaryColor,
         elevation: 0,
       ),
-      // 🚨 SHAPE-SHIFTER: LayoutBuilder added for Security Settings
       body: LayoutBuilder(
         builder: (context, constraints) {
-          // If we are on a wide screen (Web/Desktop)
           if (constraints.maxWidth > 800) {
             return Center(
               child: ConstrainedBox(
@@ -1049,7 +1111,6 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
               ),
             );
           }
-          // Mobile View
           return _buildSecurityContent(
             isDark,
             dynamicPrimaryColor,
@@ -1200,395 +1261,6 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
               Icons.chevron_right,
               color: isDark ? Colors.white30 : Colors.grey[400],
             ),
-      ),
-    );
-  }
-}
-
-// -----------------------------------------------------------------------------
-// ORIGINAL ADMIN DASHBOARD RESTORED
-// -----------------------------------------------------------------------------
-class AdminDashboard extends StatelessWidget {
-  final Map<String, dynamic>? schoolData;
-
-  const AdminDashboard({super.key, this.schoolData});
-
-  @override
-  Widget build(BuildContext context) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color primaryColor = Theme.of(context).primaryColor;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Admin Dashboard"),
-        backgroundColor: primaryColor,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ProfileMenuScreen(),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Dashboard Summary Cards
-            Row(
-              children: [
-                Expanded(
-                  child: _buildSummaryCard(
-                    title: "Total Students",
-                    value: "1,240",
-                    icon: Icons.people,
-                    color: Colors.blue,
-                    isDark: isDark,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildSummaryCard(
-                    title: "Total Teachers",
-                    value: "84",
-                    icon: Icons.person_pin_circle,
-                    color: Colors.green,
-                    isDark: isDark,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildSummaryCard(
-                    title: "Active Classes",
-                    value: "32",
-                    icon: Icons.class_,
-                    color: Colors.orange,
-                    isDark: isDark,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildSummaryCard(
-                    title: "Total Revenue",
-                    value: "₦4.5M",
-                    icon: Icons.account_balance_wallet,
-                    color: Colors.purple,
-                    isDark: isDark,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 30),
-
-            // Quick Actions Section
-            Text(
-              "Quick Actions",
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 16),
-            GridView.count(
-              crossAxisCount: 2,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                _buildActionCard(
-                  title: "Manage Students",
-                  icon: Icons.group_add,
-                  color: Colors.blueAccent,
-                  isDark: isDark,
-                  onTap: () {
-                    // Navigate to Students
-                  },
-                ),
-                _buildActionCard(
-                  title: "Finance & Fees",
-                  icon: Icons.payments,
-                  color: Colors.green,
-                  isDark: isDark,
-                  onTap: () {
-                    // Navigate to Finance
-                  },
-                ),
-                _buildActionCard(
-                  title: "Academics",
-                  icon: Icons.menu_book,
-                  color: Colors.orange,
-                  isDark: isDark,
-                  onTap: () {
-                    // Navigate to Academics
-                  },
-                ),
-                _buildActionCard(
-                  title: "Staff Directory",
-                  icon: Icons.badge,
-                  color: Colors.purple,
-                  isDark: isDark,
-                  onTap: () {
-                    // Navigate to Staff
-                  },
-                ),
-                _buildActionCard(
-                  title: "Send Messages",
-                  icon: Icons.message,
-                  color: Colors.teal,
-                  isDark: isDark,
-                  onTap: () {
-                    // Navigate to Messaging
-                  },
-                ),
-                _buildActionCard(
-                  title: "Reports & Analytics",
-                  icon: Icons.bar_chart,
-                  color: Colors.redAccent,
-                  isDark: isDark,
-                  onTap: () {
-                    // Navigate to Reports
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 30),
-
-            // Recent Activity Section
-            Text(
-              "Recent Activity",
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildActivityItem(
-              title: "Fee Payment Received",
-              subtitle: "John Doe (JSS 1) paid ₦50,000",
-              time: "10 mins ago",
-              icon: Icons.payment,
-              iconColor: Colors.green,
-              isDark: isDark,
-            ),
-            _buildActivityItem(
-              title: "New Student Registered",
-              subtitle: "Sarah Smith added to Primary 4",
-              time: "1 hour ago",
-              icon: Icons.person_add,
-              iconColor: Colors.blue,
-              isDark: isDark,
-            ),
-            _buildActivityItem(
-              title: "Exam Results Published",
-              subtitle: "First Term results for SSS 3 are live",
-              time: "2 hours ago",
-              icon: Icons.assessment,
-              iconColor: Colors.orange,
-              isDark: isDark,
-            ),
-            _buildActivityItem(
-              title: "System Update",
-              subtitle: "Platform updated to v2.0.1",
-              time: "1 day ago",
-              icon: Icons.system_update,
-              iconColor: Colors.grey,
-              isDark: isDark,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSummaryCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-    required bool isDark,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(icon, color: color, size: 28),
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.trending_up, color: color, size: 16),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white : Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 12,
-              color: isDark ? Colors.white54 : Colors.grey[600],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionCard({
-    required String title,
-    required IconData icon,
-    required Color color,
-    required bool isDark,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          borderRadius: BorderRadius.circular(15),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-          border: Border.all(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.05)
-                : Colors.transparent,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: color, size: 32),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActivityItem({
-    required String title,
-    required String subtitle,
-    required String time,
-    required IconData icon,
-    required Color iconColor,
-    required bool isDark,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.grey.shade200,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: iconColor, size: 20),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.white54 : Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            time,
-            style: TextStyle(
-              fontSize: 10,
-              color: isDark ? Colors.white30 : Colors.grey[400],
-            ),
-          ),
-        ],
       ),
     );
   }

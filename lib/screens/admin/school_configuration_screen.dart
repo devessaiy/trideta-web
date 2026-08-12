@@ -32,6 +32,18 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
 
   final Map<String, String> _renamedClasses = {};
 
+  // 🚨 NEW: Calendar Operating Days State
+  List<String> _selectedOffDays = ['Saturday', 'Sunday'];
+  final List<String> _daysOfWeek = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+
   // --- INPUT CONTROLLERS ---
   final _classController = TextEditingController();
   final _subjectController = TextEditingController();
@@ -45,7 +57,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   }
 
   // ===========================================================================
-  // 🚨 LOGIC ENGINE (GLOBAL CALENDAR ENFORCED)
+  // 🚨 LOGIC ENGINE
   // ===========================================================================
   Future<void> _fetchRelationalConfig() async {
     try {
@@ -61,11 +73,12 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
 
       final school = await _supabase
           .from('schools')
-          .select('active_classes, class_subjects')
+          .select(
+            'active_classes, class_subjects, off_days',
+          ) // 🚨 Fetch off_days
           .eq('id', _schoolId!)
           .single();
 
-      // 🚨 REMOVED override_session and override_term from fetch
       final classesData = await _supabase
           .from('classes')
           .select('id, name, list_order, promotion_criteria')
@@ -79,6 +92,11 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
 
       if (mounted) {
         setState(() {
+          // 🚨 Safely load Off Days from DB
+          if (school['off_days'] != null) {
+            _selectedOffDays = List<String>.from(school['off_days']);
+          }
+
           _classes = List<Map<String, dynamic>>.from(classesData).map((c) {
             return {
               'id': c['id'],
@@ -291,9 +309,14 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
         await _supabase.from('class_subjects').upsert(subjectsToUpdate);
       }
 
+      // 🚨 SAVE THE OFF DAYS ALONG WITH CLEANING JSON ARTIFACTS
       await _supabase
           .from('schools')
-          .update({'active_classes': [], 'class_subjects': {}})
+          .update({
+            'active_classes': [],
+            'class_subjects': {},
+            'off_days': _selectedOffDays, // Safe JSONB update
+          })
           .eq('id', _schoolId!);
 
       if (mounted) {
@@ -547,6 +570,71 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   // ===========================================================================
   // 🚨 CLEAN, MODULARIZED UI
   // ===========================================================================
+
+  // 🚨 NEW: The UI for the Off-Days settings
+  Widget _buildOffDaysSelector(bool isDark, Color primaryColor) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.grey.shade200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.calendar_today_rounded, color: primaryColor, size: 20),
+              const SizedBox(width: 10),
+              const Text(
+                "School Weekend Days",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Select the days your school is CLOSED. Teachers will be blocked from recording attendance on these days.",
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _daysOfWeek.map((day) {
+              bool isSelected = _selectedOffDays.contains(day);
+              return FilterChip(
+                label: Text(day.substring(0, 3)), // Mon, Tue, etc.
+                selected: isSelected,
+                selectedColor: Colors.orange.withValues(alpha: 0.2),
+                checkmarkColor: Colors.orange,
+                labelStyle: TextStyle(
+                  color: isSelected
+                      ? Colors.orange
+                      : (isDark ? Colors.white70 : Colors.black87),
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+                onSelected: (bool selected) {
+                  setState(() {
+                    if (selected) {
+                      _selectedOffDays.add(day);
+                    } else {
+                      _selectedOffDays.remove(day);
+                    }
+                  });
+                },
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Scaffold(body: Center(child: TridetaLoader()));
@@ -574,46 +662,59 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
               child: Container(
                 constraints: const BoxConstraints(maxWidth: 1200),
                 padding: const EdgeInsets.all(24),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Column(
                   children: [
+                    _buildOffDaysSelector(
+                      isDark,
+                      primaryColor,
+                    ), // 🚨 INJECTED FOR WEB
                     Expanded(
-                      flex: 4,
-                      child: ClassesPanel(
-                        classes: _classes,
-                        classController: _classController,
-                        isDark: isDark,
-                        primaryColor: primaryColor,
-                        onAddClass: _addClass,
-                        onEditClass: _editClass,
-                        onRemoveClass: _removeClass,
-                        onReorder: (oldIdx, newIdx) {
-                          setState(() {
-                            if (newIdx > oldIdx) newIdx -= 1;
-                            _classes.insert(newIdx, _classes.removeAt(oldIdx));
-                          });
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 24),
-                    Expanded(
-                      flex: 6,
-                      child: SubjectsPanel(
-                        classes: _classes,
-                        classSubjects: _classSubjects,
-                        subjectController: _subjectController,
-                        selectedClassName: _selectedClassName,
-                        subjectType: _subjectType,
-                        isDark: isDark,
-                        primaryColor: primaryColor,
-                        onTargetClassChanged: (val) =>
-                            setState(() => _selectedClassName = val),
-                        onSubjectTypeChanged: (val) =>
-                            setState(() => _subjectType = val!),
-                        onAddSubject: _addSubject,
-                        onEditSubject: _editSubject,
-                        onRemoveSubject: _removeSubject,
-                        onCopySubjects: _showDuplicateDialog,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 4,
+                            child: ClassesPanel(
+                              classes: _classes,
+                              classController: _classController,
+                              isDark: isDark,
+                              primaryColor: primaryColor,
+                              onAddClass: _addClass,
+                              onEditClass: _editClass,
+                              onRemoveClass: _removeClass,
+                              onReorder: (oldIdx, newIdx) {
+                                setState(() {
+                                  if (newIdx > oldIdx) newIdx -= 1;
+                                  _classes.insert(
+                                    newIdx,
+                                    _classes.removeAt(oldIdx),
+                                  );
+                                });
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 24),
+                          Expanded(
+                            flex: 6,
+                            child: SubjectsPanel(
+                              classes: _classes,
+                              classSubjects: _classSubjects,
+                              subjectController: _subjectController,
+                              selectedClassName: _selectedClassName,
+                              subjectType: _subjectType,
+                              isDark: isDark,
+                              primaryColor: primaryColor,
+                              onTargetClassChanged: (val) =>
+                                  setState(() => _selectedClassName = val),
+                              onSubjectTypeChanged: (val) =>
+                                  setState(() => _subjectType = val!),
+                              onAddSubject: _addSubject,
+                              onEditSubject: _editSubject,
+                              onRemoveSubject: _removeSubject,
+                              onCopySubjects: _showDuplicateDialog,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -625,6 +726,10 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
               length: 2,
               child: Column(
                 children: [
+                  _buildOffDaysSelector(
+                    isDark,
+                    primaryColor,
+                  ), // 🚨 INJECTED FOR MOBILE
                   Container(
                     margin: const EdgeInsets.symmetric(
                       horizontal: 20,

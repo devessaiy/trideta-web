@@ -38,19 +38,16 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   final MobileScannerController _scannerController = MobileScannerController();
   bool _isProcessingScan = false;
 
+  // 🚨 NEW: Calendar Tracking
+  String _currentSession = "";
+  String _currentTerm = "";
+  List<String> _customOffDays = ['Saturday', 'Sunday']; // Default
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    if (widget.accessibleClasses.isNotEmpty) {
-      final validClasses = widget.accessibleClasses
-          .where((c) => c != 'All My Classes')
-          .toList();
-      if (validClasses.isNotEmpty) {
-        _selectedClass = validClasses.first;
-        _fetchStudentsAndTodayAttendance();
-      }
-    }
+    _fetchSchoolCalendar();
   }
 
   @override
@@ -60,6 +57,60 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     super.dispose();
   }
 
+  // 🚨 NEW: Fetch Custom Weekends and Active Term
+  Future<void> _fetchSchoolCalendar() async {
+    setState(() => _isLoading = true);
+    try {
+      final schoolData = await _supabase
+          .from('schools')
+          .select('current_session, current_term, off_days')
+          .eq('id', widget.schoolId)
+          .single();
+
+      setState(() {
+        _currentSession = schoolData['current_session'] ?? '';
+        _currentTerm = schoolData['current_term'] ?? '';
+        if (schoolData['off_days'] != null) {
+          _customOffDays = List<String>.from(schoolData['off_days']);
+        }
+      });
+
+      if (widget.accessibleClasses.isNotEmpty) {
+        final validClasses = widget.accessibleClasses
+            .where((c) => c != 'All My Classes')
+            .toList();
+        if (validClasses.isNotEmpty) {
+          _selectedClass = validClasses.first;
+          _fetchStudentsAndTodayAttendance();
+        }
+      } else {
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      debugPrint("Calendar Fetch Error: $e");
+    }
+  }
+
+  // 🚨 NEW: Custom Weekend & Nigerian Public Holiday Engine
+  bool _isOffDayOrHoliday() {
+    DateTime today = DateTime.now();
+    String weekdayName = DateFormat('EEEE').format(today); // e.g., 'Friday'
+
+    // 1. Check Custom School Weekends (e.g., Thu/Fri for Islamic Schools)
+    if (_customOffDays.contains(weekdayName)) return true;
+
+    // 2. Check Fixed Nigerian Public Holidays
+    if (today.month == 1 && today.day == 1) return true; // New Year's Day
+    if (today.month == 5 && today.day == 1) return true; // Workers' Day
+    if (today.month == 6 && today.day == 12) return true; // Democracy Day
+    if (today.month == 10 && today.day == 1) return true; // Independence Day
+    if (today.month == 12 && today.day == 25) return true; // Christmas Day
+    if (today.month == 12 && today.day == 26) return true; // Boxing Day
+
+    return false;
+  }
+
   Future<void> _fetchStudentsAndTodayAttendance() async {
     if (_selectedClass == null) return;
     setState(() => _isLoading = true);
@@ -67,7 +118,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     try {
       final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
-      // 🚨 SCALING FIX: Added a 15-second timeout so bad Wi-Fi doesn't freeze the app forever
       final studentsRes = await _supabase
           .from('students')
           .select('id, first_name, last_name, admission_no, passport_url')
@@ -80,6 +130,9 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           .select('student_id, status')
           .eq('class_level', _selectedClass!)
           .eq('date', todayStr)
+          // 🚨 NOW FILTERED BY SESSION AND TERM
+          .eq('academic_session', _currentSession)
+          .eq('term', _currentTerm)
           .timeout(const Duration(seconds: 15));
 
       Map<String, String> existingData = {};
@@ -99,7 +152,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text("Network Timeout: Please check your connection."),
             backgroundColor: Colors.red,
           ),
@@ -110,6 +163,19 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
   Future<void> _saveManualAttendance() async {
     if (_attendanceState.isEmpty) return;
+
+    if (_isOffDayOrHoliday()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Attendance cannot be recorded on Off-Days or Public Holidays.",
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -123,20 +189,16 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           'student_id': studentId,
           'class_level': _selectedClass,
           'date': todayStr,
+          'academic_session': _currentSession, // 🚨 WRITTEN TO DB
+          'term': _currentTerm, // 🚨 WRITTEN TO DB
           'status': status,
           'recorded_by': user.id,
         });
       });
 
-      // 🚨 SCALING FIX: Replaced dangerous delete/insert with an atomic UPSERT.
-      // If the network drops halfway, no data is lost. It either fully updates or does nothing.
       await _supabase
           .from('attendance')
-          .upsert(
-            upsertData,
-            onConflict:
-                'student_id, date', // Requires a unique constraint in Supabase
-          )
+          .upsert(upsertData, onConflict: 'student_id, date')
           .timeout(const Duration(seconds: 15));
 
       if (mounted) {
@@ -152,7 +214,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text("Failed to save. Ensure your internet is stable."),
             backgroundColor: Colors.red,
           ),
@@ -163,6 +225,21 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
   void _onDetect(BarcodeCapture capture) async {
     if (_isProcessingScan) return;
+
+    if (_isOffDayOrHoliday()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              "Attendance cannot be recorded on Off-Days or Holidays.",
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
     final List<Barcode> barcodes = capture.barcodes;
     if (barcodes.isEmpty || barcodes.first.rawValue == null) return;
 
@@ -216,8 +293,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     }
 
     String selectedStatus = 'Punctual';
-    bool isSavingPopup =
-        false; // 🚨 SCALING FIX: Track saving state for the popup
+    bool isSavingPopup = false;
 
     await showDialog(
       context: context,
@@ -248,7 +324,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: _tridetaBlue),
-                // 🚨 SCALING FIX: Disable button while saving to prevent double-tap duplicates
                 onPressed: isSavingPopup
                     ? null
                     : () async {
@@ -261,6 +336,9 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                                 'student_id': student['id'],
                                 'class_level': _selectedClass,
                                 'date': todayStr,
+                                'academic_session':
+                                    _currentSession, // 🚨 WRITTEN TO DB
+                                'term': _currentTerm, // 🚨 WRITTEN TO DB
                                 'status': selectedStatus,
                                 'recorded_by': _supabase.auth.currentUser!.id,
                               }, onConflict: 'student_id, date')
@@ -389,12 +467,10 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
   Widget _buildManualTab() {
     if (_isLoading) return const Center(child: TridetaLoader());
-    if (_selectedClass == null) {
+    if (_selectedClass == null)
       return const Center(child: Text("Please select a class."));
-    }
-    if (_students.isEmpty) {
+    if (_students.isEmpty)
       return const Center(child: Text("No students found in this class."));
-    }
 
     return Column(
       children: [
@@ -408,6 +484,22 @@ class _AttendanceScreenState extends State<AttendanceScreen>
             style: TextStyle(color: _tridetaBlue, fontWeight: FontWeight.bold),
           ),
         ),
+
+        if (_isOffDayOrHoliday())
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            color: Colors.orange.shade100,
+            child: const Text(
+              "Attendance recording is disabled on Off-Days and Holidays.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.orange,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.all(10),
@@ -467,7 +559,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                                 : Colors.black,
                           ),
                           onSelected: (selected) {
-                            if (selected) {
+                            if (selected && !_isOffDayOrHoliday()) {
                               setState(
                                 () => _attendanceState[student['id']] = s,
                               );
@@ -488,13 +580,15 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           width: double.infinity,
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: _tridetaBlue,
+              backgroundColor: _isOffDayOrHoliday()
+                  ? Colors.grey
+                  : _tridetaBlue,
               padding: const EdgeInsets.symmetric(vertical: 15),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
-            onPressed: _saveManualAttendance,
+            onPressed: _isOffDayOrHoliday() ? null : _saveManualAttendance,
             child: const Text(
               "SAVE BATCH ATTENDANCE",
               style: TextStyle(
@@ -510,9 +604,8 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   }
 
   Widget _buildScannerTab() {
-    if (_selectedClass == null) {
+    if (_selectedClass == null)
       return const Center(child: Text("Please select a class first."));
-    }
 
     return Stack(
       children: [
@@ -528,9 +621,11 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 color: Colors.black87,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Text(
-                "Scan Student QR on ID Card",
-                style: TextStyle(color: Colors.white, fontSize: 16),
+              child: Text(
+                _isOffDayOrHoliday()
+                    ? "Scanner disabled on Off-Days"
+                    : "Scan Student QR on ID Card",
+                style: const TextStyle(color: Colors.white, fontSize: 16),
               ),
             ),
           ),
@@ -561,9 +656,8 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 }
 
 // ============================================================================
-// QR GENERATOR & DOWNLOADER COMPONENT
+// QR GENERATOR
 // ============================================================================
-
 void showStudentQrCode(BuildContext context, Map<String, dynamic> student) {
   final screenshotController = ScreenshotController();
   final String admNo = student['admission_no'] ?? 'NO_ID';
@@ -610,11 +704,9 @@ void showStudentQrCode(BuildContext context, Map<String, dynamic> student) {
                     .capture();
                 if (imageBytes != null) {
                   try {
-                    if (!await Gal.hasAccess(toAlbum: true)) {
+                    if (!await Gal.hasAccess(toAlbum: true))
                       await Gal.requestAccess(toAlbum: true);
-                    }
                     await Gal.putImageBytes(imageBytes);
-
                     if (ctx.mounted) {
                       Navigator.pop(ctx);
                       ScaffoldMessenger.of(context).showSnackBar(

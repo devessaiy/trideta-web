@@ -4,9 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 
-// 🚨 IMPORT THE EXTRACTED MODULAR RECEIPT VIEW
 import 'package:trideta_v2/screens/admin/admin_receipt_detail_view.dart';
-import 'package:trideta_v2/utils/subscription_guard.dart'; // 🚨 INJECT THE GUARD
+import 'package:trideta_v2/utils/subscription_guard.dart';
 
 class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key});
@@ -22,6 +21,8 @@ class _AlertsScreenState extends State<AlertsScreen>
 
   String? _schoolId;
   String _currentSession = "";
+  // 🚨 FIXED: Added tracking for current term
+  String _currentTerm = "1st Term";
   bool _isLoading = true;
 
   // Financial Health Variables
@@ -45,7 +46,7 @@ class _AlertsScreenState extends State<AlertsScreen>
   }
 
   // ===========================================================================
-  // 🚨 LOGIC ENGINE: STRICTLY UNTOUCHED
+  // 🚨 LOGIC ENGINE
   // ===========================================================================
   Future<void> _initData() async {
     try {
@@ -57,12 +58,17 @@ class _AlertsScreenState extends State<AlertsScreen>
             .eq('id', user.id)
             .single();
         _schoolId = profile['school_id'];
+
         final school = await _supabase
             .from('schools')
-            .select('current_session')
+            .select('current_session, current_term')
             .eq('id', _schoolId!)
             .single();
+
         _currentSession = school['current_session'] ?? "";
+        // 🚨 FIXED: Fetch term directly from the global setup
+        _currentTerm = school['current_term'] ?? "1st Term";
+
         await _checkFinancialHealth();
       }
     } catch (e) {
@@ -75,11 +81,23 @@ class _AlertsScreenState extends State<AlertsScreen>
   Future<void> _checkFinancialHealth() async {
     if (_schoolId == null || _currentSession.isEmpty) return;
     try {
-      final feeData = await _supabase
+      // 🚨 FIXED: Now queries exact academic term to give accurate term financial health
+      final rawFeeData = await _supabase
           .from('fee_structures')
-          .select('amount, applicable_classes, applicable_categories')
+          .select(
+            'amount, applicable_classes, applicable_categories, academic_term',
+          )
           .eq('school_id', _schoolId!)
           .eq('academic_session', _currentSession);
+
+      List<Map<String, dynamic>> feeData = [];
+      for (var f in rawFeeData) {
+        String t = (f['academic_term'] ?? 'All Terms').toString();
+        if (t == _currentTerm || t == 'All Terms') {
+          feeData.add(f);
+        }
+      }
+
       final studentsData = await _supabase
           .from('students')
           .select('*')
@@ -111,7 +129,12 @@ class _AlertsScreenState extends State<AlertsScreen>
 
       for (var tx in transactions) {
         String txSession = (tx['academic_session'] ?? '').toString();
-        if (txSession == _currentSession || txSession.isEmpty) {
+        String txTerm = (tx['academic_term'] ?? 'All Terms').toString();
+        // 🚨 FIXED: Filter transactions strictly by the active session and term
+        if ((txSession == _currentSession || txSession.isEmpty) &&
+            (txTerm == _currentTerm ||
+                txTerm == 'All Terms' ||
+                _currentTerm == 'All Terms')) {
           totalCollected += (tx['amount'] ?? 0).toDouble();
         }
       }
@@ -238,8 +261,9 @@ class _AlertsScreenState extends State<AlertsScreen>
             ),
           ],
         ),
+        // 🚨 FIXED: Alert modal now displays the dynamic term!
         content: Text(
-          "How would you like to notify parents with outstanding balances for $_currentSession?",
+          "How would you like to notify parents with outstanding balances for $_currentTerm, $_currentSession?",
           style: TextStyle(
             color: isDark ? Colors.white70 : Colors.black87,
             height: 1.5,
@@ -282,21 +306,18 @@ class _AlertsScreenState extends State<AlertsScreen>
   }
 
   Future<void> _executeDebtorAlert({required bool sendSms}) async {
-    // ==========================================
-    // 🚨 SUBSCRIPTION CHECK BEFORE SENDING ALERTS
-    // ==========================================
     final subGuard = SubscriptionGuard();
     bool canProceed = await subGuard.canPerformAction(context);
     if (!canProceed) return;
-    // ==========================================
 
     setState(() => _isSendingDebtorAlert = true);
     try {
+      // 🚨 FIXED: Template dynamically includes exact Session AND Term to prevent ambiguity
       await _supabase.from('alerts').insert({
         'school_id': _schoolId,
-        'title': 'FEE REMINDER: $_currentSession',
+        'title': 'FEE REMINDER: $_currentSession ($_currentTerm)',
         'message':
-            'Dear Parent, our records show an outstanding balance for the $_currentSession session. Kindly arrange for payment to avoid administrative interruptions.',
+            'Dear Parent, our records show an outstanding balance for the $_currentTerm of the $_currentSession academic session. Kindly arrange for payment to avoid administrative interruptions.',
         'type': 'fee_urgent',
       });
       if (sendSms) await Future.delayed(const Duration(seconds: 2));
@@ -314,7 +335,6 @@ class _AlertsScreenState extends State<AlertsScreen>
     }
   }
 
-  // 🚨 REDESIGNED CUSTOM ALERT MODAL
   void _showCreateAlertDialog() {
     String selectedAudience = 'parent_alert';
     final titleCtrl = TextEditingController();
@@ -486,15 +506,11 @@ class _AlertsScreenState extends State<AlertsScreen>
                               return;
                             }
 
-                            // ==========================================
-                            // 🚨 SUBSCRIPTION CHECK BEFORE CREATING ALERT
-                            // ==========================================
                             final subGuard = SubscriptionGuard();
                             bool canProceed = await subGuard.canPerformAction(
                               context,
                             );
                             if (!canProceed) return;
-                            // ==========================================
 
                             setModalState(() => isSubmitting = true);
                             try {
@@ -506,12 +522,12 @@ class _AlertsScreenState extends State<AlertsScreen>
                                 'created_by': _supabase.auth.currentUser!.id,
                               });
                               if (context.mounted) {
-                                Navigator.pop(context); // Close the dialog
+                                Navigator.pop(context);
                                 showSuccessDialog(
                                   "Alert Created",
                                   "Your custom alert has been broadcasted.",
                                 );
-                                _handleRefresh(); // Refresh the list
+                                _handleRefresh();
                               }
                             } catch (e) {
                               if (context.mounted) {
@@ -552,9 +568,6 @@ class _AlertsScreenState extends State<AlertsScreen>
     );
   }
 
-  // ===========================================================================
-  // 🚨 MODULAR UI COMPOSITION
-  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -672,7 +685,6 @@ class _AlertsScreenState extends State<AlertsScreen>
     );
   }
 
-  // 🚨 REDESIGNED PREMIUM HEALTH CARD
   Widget _buildHealthCard(bool isDark) {
     if (_totalExpectedFees == 0) {
       return Container(
@@ -690,7 +702,7 @@ class _AlertsScreenState extends State<AlertsScreen>
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                "Awaiting financial data for $_currentSession.",
+                "Awaiting financial data for $_currentTerm, $_currentSession.", // 🚨 Dynamic template string
                 style: TextStyle(
                   color: Colors.grey.shade600,
                   fontWeight: FontWeight.bold,
@@ -761,7 +773,6 @@ class _AlertsScreenState extends State<AlertsScreen>
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Circular Progress Indicator
               SizedBox(
                 width: 60,
                 height: 60,
@@ -887,7 +898,6 @@ class _AlertsScreenState extends State<AlertsScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 itemCount: alerts.length,
                 itemBuilder: (context, index) {
-                  // 🚨 CALLS THE NEW COLLAPSIBLE CARD WIDGET
                   return _CollapsibleAlertCard(
                     alert: alerts[index],
                     primaryColor: primaryColor,
@@ -1067,9 +1077,6 @@ class _AlertsScreenState extends State<AlertsScreen>
   );
 }
 
-// ===========================================================================
-// 🚨 LOCAL CUSTOM WIDGET: PREMIUM COLLAPSIBLE ALERT CARD
-// ===========================================================================
 class _CollapsibleAlertCard extends StatefulWidget {
   final Map<String, dynamic> alert;
   final Color primaryColor;
@@ -1223,7 +1230,6 @@ class _CollapsibleAlertCardState extends State<_CollapsibleAlertCard> {
                     ),
                   ],
                 ),
-                // Smoothly animated expansion
                 AnimatedCrossFade(
                   duration: const Duration(milliseconds: 300),
                   crossFadeState: _isExpanded

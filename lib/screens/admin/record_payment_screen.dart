@@ -258,10 +258,12 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
         ? studentData.replaceAll(' ', '').toLowerCase()
         : _standardizeClass(studentData);
     if (isCategory &&
-        (cleanStudentData.isEmpty || cleanStudentData == 'notfound'))
+        (cleanStudentData.isEmpty || cleanStudentData == 'notfound')) {
       cleanStudentData = 'regular';
-    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound')
+    }
+    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound') {
       return false;
+    }
     if (columnData == null) return true;
 
     String colStr = isCategory
@@ -270,8 +272,9 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
     if (colStr.isEmpty ||
         colStr == 'all' ||
         colStr == '[]' ||
-        colStr == '["all"]')
+        colStr == '["all"]') {
       return true;
+    }
 
     if (columnData is List) {
       if (columnData.isEmpty) return true;
@@ -336,8 +339,9 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
   Future<void> _processPayment() async {
     if (_selectedStudent == null ||
         _selectedCategory == null ||
-        _amountController.text.isEmpty)
+        _amountController.text.isEmpty) {
       return;
+    }
 
     double inputAmount = double.tryParse(_amountController.text) ?? 0.0;
     if (inputAmount <= 0) {
@@ -991,11 +995,12 @@ class _ClassRosterSheetState extends State<_ClassRosterSheet> {
         )
         .eq('class_id', widget.schoolClass['id'])
         .order('first_name');
-    if (mounted)
+    if (mounted) {
       setState(() {
         _students = List<Map<String, dynamic>>.from(res);
         _isLoading = false;
       });
+    }
   }
 
   @override

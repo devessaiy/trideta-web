@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
@@ -80,10 +81,9 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
           }
         }
 
-        // 🚨 FIXED: Completely stripped the deleted override columns
         final classesData = await _supabase
             .from('classes')
-            .select('id, name') // Only fetch id and name!
+            .select('id, name')
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
 
@@ -114,7 +114,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
   }
 
   // ===========================================================================
-  // 🚨 SMART DELETION & REFUND ENGINE
+  // 🚨 SMART DELETION & WALLET REFUND ENGINE
   // ===========================================================================
   Future<void> _deleteFee(String id, String feeName) async {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -217,7 +217,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
 
     try {
       if (action == 2) {
-        // 🚨 REFUND LOGIC
+        // 🚨 PERPETUAL WALLET REFUND LOGIC ENFORCED
         final txs = await _supabase
             .from('transactions')
             .select('student_id, amount')
@@ -247,7 +247,6 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
         }
       }
 
-      // Delete linked transactions to clear database constraints
       await _supabase.from('transactions').delete().eq('fee_id', id);
       await _supabase.from('fee_structures').delete().eq('id', id);
 
@@ -290,7 +289,6 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
             color: primaryColor,
             child: Column(
               children: [
-                // Dashboard Filter Strip
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 24,
@@ -384,7 +382,6 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                   ),
                 ),
 
-                // Streamed List
                 Expanded(
                   child: StreamBuilder<List<Map<String, dynamic>>>(
                     stream: _filterTerm == "All Terms"
@@ -515,6 +512,22 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
     String displaySession = rule['academic_session'] ?? 'Unknown Session';
     String displayTerm = rule['academic_term'] ?? 'All Terms';
 
+    // 🚨 Safe parsing for JSON arrays retrieved from the DB
+    List<dynamic> parsedClasses = [];
+    List<dynamic> parsedCategories = [];
+
+    try {
+      parsedClasses = rule['applicable_classes'] is String
+          ? jsonDecode(rule['applicable_classes'])
+          : (rule['applicable_classes'] ?? []);
+
+      parsedCategories = rule['applicable_categories'] is String
+          ? jsonDecode(rule['applicable_categories'])
+          : (rule['applicable_categories'] ?? []);
+    } catch (e) {
+      // Fallback if formatting is weird
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
@@ -641,14 +654,14 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          ...(rule['applicable_classes'] as List? ?? []).map(
+                          ...parsedClasses.map(
                             (c) => _buildMiniChip(
                               c.toString(),
                               primaryColor,
                               isDark,
                             ),
                           ),
-                          ...(rule['applicable_categories'] as List? ?? []).map(
+                          ...parsedCategories.map(
                             (c) => _buildMiniChip(
                               c.toString(),
                               Colors.orange,
@@ -802,7 +815,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
 }
 
 // ============================================================================
-// 🚨 ADD/EDIT FEE FORM (GLOBAL CALENDAR ONLY)
+// 🚨 ADD/EDIT FEE FORM
 // ============================================================================
 class AddFeeForm extends StatefulWidget {
   final String schoolId;
@@ -858,13 +871,22 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
         _selectedSession = dynamicSessions.last;
       }
 
-      List<dynamic> initialClasses =
-          widget.initialData!['applicable_classes'] ?? [];
-      _selectedClasses = initialClasses.map((e) => e.toString()).toList();
+      // Safely decode JSON strings from DB initialization
+      try {
+        var rawClasses = widget.initialData!['applicable_classes'];
+        List<dynamic> initialClasses = rawClasses is String
+            ? jsonDecode(rawClasses)
+            : (rawClasses ?? []);
+        _selectedClasses = initialClasses.map((e) => e.toString()).toList();
 
-      List<dynamic> initialCats =
-          widget.initialData!['applicable_categories'] ?? [];
-      _selectedCategories = initialCats.map((e) => e.toString()).toList();
+        var rawCats = widget.initialData!['applicable_categories'];
+        List<dynamic> initialCats = rawCats is String
+            ? jsonDecode(rawCats)
+            : (rawCats ?? []);
+        _selectedCategories = initialCats.map((e) => e.toString()).toList();
+      } catch (e) {
+        // Fallback
+      }
     } else {
       if (widget.schoolClassesData.isNotEmpty) {
         _selectedSession = widget.schoolClassesData.first['current_session'];
@@ -896,21 +918,35 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
     try {
       final feeName = _titleController.text;
 
-      List<String> applicableClassIds = [];
-      for (String cName in _selectedClasses) {
-        final cData = widget.schoolClassesData.firstWhere(
-          (c) => c['name'] == cName,
-          orElse: () => {},
+      String rawAmount = _amountController.text
+          .replaceAll(',', '')
+          .replaceAll(' ', '');
+      double? parsedAmount = double.tryParse(rawAmount);
+
+      if (parsedAmount == null) {
+        setState(() => _isSaving = false);
+        showAuthErrorDialog(
+          "Please enter a valid number for the amount (e.g. 50000).",
         );
-        if (cData.isNotEmpty && cData['id'] != null) {
-          applicableClassIds.add(cData['id']);
+        return;
+      }
+
+      List<String> applicableClassIds = [];
+
+      for (String cName in _selectedClasses) {
+        for (var cData in widget.schoolClassesData) {
+          if (cData['name'] == cName && cData['id'] != null) {
+            applicableClassIds.add(cData['id'].toString());
+            break;
+          }
         }
       }
 
+      // 🚨 FIX: Removed jsonEncode. Supabase perfectly handles raw Dart Lists for Postgres array/jsonb fields!
       final payload = {
         'school_id': widget.schoolId,
         'fee_name': feeName,
-        'amount': double.parse(_amountController.text),
+        'amount': parsedAmount,
         'applicable_classes': _selectedClasses,
         'applicable_class_ids': applicableClassIds,
         'applicable_categories': _selectedCategories,
@@ -934,7 +970,7 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
       }
     } catch (e) {
       setState(() => _isSaving = false);
-      showAuthErrorDialog("Ensure the amount is a valid number.");
+      showAuthErrorDialog("Failed to save fee: $e");
     }
   }
 
@@ -1064,7 +1100,6 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
             const SizedBox(height: 30),
             _buildFieldLabel("Target Students", pColor),
 
-            // 🚨 REVERSE LOCK COMPLETELY REMOVED: Displays all global classes
             _buildSelectionWrap(
               widget.schoolClassesData
                   .map((c) => c['name'].toString())
@@ -1094,9 +1129,7 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                onPressed: _isSaving
-                    ? null
-                    : _saveFeeRule, // 🚨 Lockout check removed
+                onPressed: _isSaving ? null : _saveFeeRule,
                 child: _isSaving
                     ? const TridetaLoader(color: Colors.white)
                     : Text(

@@ -32,7 +32,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
 
   final Map<String, String> _renamedClasses = {};
 
-  // 🚨 NEW: Calendar Operating Days State
+  // Calendar Operating Days State
   List<String> _selectedOffDays = ['Saturday', 'Sunday'];
   final List<String> _daysOfWeek = [
     'Monday',
@@ -73,9 +73,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
 
       final school = await _supabase
           .from('schools')
-          .select(
-            'active_classes, class_subjects, off_days',
-          ) // 🚨 Fetch off_days
+          .select('active_classes, class_subjects, off_days')
           .eq('id', _schoolId!)
           .single();
 
@@ -92,7 +90,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
 
       if (mounted) {
         setState(() {
-          // 🚨 Safely load Off Days from DB
           if (school['off_days'] != null) {
             _selectedOffDays = List<String>.from(school['off_days']);
           }
@@ -309,13 +306,12 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
         await _supabase.from('class_subjects').upsert(subjectsToUpdate);
       }
 
-      // 🚨 SAVE THE OFF DAYS ALONG WITH CLEANING JSON ARTIFACTS
       await _supabase
           .from('schools')
           .update({
             'active_classes': [],
             'class_subjects': {},
-            'off_days': _selectedOffDays, // Safe JSONB update
+            'off_days': _selectedOffDays,
           })
           .eq('id', _schoolId!);
 
@@ -571,7 +567,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   // 🚨 CLEAN, MODULARIZED UI
   // ===========================================================================
 
-  // 🚨 NEW: The UI for the Off-Days settings
   Widget _buildOffDaysSelector(bool isDark, Color primaryColor) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -591,7 +586,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
               Icon(Icons.calendar_today_rounded, color: primaryColor, size: 20),
               const SizedBox(width: 10),
               const Text(
-                "School Weekend Days",
+                "School Operating Days",
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ],
@@ -664,10 +659,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    _buildOffDaysSelector(
-                      isDark,
-                      primaryColor,
-                    ), // 🚨 INJECTED FOR WEB
+                    _buildOffDaysSelector(isDark, primaryColor),
                     Expanded(
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -722,98 +714,104 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
               ),
             );
           } else {
+            // 🚨 UPDATED MOBILE LAYOUT: NestedScrollView handles the sticky Tabs!
             return DefaultTabController(
               length: 2,
-              child: Column(
-                children: [
-                  _buildOffDaysSelector(
-                    isDark,
-                    primaryColor,
-                  ), // 🚨 INJECTED FOR MOBILE
-                  Container(
-                    margin: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 10,
+              child: NestedScrollView(
+                headerSliverBuilder: (context, innerBoxIsScrolled) {
+                  return [
+                    SliverToBoxAdapter(
+                      child: _buildOffDaysSelector(isDark, primaryColor),
                     ),
-                    decoration: BoxDecoration(
-                      color: isDark ? Colors.white10 : Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: TabBar(
-                      labelColor: Colors.white,
-                      unselectedLabelColor: isDark
-                          ? Colors.white70
-                          : Colors.grey.shade600,
-                      indicatorSize: TabBarIndicatorSize.tab,
-                      dividerColor: Colors.transparent,
-                      indicator: BoxDecoration(
-                        color: primaryColor,
-                        borderRadius: BorderRadius.circular(16),
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _StickyTabBarDelegate(
+                        backgroundColor: bgColor,
+                        child: Container(
+                          height: 46,
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? Colors.white10
+                                : Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: TabBar(
+                            labelColor: Colors.white,
+                            unselectedLabelColor: isDark
+                                ? Colors.white70
+                                : Colors.grey.shade600,
+                            indicatorSize: TabBarIndicatorSize.tab,
+                            dividerColor: Colors.transparent,
+                            indicator: BoxDecoration(
+                              color: primaryColor,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            tabs: const [
+                              Tab(
+                                child: Text(
+                                  "Classes",
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              Tab(
+                                child: Text(
+                                  "Subjects",
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                      tabs: const [
-                        Tab(
-                          child: Text(
-                            "Classes",
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        Tab(
-                          child: Text(
-                            "Subjects",
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
                     ),
-                  ),
-                  Expanded(
-                    child: TabBarView(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: ClassesPanel(
-                            classes: _classes,
-                            classController: _classController,
-                            isDark: isDark,
-                            primaryColor: primaryColor,
-                            onAddClass: _addClass,
-                            onEditClass: _editClass,
-                            onRemoveClass: _removeClass,
-                            onReorder: (oldIdx, newIdx) {
-                              setState(() {
-                                if (newIdx > oldIdx) newIdx -= 1;
-                                _classes.insert(
-                                  newIdx,
-                                  _classes.removeAt(oldIdx),
-                                );
-                              });
-                            },
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: SubjectsPanel(
-                            classes: _classes,
-                            classSubjects: _classSubjects,
-                            subjectController: _subjectController,
-                            selectedClassName: _selectedClassName,
-                            subjectType: _subjectType,
-                            isDark: isDark,
-                            primaryColor: primaryColor,
-                            onTargetClassChanged: (val) =>
-                                setState(() => _selectedClassName = val),
-                            onSubjectTypeChanged: (val) =>
-                                setState(() => _subjectType = val!),
-                            onAddSubject: _addSubject,
-                            onEditSubject: _editSubject,
-                            onRemoveSubject: _removeSubject,
-                            onCopySubjects: _showDuplicateDialog,
-                          ),
-                        ),
-                      ],
+                  ];
+                },
+                body: TabBarView(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: ClassesPanel(
+                        classes: _classes,
+                        classController: _classController,
+                        isDark: isDark,
+                        primaryColor: primaryColor,
+                        onAddClass: _addClass,
+                        onEditClass: _editClass,
+                        onRemoveClass: _removeClass,
+                        onReorder: (oldIdx, newIdx) {
+                          setState(() {
+                            if (newIdx > oldIdx) newIdx -= 1;
+                            _classes.insert(newIdx, _classes.removeAt(oldIdx));
+                          });
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: SubjectsPanel(
+                        classes: _classes,
+                        classSubjects: _classSubjects,
+                        subjectController: _subjectController,
+                        selectedClassName: _selectedClassName,
+                        subjectType: _subjectType,
+                        isDark: isDark,
+                        primaryColor: primaryColor,
+                        onTargetClassChanged: (val) =>
+                            setState(() => _selectedClassName = val),
+                        onSubjectTypeChanged: (val) =>
+                            setState(() => _subjectType = val!),
+                        onAddSubject: _addSubject,
+                        onEditSubject: _editSubject,
+                        onRemoveSubject: _removeSubject,
+                        onCopySubjects: _showDuplicateDialog,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           }
@@ -873,5 +871,34 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
         ),
       ),
     );
+  }
+}
+
+// 🚨 DELEGATE FOR THE STICKY TABS
+class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  final Color backgroundColor;
+
+  _StickyTabBarDelegate({required this.child, required this.backgroundColor});
+
+  @override
+  double get minExtent => 66.0; // Height of container (46) + margins (10 + 10)
+
+  @override
+  double get maxExtent => 66.0;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return Container(color: backgroundColor, child: child);
+  }
+
+  @override
+  bool shouldRebuild(_StickyTabBarDelegate oldDelegate) {
+    return oldDelegate.child != child ||
+        oldDelegate.backgroundColor != backgroundColor;
   }
 }

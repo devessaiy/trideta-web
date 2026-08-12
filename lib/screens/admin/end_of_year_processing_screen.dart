@@ -39,7 +39,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
   int _totalGraduating = 0;
   double _totalDebtToLock = 0.0;
 
-  // Payloads for Atomic RPC
+  // Payloads for Atomic Client-Side Execution
   final List<Map<String, dynamic>> _promotionsPayload = [];
   final List<String> _graduationsPayload = [];
   final List<Map<String, dynamic>> _debtsPayload = [];
@@ -203,7 +203,9 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
       // 1. Fetch Shared Dependencies
       final studentsData = await _supabase
           .from('students')
-          .select('id, first_name, last_name, category, class_id')
+          .select(
+            'id, first_name, last_name, category, class_id, wallet_balance',
+          )
           .eq('school_id', _schoolId!);
       final txData = await _supabase
           .from('transactions')
@@ -219,20 +221,20 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
 
       List<Map<String, dynamic>> summaries = [];
 
-      // 2. 🚨 Process Class by Class to prevent Row Limits and URL lengths!
+      // 2. Process Class by Class
       for (int i = 0; i < _allClasses.length; i++) {
         var currentClass = _allClasses[i];
         String currentClassId = currentClass['id'];
         String currentClassName = currentClass['name'];
 
-        // Fetch grades safely ONLY for this specific class
         final classGrades = await _fetchClassGrades(
           currentClassId,
           _currentSession,
         );
 
-        // Determine Destination
+        // Determine Destination (Need ID and Name now for safe architecture)
         String destinationName;
+        String? destinationId;
         bool isTerminal = i == _allClasses.length - 1;
 
         if (isTerminal) {
@@ -241,6 +243,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
               : _newClassNameController.text.trim().toUpperCase();
         } else {
           destinationName = _allClasses[i + 1]['name'];
+          destinationId = _allClasses[i + 1]['id'];
         }
 
         Map<String, dynamic> promoCriteria = currentClass['promotion_criteria'];
@@ -249,7 +252,6 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
           promoCriteria['core_subjects'] ?? [],
         );
 
-        // Filter students & fees for this specific class
         var classStudents = studentsData
             .where((s) => s['class_id'] == currentClassId)
             .toList();
@@ -266,9 +268,10 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
         int classGraduating = 0;
 
         for (var student in classStudents) {
-          // --- DEBT CHECK ---
+          // --- DEBT CHECK WITH WALLET INCLUDED ---
           double totalUnpaid = 0.0;
           String sCategory = (student['category'] ?? '').toString();
+          double walletBalance = (student['wallet_balance'] ?? 0).toDouble();
 
           for (var fee in classFees) {
             if (_doesItApply(
@@ -290,17 +293,18 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
             }
           }
 
-          if (totalUnpaid > 0) {
+          double finalDebt = totalUnpaid - walletBalance;
+          if (finalDebt > 0) {
             _debtsPayload.add({
               'student_id': student['id'],
-              'unpaid_amount': totalUnpaid,
+              'unpaid_amount': finalDebt,
+              'original_wallet': walletBalance,
             });
-            _totalDebtToLock += totalUnpaid;
+            _totalDebtToLock += finalDebt;
           }
 
           // --- ACADEMIC CHECK ---
           bool hasPassed = true;
-          // Look up from the safely fetched classGrades map
           Map<String, dynamic> grades = classGrades[student['id']] ?? {};
           double average = (grades['average'] ?? 0.0).toDouble();
 
@@ -327,15 +331,17 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
               _promotionsPayload.add({
                 'student_id': student['id'],
                 'new_class_level': destinationName,
+                'new_class_id': destinationId,
               });
               classPromoted++;
               _totalPromoted++;
             }
           } else {
-            // Retained in same class
+            // Retained
             _promotionsPayload.add({
               'student_id': student['id'],
               'new_class_level': currentClassName,
+              'new_class_id': currentClassId,
             });
             classRetained++;
             _totalRetained++;
@@ -365,7 +371,6 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
     }
   }
 
-  // 🚨 FIXED: Safe, segmented database fetching
   Future<Map<String, Map<String, dynamic>>> _fetchClassGrades(
     String classId,
     String targetSession,
@@ -411,7 +416,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
   }
 
   // ===========================================================================
-  // 🚨 THE ATOMIC TRIGGER
+  // 🚨 THE SAFE ATOMIC TRIGGER (Client-Side Batching)
   // ===========================================================================
   Future<void> _executeUnifiedTrigger() async {
     final confirmController = TextEditingController();
@@ -435,7 +440,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  "You are about to advance the entire school to the next academic session. Debts will be locked to wallets, students will be promoted/retained, and seniors will be processed. To proceed, type CONFIRM below.",
+                  "You are about to safely advance the entire school to the next academic session without deleting historical infrastructure. Debts will be locked to wallets, students will be promoted/retained, and seniors will be processed. To proceed, type CONFIRM below.",
                 ),
                 const SizedBox(height: 15),
                 TextField(
@@ -478,31 +483,83 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
     setState(() => _isExecuting = true);
 
     try {
-      List<Map<String, dynamic>> newClassesPayload = [];
+      // 1. ADVANCE THE CALENDAR
+      await _supabase
+          .from('schools')
+          .update({'current_session': _nextSession, 'current_term': _nextTerm})
+          .eq('id', _schoolId!);
+
+      // 2. CREATE NEW TERMINAL CLASS (If Requested)
+      String? newTerminalClassId;
       if (_terminalAction == 'create_class' &&
           _newClassNameController.text.trim().isNotEmpty) {
-        newClassesPayload.add({
-          'name': _newClassNameController.text.trim().toUpperCase(),
-          'list_order': _allClasses.length,
-          'promotion_criteria': {
-            'pass_mark': 40,
-            'core_subjects': [],
-          }, // Default criteria for new class
-        });
+        final newClassRes = await _supabase
+            .from('classes')
+            .insert({
+              'school_id': _schoolId,
+              'name': _newClassNameController.text.trim().toUpperCase(),
+              'list_order': _allClasses.length,
+              'promotion_criteria': {'pass_mark': 40, 'core_subjects': []},
+            })
+            .select('id');
+
+        if (newClassRes.isNotEmpty) {
+          newTerminalClassId = newClassRes.first['id'].toString();
+        }
       }
 
-      await _supabase.rpc(
-        'execute_end_of_year_proceedings',
-        params: {
-          'p_school_id': _schoolId,
-          'p_new_session': _nextSession,
-          'p_new_term': _nextTerm,
-          'p_new_classes': newClassesPayload,
-          'p_promotions': _promotionsPayload,
-          'p_graduations': _graduationsPayload,
-          'p_debts': _debtsPayload,
-        },
-      );
+      // 3. EXECUTE PROMOTIONS (Safe Batch Update)
+      if (_promotionsPayload.isNotEmpty) {
+        for (var promo in _promotionsPayload) {
+          String destLevel = promo['new_class_level'];
+          String? destId = promo['new_class_id'];
+
+          if (destId == null &&
+              destLevel == _newClassNameController.text.trim().toUpperCase()) {
+            destId = newTerminalClassId; // Map to the newly created class
+          }
+
+          await _supabase
+              .from('students')
+              .update({
+                'class_level': destLevel,
+                'current_class': destLevel,
+                'class_id':
+                    destId, // 🚨 SAFE RELATIONAL ARCHITECTURE: Swaps the ID without deleting the old class
+              })
+              .eq('id', promo['student_id']);
+        }
+      }
+
+      // 4. EXECUTE GRADUATIONS
+      if (_graduationsPayload.isNotEmpty) {
+        for (var sId in _graduationsPayload) {
+          await _supabase
+              .from('students')
+              .update({
+                'is_active': false,
+                'class_level': 'GRADUATED',
+                'current_class': 'GRADUATED',
+              })
+              .eq('id', sId);
+        }
+      }
+
+      // 5. LOCK DEBTS TO WALLET
+      if (_debtsPayload.isNotEmpty) {
+        for (var debt in _debtsPayload) {
+          double originalWallet = debt['original_wallet'] ?? 0.0;
+          double unpaidAmount = debt['unpaid_amount'] ?? 0.0;
+
+          // Wallet logic: debt becomes a negative wallet balance
+          double newBalance = originalWallet - unpaidAmount;
+
+          await _supabase
+              .from('students')
+              .update({'wallet_balance': newBalance})
+              .eq('id', debt['student_id']);
+        }
+      }
 
       if (mounted) {
         showSuccessDialog(
@@ -559,6 +616,23 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
       return false;
     }
     if (columnData == null) return true;
+
+    if (columnData is String && columnData.startsWith('[')) {
+      try {
+        List<dynamic> parsedList = jsonDecode(columnData);
+        if (parsedList.isEmpty) return true;
+        for (var item in parsedList) {
+          String cleanItem = isCategory
+              ? item.toString().replaceAll(' ', '').toLowerCase()
+              : _standardizeClass(item.toString());
+          if (cleanItem == 'all' || cleanItem == cleanStudentData) return true;
+        }
+        return false;
+      } catch (e) {
+        // Fallback
+      }
+    }
+
     String colStr = isCategory
         ? columnData.toString().replaceAll(' ', '').toLowerCase()
         : _standardizeClass(columnData.toString());
@@ -568,16 +642,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
         colStr == '["all"]') {
       return true;
     }
-    if (columnData is List) {
-      if (columnData.isEmpty) return true;
-      for (var item in columnData) {
-        String cleanItem = isCategory
-            ? item.toString().replaceAll(' ', '').toLowerCase()
-            : _standardizeClass(item.toString());
-        if (cleanItem == 'all' || cleanItem == cleanStudentData) return true;
-      }
-      return false;
-    }
+
     return colStr.contains(cleanStudentData);
   }
 

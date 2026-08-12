@@ -1186,7 +1186,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
     );
   }
 
-  // Helper widget to keep the social buttons looking clean and matching the border styling
+  // 🚨 UI FIX: Wrapped label in a FittedBox and reduced padding to prevent text wrapping on small screens
   Widget _buildSocialButton(
     IconData icon,
     String label,
@@ -1199,15 +1199,19 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
         onPressed: onTap,
         icon: Icon(
           icon,
-          size: 24,
+          size: 20, // Slightly reduced to give text more room
           color: isDark ? Colors.white : Colors.black87,
         ),
-        label: Text(
-          label,
-          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+        label: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            maxLines: 1,
+            style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+          ),
         ),
         style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           side: BorderSide(color: borderColor),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),

@@ -1,3 +1,4 @@
+import 'dart:convert'; // 🚨 Added to safely decode stringified JSON arrays
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -28,7 +29,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   final Color _tridetaBlue = const Color(0xFF007ACC);
 
   late TabController _tabController;
-  bool _isLoading = false;
+  bool _isLoading = true;
 
   String? _selectedClass;
   List<Map<String, dynamic>> _students = [];
@@ -38,10 +39,10 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   final MobileScannerController _scannerController = MobileScannerController();
   bool _isProcessingScan = false;
 
-  // 🚨 NEW: Calendar Tracking
+  // Calendar Tracking
   String _currentSession = "";
   String _currentTerm = "";
-  List<String> _customOffDays = ['Saturday', 'Sunday']; // Default
+  List<String> _customOffDays = ['Saturday', 'Sunday']; // Default fallback
 
   @override
   void initState() {
@@ -57,9 +58,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     super.dispose();
   }
 
-  // 🚨 NEW: Fetch Custom Weekends and Active Term
   Future<void> _fetchSchoolCalendar() async {
-    setState(() => _isLoading = true);
     try {
       final schoolData = await _supabase
           .from('schools')
@@ -70,10 +69,32 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       setState(() {
         _currentSession = schoolData['current_session'] ?? '';
         _currentTerm = schoolData['current_term'] ?? '';
-        if (schoolData['off_days'] != null) {
-          _customOffDays = List<String>.from(schoolData['off_days']);
+
+        // 🚨 BULLETPROOF PARSING: Defeats double-stringified Supabase inputs
+        var offData = schoolData['off_days'];
+        if (offData != null) {
+          if (offData is List) {
+            _customOffDays = List<String>.from(offData);
+          } else if (offData is String) {
+            try {
+              var decoded = jsonDecode(offData);
+              // If Supabase double-wrapped the JSON string
+              if (decoded is String) {
+                decoded = jsonDecode(decoded);
+              }
+              _customOffDays = List<String>.from(decoded);
+            } catch (e) {
+              debugPrint("JSON Decode Error: $e");
+            }
+          }
         }
       });
+
+      // 🚨 FAST-FAIL: If today is a holiday, stop loading immediately.
+      if (_isOffDayOrHoliday()) {
+        setState(() => _isLoading = false);
+        return;
+      }
 
       if (widget.accessibleClasses.isNotEmpty) {
         final validClasses = widget.accessibleClasses
@@ -81,7 +102,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
             .toList();
         if (validClasses.isNotEmpty) {
           _selectedClass = validClasses.first;
-          _fetchStudentsAndTodayAttendance();
+          await _fetchStudentsAndTodayAttendance();
         }
       } else {
         setState(() => _isLoading = false);
@@ -92,12 +113,11 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     }
   }
 
-  // 🚨 NEW: Custom Weekend & Nigerian Public Holiday Engine
   bool _isOffDayOrHoliday() {
     DateTime today = DateTime.now();
-    String weekdayName = DateFormat('EEEE').format(today); // e.g., 'Friday'
+    String weekdayName = DateFormat('EEEE').format(today); // e.g., 'Thursday'
 
-    // 1. Check Custom School Weekends (e.g., Thu/Fri for Islamic Schools)
+    // 1. Check Custom School Weekends (e.g., Thu/Fri for Subulussalaam)
     if (_customOffDays.contains(weekdayName)) return true;
 
     // 2. Check Fixed Nigerian Public Holidays
@@ -130,7 +150,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           .select('student_id, status')
           .eq('class_level', _selectedClass!)
           .eq('date', todayStr)
-          // 🚨 NOW FILTERED BY SESSION AND TERM
           .eq('academic_session', _currentSession)
           .eq('term', _currentTerm)
           .timeout(const Duration(seconds: 15));
@@ -164,18 +183,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   Future<void> _saveManualAttendance() async {
     if (_attendanceState.isEmpty) return;
 
-    if (_isOffDayOrHoliday()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Attendance cannot be recorded on Off-Days or Public Holidays.",
-          ),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
     setState(() => _isLoading = true);
 
     try {
@@ -189,8 +196,8 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           'student_id': studentId,
           'class_level': _selectedClass,
           'date': todayStr,
-          'academic_session': _currentSession, // 🚨 WRITTEN TO DB
-          'term': _currentTerm, // 🚨 WRITTEN TO DB
+          'academic_session': _currentSession,
+          'term': _currentTerm,
           'status': status,
           'recorded_by': user.id,
         });
@@ -225,20 +232,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
   void _onDetect(BarcodeCapture capture) async {
     if (_isProcessingScan) return;
-
-    if (_isOffDayOrHoliday()) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              "Attendance cannot be recorded on Off-Days or Holidays.",
-            ),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-      return;
-    }
 
     final List<Barcode> barcodes = capture.barcodes;
     if (barcodes.isEmpty || barcodes.first.rawValue == null) return;
@@ -336,9 +329,8 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                                 'student_id': student['id'],
                                 'class_level': _selectedClass,
                                 'date': todayStr,
-                                'academic_session':
-                                    _currentSession, // 🚨 WRITTEN TO DB
-                                'term': _currentTerm, // 🚨 WRITTEN TO DB
+                                'academic_session': _currentSession,
+                                'term': _currentTerm,
                                 'status': selectedStatus,
                                 'recorded_by': _supabase.auth.currentUser!.id,
                               }, onConflict: 'student_id, date')
@@ -389,8 +381,108 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     );
   }
 
+  // ===========================================================================
+  // 🚨 THE NEW UX: FULL SCREEN BLOCKER
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: Colors.grey[100],
+        appBar: AppBar(
+          title: const Text(
+            "Daily Attendance",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: _tridetaBlue,
+          iconTheme: const IconThemeData(color: Colors.white),
+        ),
+        body: const Center(child: TridetaLoader()),
+      );
+    }
+
+    // 🚨 The Action Block interceptor
+    if (_isOffDayOrHoliday()) {
+      return Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          title: const Text(
+            "Daily Attendance",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: _tridetaBlue,
+          iconTheme: const IconThemeData(color: Colors.white),
+          elevation: 0,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.event_busy_rounded,
+                    size: 80,
+                    color: Colors.orange.shade600,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  "Action Locked",
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  "Today is marked as an Off-Day or Public Holiday in your school's calendar.\n\nAttendance recording has been disabled.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey.shade600,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 40),
+                SizedBox(
+                  width: 220,
+                  height: 50,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _tridetaBlue,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
+                      color: Colors.white,
+                    ),
+                    label: const Text(
+                      "Go Back",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final validClasses = widget.accessibleClasses
         .where((c) => c != 'All My Classes')
         .toList();
@@ -466,7 +558,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   }
 
   Widget _buildManualTab() {
-    if (_isLoading) return const Center(child: TridetaLoader());
     if (_selectedClass == null) {
       return const Center(child: Text("Please select a class."));
     }
@@ -486,22 +577,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
             style: TextStyle(color: _tridetaBlue, fontWeight: FontWeight.bold),
           ),
         ),
-
-        if (_isOffDayOrHoliday())
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(8),
-            color: Colors.orange.shade100,
-            child: const Text(
-              "Attendance recording is disabled on Off-Days and Holidays.",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.orange,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.all(10),
@@ -561,7 +636,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                                 : Colors.black,
                           ),
                           onSelected: (selected) {
-                            if (selected && !_isOffDayOrHoliday()) {
+                            if (selected) {
                               setState(
                                 () => _attendanceState[student['id']] = s,
                               );
@@ -582,15 +657,13 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           width: double.infinity,
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: _isOffDayOrHoliday()
-                  ? Colors.grey
-                  : _tridetaBlue,
+              backgroundColor: _tridetaBlue,
               padding: const EdgeInsets.symmetric(vertical: 15),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
-            onPressed: _isOffDayOrHoliday() ? null : _saveManualAttendance,
+            onPressed: _saveManualAttendance,
             child: const Text(
               "SAVE BATCH ATTENDANCE",
               style: TextStyle(
@@ -624,11 +697,9 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 color: Colors.black87,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text(
-                _isOffDayOrHoliday()
-                    ? "Scanner disabled on Off-Days"
-                    : "Scan Student QR on ID Card",
-                style: const TextStyle(color: Colors.white, fontSize: 16),
+              child: const Text(
+                "Scan Student QR on ID Card",
+                style: TextStyle(color: Colors.white, fontSize: 16),
               ),
             ),
           ),

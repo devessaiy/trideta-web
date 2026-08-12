@@ -2,19 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
-import 'package:trideta_v2/utils/subscription_guard.dart'; // 🚨 INJECT THE GUARD
+import 'package:trideta_v2/utils/subscription_guard.dart';
 
 // --- MODELS --- //
 class StudentScore {
-  final String id; // student_id
-  final String name; // First + Last Name
+  final String id;
+  final String name;
   final String admissionNo;
-  String? resultId; // The ID of the existing record in exam_scores (if any)
+  String? resultId;
 
-  double caAttendance; // 5
-  double caAssignment; // 10
-  double caMidterm; // 25
-  double examScore; // 60
+  double caAttendance;
+  double caAssignment;
+  double caMidterm;
+  double examScore;
 
   StudentScore({
     required this.id,
@@ -271,6 +271,7 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     });
 
     try {
+      // 1. Fetch valid students for this exact new Class ID (Strict RBAC Enforced)
       final studentsData = await _supabase
           .from('students')
           .select('id, first_name, last_name, admission_no')
@@ -279,21 +280,32 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           .eq('is_active', true)
           .order('first_name');
 
-      final existingScoresData = await _supabase
-          .from('exam_scores')
-          .select(
-            'id, student_id, ca_attendance, ca_assignment, ca_midterm, exam_score',
-          )
-          .eq('school_id', _schoolId!)
-          .eq('class_id', _selectedClassId!)
-          .eq('subject_id', _selectedSubjectId!)
-          .eq('academic_session', _selectedSession!)
-          .eq('term', _selectedTerm!);
+      List<String> validStudentIds = studentsData
+          .map((s) => s['id'].toString())
+          .toList();
 
-      final Map<String, Map<String, dynamic>> existingScoreMap = {
-        for (var score in existingScoresData)
-          score['student_id'].toString(): score,
-      };
+      Map<String, Map<String, dynamic>> existingScoreMap = {};
+
+      if (validStudentIds.isNotEmpty) {
+        // 2. 🚨 THE GHOST BUSTER 🚨
+        // We do NOT filter by class_id or subject_id here.
+        // We filter by EXACTLY what the database's unique constraint checks:
+        // student_id (safely filtered above), academic_session, term, and subject_name.
+        final existingScoresData = await _supabase
+            .from('exam_scores')
+            .select(
+              'id, student_id, ca_attendance, ca_assignment, ca_midterm, exam_score',
+            )
+            .eq('school_id', _schoolId!)
+            .inFilter('student_id', validStudentIds)
+            .eq('academic_session', _selectedSession!)
+            .eq('term', _selectedTerm!)
+            .eq('subject_name', _selectedSubjectName!);
+
+        for (var score in existingScoresData) {
+          existingScoreMap[score['student_id'].toString()] = score;
+        }
+      }
 
       final List<StudentScore> combinedList = [];
       for (var student in studentsData) {
@@ -355,10 +367,8 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     setState(() => _isSaving = true);
 
     try {
-      // 🚨 SURGICAL FIX: We use a single UPSERT batch instead of separating inserts/updates.
-      // This guarantees that if a row already exists in the database (violating the UNIQUE constraint),
-      // Supabase will automatically and silently update it instead of throwing a 409 Conflict.
-      List<Map<String, dynamic>> payload = [];
+      List<Map<String, dynamic>> toInsert = [];
+      List<Map<String, dynamic>> toUpdate = [];
 
       for (var s in _students) {
         final Map<String, dynamic> rowData = {
@@ -366,8 +376,9 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           'student_id': s.id,
           'academic_session': _selectedSession,
           'term': _selectedTerm,
-          'class_id': _selectedClassId,
-          'subject_id': _selectedSubjectId,
+          'class_id': _selectedClassId, // Safely heals broken relational links!
+          'subject_id':
+              _selectedSubjectId, // Safely heals broken relational links!
           'class_level': _selectedClassName,
           'subject_name': _selectedSubjectName,
           'ca_attendance': s.caAttendance,
@@ -381,22 +392,22 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           'updated_at': DateTime.now().toIso8601String(),
         };
 
-        // If we know the ID, attach it so upsert explicitly knows what to overwrite
         if (s.resultId != null) {
           rowData['id'] = s.resultId;
+          toUpdate.add(rowData);
+        } else {
+          toInsert.add(rowData);
         }
-
-        payload.add(rowData);
       }
 
-      if (payload.isNotEmpty) {
-        // 🚨 UPSERT: The ultimate 409 Conflict killer.
-        await _supabase
-            .from('exam_scores')
-            .upsert(
-              payload,
-              onConflict: 'id', // Fallback to unique compound key if ID is null
-            );
+      if (toInsert.isNotEmpty) {
+        await _supabase.from('exam_scores').insert(toInsert);
+      }
+
+      if (toUpdate.isNotEmpty) {
+        for (var row in toUpdate) {
+          await _supabase.from('exam_scores').update(row).eq('id', row['id']);
+        }
       }
 
       if (mounted) {

@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:intl/intl.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
@@ -11,16 +13,11 @@ import 'package:pdf/pdf.dart' show PdfColor, PdfColors, PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-// MODULAR IMPORTS
 import 'package:trideta_v2/screens/admin/components/student_profile/profile_hero_header.dart';
-import 'package:trideta_v2/screens/admin/components/student_profile/parent_security_dialogs.dart'; // 🚨 NEW COMPONENT
+import 'package:trideta_v2/screens/admin/components/student_profile/parent_security_dialogs.dart';
 import 'package:trideta_v2/screens/admin/components/student_profile/profile_academic_tab.dart';
 import 'package:trideta_v2/screens/admin/components/student_profile/profile_records_tab.dart';
 import 'package:trideta_v2/screens/admin/components/student_profile/profile_edit_form.dart';
-
-// Fallback/local stub for ParentSecurityCard in case the imported component
-// isn't available. Keeps the file compilable and provides basic functionality.
-// Premium local replacement for ParentSecurityCard.
 
 class ParentSecurityCard extends StatefulWidget {
   final bool isCheckingStatus;
@@ -62,7 +59,9 @@ class _ParentSecurityCardState extends State<ParentSecurityCard> {
     }
 
     return Container(
-      margin: widget.isDesktop ? EdgeInsets.zero : const EdgeInsets.all(24),
+      margin: widget.isDesktop
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(24),
@@ -80,7 +79,6 @@ class _ParentSecurityCardState extends State<ParentSecurityCard> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
         child: Theme(
-          // This removes the ugly default borders Flutter adds to ExpansionTiles
           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
           child: ExpansionTile(
             initiallyExpanded: _isExpanded,
@@ -94,11 +92,8 @@ class _ParentSecurityCardState extends State<ParentSecurityCard> {
               vertical: 8,
             ),
             childrenPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-            // The chevron arrow icon automatically handles its own animation
             iconColor: Colors.grey.shade500,
             collapsedIconColor: Colors.grey.shade400,
-
-            // --- Premium Header Row (Always Visible) ---
             title: Row(
               children: [
                 Container(
@@ -128,7 +123,6 @@ class _ParentSecurityCardState extends State<ParentSecurityCard> {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      // Smart text that updates based on the expanded state
                       Text(
                         _isExpanded
                             ? "Portal access is granted and secured."
@@ -144,10 +138,7 @@ class _ParentSecurityCardState extends State<ParentSecurityCard> {
                 ),
               ],
             ),
-
-            // --- The Collapsible Content ---
             children: [
-              // --- Descriptive Info Box ---
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -177,10 +168,7 @@ class _ParentSecurityCardState extends State<ParentSecurityCard> {
                   ],
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              // --- Premium Action Buttons ---
               Row(
                 children: [
                   if (widget.dbParentPhone != null &&
@@ -283,9 +271,15 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
   bool _isCheckingStatus = true;
   String? _admissionNo;
   String? _schoolId;
+  String? _classId;
 
   String? _dbParentEmail;
   String? _dbParentPhone;
+
+  String _currentSession = "";
+  String _currentTerm = "1st Term";
+  double _walletBalance = 0.0;
+  double _outstandingDebt = 0.0;
 
   bool _isFetchingAcademics = true;
   String _attendancePercentage = "N/A";
@@ -318,24 +312,83 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _checkAccountStatus();
-    _fetchAcademicData();
   }
 
-  // ============================================================================
-  // 🚨 LOGIC ENGINE
-  // ============================================================================
+  String _standardizeClass(String val) {
+    String v = val.replaceAll(' ', '').toLowerCase();
+    v = v
+        .replaceAll('one', '1')
+        .replaceAll('two', '2')
+        .replaceAll('three', '3');
+    v = v
+        .replaceAll('four', '4')
+        .replaceAll('five', '5')
+        .replaceAll('six', '6');
+    v = v
+        .replaceAll('seven', '7')
+        .replaceAll('eight', '8')
+        .replaceAll('nine', '9');
+    return v;
+  }
+
+  bool _doesItApply(
+    dynamic columnData,
+    String studentData, {
+    bool isCategory = false,
+  }) {
+    String cleanStudentData = isCategory
+        ? studentData.replaceAll(' ', '').toLowerCase()
+        : _standardizeClass(studentData);
+    if (isCategory &&
+        (cleanStudentData.isEmpty || cleanStudentData == 'notfound')) {
+      cleanStudentData = 'regular';
+    }
+    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound')
+      return false;
+    if (columnData == null) return true;
+
+    if (columnData is String && columnData.startsWith('[')) {
+      try {
+        List<dynamic> parsedList = jsonDecode(columnData);
+        if (parsedList.isEmpty) return true;
+        for (var item in parsedList) {
+          String cleanItem = isCategory
+              ? item.toString().replaceAll(' ', '').toLowerCase()
+              : _standardizeClass(item.toString());
+          if (cleanItem == 'all' || cleanItem == cleanStudentData) return true;
+        }
+        return false;
+      } catch (e) {
+        // Fallback
+      }
+    }
+
+    String colStr = isCategory
+        ? columnData.toString().replaceAll(' ', '').toLowerCase()
+        : _standardizeClass(columnData.toString());
+    if (colStr.isEmpty ||
+        colStr == 'all' ||
+        colStr == '[]' ||
+        colStr == '["all"]') {
+      return true;
+    }
+    return colStr.contains(cleanStudentData);
+  }
+
   Future<void> _checkAccountStatus() async {
     try {
       final data = await _supabase
           .from('students')
           .select(
-            'school_id, parent_account_created, admission_no, parent_email, parent_phone, first_name, middle_name, last_name, passport_url, dob, gender, department, category, address',
+            'school_id, class_id, parent_account_created, admission_no, parent_email, parent_phone, first_name, middle_name, last_name, passport_url, dob, gender, department, category, address, wallet_balance, schools(current_session, current_term)',
           )
           .eq('id', widget.id)
           .single();
+
       if (mounted) {
         setState(() {
           _schoolId = data['school_id'];
+          _classId = data['class_id'];
           _admissionNo = data['admission_no']?.toString();
           _dbParentEmail = data['parent_email']?.toString();
           _dbParentPhone = data['parent_phone']?.toString();
@@ -347,30 +400,104 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
           _selectedGender = data['gender'] ?? 'Male';
           _selectedDepartment = data['department'] ?? 'General';
           _studentCategory = data['category'] ?? 'Regular';
+          _walletBalance = (data['wallet_balance'] ?? 0).toDouble();
           _currentNameDisplay = widget.name;
           _currentImagePath = widget.imagePath ?? data['passport_url'];
+
+          if (data['schools'] != null) {
+            _currentSession = data['schools']['current_session'] ?? "";
+            _currentTerm = data['schools']['current_term'] ?? "1st Term";
+          }
+
           _isCheckingStatus = false;
         });
       }
+
+      await Future.wait([_fetchAcademicData(), _fetchFinancialData()]);
     } catch (e) {
       if (mounted) setState(() => _isCheckingStatus = false);
     }
   }
 
-  Future<void> _fetchAcademicData() async {
+  Future<void> _fetchFinancialData() async {
+    if (_schoolId == null || _currentSession.isEmpty) return;
     try {
-      final classAttRes = await _supabase
+      final feesData = await _supabase
+          .from('fee_structures')
+          .select()
+          .eq('school_id', _schoolId!)
+          .eq('academic_session', _currentSession);
+
+      final txData = await _supabase
+          .from('transactions')
+          .select()
+          .eq('student_id', widget.id)
+          .eq('academic_session', _currentSession);
+
+      double expected = 0;
+      for (var fee in feesData) {
+        if (_doesItApply(fee['applicable_class_ids'], _classId ?? '') ||
+            _doesItApply(fee['applicable_classes'], widget.studentClass)) {
+          if (_doesItApply(
+            fee['applicable_categories'],
+            _studentCategory,
+            isCategory: true,
+          )) {
+            String fTerm = fee['academic_term'] ?? 'All Terms';
+            if (fTerm == _currentTerm || fTerm == 'All Terms') {
+              expected += (fee['amount'] ?? 0).toDouble();
+            }
+          }
+        }
+      }
+
+      double paid = 0;
+      for (var tx in txData) {
+        String tTerm = tx['academic_term'] ?? 'All Terms';
+        if (tTerm == _currentTerm ||
+            tTerm == 'All Terms' ||
+            _currentTerm == 'All Terms') {
+          paid += (tx['amount'] ?? 0).toDouble();
+        }
+      }
+
+      double termDebt = expected - paid;
+      double finalDebt = termDebt - _walletBalance;
+
+      if (mounted) {
+        setState(() {
+          _outstandingDebt = finalDebt > 0 ? finalDebt : 0.0;
+        });
+      }
+    } catch (e) {
+      debugPrint("Finance Error: $e");
+    }
+  }
+
+  Future<void> _fetchAcademicData() async {
+    if (_schoolId == null || _currentSession.isEmpty) return;
+    try {
+      // 🚨 THE FIX: Get the total open days for the entire SCHOOL instead of a single class string!
+      final schoolAttRes = await _supabase
           .from('attendance')
           .select('date')
-          .eq('class_level', widget.studentClass);
-      int totalSchoolDays = classAttRes
+          .eq('school_id', _schoolId!)
+          .eq('academic_session', _currentSession)
+          .eq('term', _currentTerm);
+
+      int totalSchoolDays = schoolAttRes
           .map((r) => r['date'].toString())
           .toSet()
           .length;
+
+      // Fetch specifically how many days Ibrahim was marked present
       final stuAttRes = await _supabase
           .from('attendance')
           .select('status')
-          .eq('student_id', widget.id);
+          .eq('student_id', widget.id)
+          .eq('academic_session', _currentSession)
+          .eq('term', _currentTerm);
+
       int presentCount = stuAttRes
           .where((r) => r['status'] == 'Punctual' || r['status'] == 'Late')
           .length;
@@ -382,10 +509,14 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
         _attendancePercentage = "No Class Records";
       }
 
+      // Safe fetch for exams using exactly the session and term
       final scoresRes = await _supabase
           .from('exam_scores')
           .select('subject_name, total_score, grade')
-          .eq('student_id', widget.id);
+          .eq('student_id', widget.id)
+          .eq('academic_session', _currentSession)
+          .eq('term', _currentTerm);
+
       if (scoresRes.isNotEmpty) {
         double totalSum = 0;
         List<Map<String, dynamic>> parsedGrades = [];
@@ -492,6 +623,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
           .select('name, address, logo_url')
           .eq('id', _schoolId!)
           .single();
+
       final termResults = await _supabase
           .from('term_results')
           .select()
@@ -702,7 +834,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     }
   }
 
-  // 🚨 ROUTES TO THE NEW EXTERNAL DIALOG FILE
   void _handleSecurityTap(Color primaryColor) {
     if (_dbParentEmail == null || _dbParentEmail!.isEmpty) {
       showAuthErrorDialog("Error: Missing login credentials in database.");
@@ -811,9 +942,121 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     if (await canLaunchUrl(url)) await launchUrl(url);
   }
 
-  // ============================================================================
-  // 🚨 MODULAR UI COMPOSITION WITH SIDE-BY-SIDE DESKTOP LOGIC
-  // ============================================================================
+  Widget _buildFinancialCard(bool isDark, Color primaryColor) {
+    if (_isCheckingStatus) return const SizedBox.shrink();
+
+    final currencyFmt = NumberFormat.currency(symbol: '₦', decimalDigits: 0);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.account_balance_wallet_rounded,
+                        color: Colors.blue,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        "WALLET",
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.blue.shade700,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    currencyFmt.format(_walletBalance),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.blue,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _outstandingDebt > 0
+                    ? Colors.redAccent.withValues(alpha: 0.1)
+                    : Colors.green.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: _outstandingDebt > 0
+                      ? Colors.redAccent.withValues(alpha: 0.3)
+                      : Colors.green.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        _outstandingDebt > 0
+                            ? Icons.warning_rounded
+                            : Icons.check_circle_rounded,
+                        color: _outstandingDebt > 0
+                            ? Colors.redAccent
+                            : Colors.green,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        "DEBT ($_currentTerm)",
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          color: _outstandingDebt > 0
+                              ? Colors.redAccent
+                              : Colors.green,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    currencyFmt.format(_outstandingDebt),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: _outstandingDebt > 0
+                          ? Colors.redAccent
+                          : Colors.green,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -864,8 +1107,11 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
         builder: (context, constraints) {
           bool isDesktop = constraints.maxWidth > 800;
 
-          Widget mainContent = _isEditing
-              ? ProfileEditForm(
+          if (_isEditing) {
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 850),
+                child: ProfileEditForm(
                   webImage: _webImage,
                   displayImagePath: _currentImagePath ?? widget.imagePath ?? "",
                   onPickImage: _pickImage,
@@ -903,10 +1149,31 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                   cardColor: cardColor,
                   textColor: textColor,
                   isDark: isDark,
-                )
-              : Column(
-                  children: [
-                    if (isDesktop)
+                ),
+              ),
+            );
+          }
+
+          if (isDesktop) {
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 850),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    border: Border(
+                      left: BorderSide(
+                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                        width: 1,
+                      ),
+                      right: BorderSide(
+                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
                       Padding(
                         padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
                         child: IntrinsicHeight(
@@ -935,135 +1202,217 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                               const SizedBox(width: 16),
                               Expanded(
                                 flex: 4,
-                                child: ParentSecurityCard(
-                                  isCheckingStatus: _isCheckingStatus,
-                                  dbParentPhone: _dbParentPhone,
-                                  onSecurityTap: () =>
-                                      _handleSecurityTap(primaryColor),
-                                  onCallTap: _callParent,
-                                  primaryColor: primaryColor,
-                                  isDesktop: true,
+                                child: Column(
+                                  children: [
+                                    _buildFinancialCard(isDark, primaryColor),
+                                    Expanded(
+                                      child: ParentSecurityCard(
+                                        isCheckingStatus: _isCheckingStatus,
+                                        dbParentPhone: _dbParentPhone,
+                                        onSecurityTap: () =>
+                                            _handleSecurityTap(primaryColor),
+                                        onCallTap: _callParent,
+                                        primaryColor: primaryColor,
+                                        isDesktop: true,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      )
-                    else
-                      Column(
-                        children: [
-                          ProfileHeroHeader(
-                            id: widget.id,
-                            displayName: _currentNameDisplay.isEmpty
-                                ? widget.name
-                                : _currentNameDisplay,
-                            studentClass: widget.studentClass,
-                            admissionNo: _admissionNo,
-                            displayImagePath:
-                                _currentImagePath ?? widget.imagePath ?? "",
-                            primaryColor: primaryColor,
-                            cardColor: cardColor,
-                            isDark: isDark,
-                            isDesktop: false,
-                          ),
-                          ParentSecurityCard(
-                            isCheckingStatus: _isCheckingStatus,
-                            dbParentPhone: _dbParentPhone,
-                            onSecurityTap: () =>
-                                _handleSecurityTap(primaryColor),
-                            onCallTap: _callParent,
-                            primaryColor: primaryColor,
-                            isDesktop: false,
-                          ),
-                        ],
                       ),
-
-                    Container(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.05)
-                            : Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: TabBar(
-                        controller: _tabController,
-                        dividerColor: Colors.transparent,
-                        indicatorSize: TabBarIndicatorSize.tab,
-                        indicator: BoxDecoration(
-                          color: primaryColor,
+                      Container(
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.05)
+                              : Colors.grey.shade200,
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        labelColor: Colors.white,
-                        unselectedLabelColor: isDark
-                            ? Colors.white54
-                            : Colors.grey.shade600,
-                        labelStyle: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
+                        child: TabBar(
+                          controller: _tabController,
+                          dividerColor: Colors.transparent,
+                          indicatorSize: TabBarIndicatorSize.tab,
+                          indicator: BoxDecoration(
+                            color: primaryColor,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          labelColor: Colors.white,
+                          unselectedLabelColor: isDark
+                              ? Colors.white54
+                              : Colors.grey.shade600,
+                          labelStyle: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                          tabs: const [
+                            Tab(text: "ACADEMICS"),
+                            Tab(text: "RECORDS"),
+                          ],
                         ),
-                        tabs: const [
-                          Tab(text: "ACADEMICS"),
-                          Tab(text: "RECORDS"),
-                        ],
                       ),
-                    ),
-                    Expanded(
-                      child: TabBarView(
-                        controller: _tabController,
-                        children: [
-                          ProfileAcademicTab(
-                            isFetchingAcademics: _isFetchingAcademics,
-                            attendancePercentage: _attendancePercentage,
-                            gradeAverage: _gradeAverage,
-                            subjectGrades: _subjectGrades,
-                            primaryColor: primaryColor,
-                            cardColor: cardColor,
-                            textColor: textColor,
-                            isDark: isDark,
-                          ),
-                          ProfileRecordsTab(
-                            isGeneratingRecord: _isGeneratingRecord,
-                            onGenerateTap: _generateComprehensiveRecord,
-                            primaryColor: primaryColor,
-                            cardColor: cardColor,
-                            isDark: isDark,
-                          ),
-                        ],
+                      Expanded(
+                        child: TabBarView(
+                          controller: _tabController,
+                          children: [
+                            ProfileAcademicTab(
+                              isFetchingAcademics: _isFetchingAcademics,
+                              attendancePercentage: _attendancePercentage,
+                              gradeAverage: _gradeAverage,
+                              subjectGrades: _subjectGrades,
+                              primaryColor: primaryColor,
+                              cardColor: cardColor,
+                              textColor: textColor,
+                              isDark: isDark,
+                            ),
+                            ProfileRecordsTab(
+                              isGeneratingRecord: _isGeneratingRecord,
+                              onGenerateTap: _generateComprehensiveRecord,
+                              primaryColor: primaryColor,
+                              cardColor: cardColor,
+                              isDark: isDark,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                );
-
-          if (isDesktop) {
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 850),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: bgColor,
-                    border: Border(
-                      left: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
-                      ),
-                      right: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
-                      ),
-                    ),
+                    ],
                   ),
-                  child: mainContent,
                 ),
               ),
             );
           }
-          return mainContent;
+
+          // 🚨 MOBILE NESTED SCROLL VIEW
+          return NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) {
+              return [
+                SliverToBoxAdapter(
+                  child: Column(
+                    children: [
+                      ProfileHeroHeader(
+                        id: widget.id,
+                        displayName: _currentNameDisplay.isEmpty
+                            ? widget.name
+                            : _currentNameDisplay,
+                        studentClass: widget.studentClass,
+                        admissionNo: _admissionNo,
+                        displayImagePath:
+                            _currentImagePath ?? widget.imagePath ?? "",
+                        primaryColor: primaryColor,
+                        cardColor: cardColor,
+                        isDark: isDark,
+                        isDesktop: false,
+                      ),
+                      _buildFinancialCard(isDark, primaryColor),
+                      ParentSecurityCard(
+                        isCheckingStatus: _isCheckingStatus,
+                        dbParentPhone: _dbParentPhone,
+                        onSecurityTap: () => _handleSecurityTap(primaryColor),
+                        onCallTap: _callParent,
+                        primaryColor: primaryColor,
+                        isDesktop: false,
+                      ),
+                    ],
+                  ),
+                ),
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _SliverAppBarDelegate(
+                    TabBar(
+                      controller: _tabController,
+                      dividerColor: Colors.transparent,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      indicator: BoxDecoration(
+                        color: primaryColor,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      labelColor: Colors.white,
+                      unselectedLabelColor: isDark
+                          ? Colors.white54
+                          : Colors.grey.shade600,
+                      labelStyle: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                      tabs: const [
+                        Tab(text: "ACADEMICS"),
+                        Tab(text: "RECORDS"),
+                      ],
+                    ),
+                  ),
+                ),
+              ];
+            },
+            body: TabBarView(
+              controller: _tabController,
+              children: [
+                ProfileAcademicTab(
+                  isFetchingAcademics: _isFetchingAcademics,
+                  attendancePercentage: _attendancePercentage,
+                  gradeAverage: _gradeAverage,
+                  subjectGrades: _subjectGrades,
+                  primaryColor: primaryColor,
+                  cardColor: cardColor,
+                  textColor: textColor,
+                  isDark: isDark,
+                ),
+                ProfileRecordsTab(
+                  isGeneratingRecord: _isGeneratingRecord,
+                  onGenerateTap: _generateComprehensiveRecord,
+                  primaryColor: primaryColor,
+                  cardColor: cardColor,
+                  isDark: isDark,
+                ),
+              ],
+            ),
+          );
         },
       ),
     );
+  }
+}
+
+class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
+  _SliverAppBarDelegate(this._tabBar);
+
+  final TabBar _tabBar;
+
+  @override
+  double get minExtent => _tabBar.preferredSize.height + 16;
+  @override
+  double get maxExtent => _tabBar.preferredSize.height + 16;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
+
+    return Container(
+      color: bgColor,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: _tabBar,
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
+    return false;
   }
 }

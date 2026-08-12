@@ -40,9 +40,9 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
   double _totalDebtToLock = 0.0;
 
   // Payloads for Atomic RPC
-  List<Map<String, dynamic>> _promotionsPayload = [];
-  List<String> _graduationsPayload = [];
-  List<Map<String, dynamic>> _debtsPayload = [];
+  final List<Map<String, dynamic>> _promotionsPayload = [];
+  final List<String> _graduationsPayload = [];
+  final List<Map<String, dynamic>> _debtsPayload = [];
 
   @override
   void initState() {
@@ -936,10 +936,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                           subtitle: Padding(
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
-                              "${sum['promoted']} Promoted • ${sum['retained']} Retained" +
-                                  (isGrad
-                                      ? " • ${sum['graduating']} Graduating"
-                                      : ""),
+                              "${sum['promoted']} Promoted • ${sum['retained']} Retained${isGrad ? " • ${sum['graduating']} Graduating" : ""}",
                               style: TextStyle(
                                 color: Colors.grey.shade600,
                                 fontWeight: FontWeight.bold,

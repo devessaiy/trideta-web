@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
@@ -21,7 +22,6 @@ class _AlertsScreenState extends State<AlertsScreen>
 
   String? _schoolId;
   String _currentSession = "";
-  // 🚨 FIXED: Added tracking for current term
   String _currentTerm = "1st Term";
   bool _isLoading = true;
 
@@ -66,7 +66,6 @@ class _AlertsScreenState extends State<AlertsScreen>
             .single();
 
         _currentSession = school['current_session'] ?? "";
-        // 🚨 FIXED: Fetch term directly from the global setup
         _currentTerm = school['current_term'] ?? "1st Term";
 
         await _checkFinancialHealth();
@@ -81,7 +80,6 @@ class _AlertsScreenState extends State<AlertsScreen>
   Future<void> _checkFinancialHealth() async {
     if (_schoolId == null || _currentSession.isEmpty) return;
     try {
-      // 🚨 FIXED: Now queries exact academic term to give accurate term financial health
       final rawFeeData = await _supabase
           .from('fee_structures')
           .select(
@@ -105,9 +103,7 @@ class _AlertsScreenState extends State<AlertsScreen>
       double totalExpected = 0.0;
 
       for (var student in studentsData) {
-        String sClass =
-            (student['class_level'] ?? student['current_class'] ?? '')
-                .toString();
+        String sClass = (student['class_level'] ?? '').toString();
         String sCategory = (student['category'] ?? '').toString();
         for (var fee in feeData) {
           if (_doesItApply(fee['applicable_classes'], sClass) &&
@@ -130,7 +126,6 @@ class _AlertsScreenState extends State<AlertsScreen>
       for (var tx in transactions) {
         String txSession = (tx['academic_session'] ?? '').toString();
         String txTerm = (tx['academic_term'] ?? 'All Terms').toString();
-        // 🚨 FIXED: Filter transactions strictly by the active session and term
         if ((txSession == _currentSession || txSession.isEmpty) &&
             (txTerm == _currentTerm ||
                 txTerm == 'All Terms' ||
@@ -165,6 +160,23 @@ class _AlertsScreenState extends State<AlertsScreen>
     if (isCategory && cleanStudentData.isEmpty) cleanStudentData = 'regular';
     if (cleanStudentData.isEmpty) return false;
     if (columnData == null) return true;
+
+    if (columnData is String && columnData.startsWith('[')) {
+      try {
+        List<dynamic> parsedList = jsonDecode(columnData);
+        if (parsedList.isEmpty) return true;
+        for (var item in parsedList) {
+          String cleanItem = isCategory
+              ? item.toString().replaceAll(' ', '').toLowerCase()
+              : _standardizeClass(item.toString());
+          if (cleanItem == 'all' || cleanItem == cleanStudentData) return true;
+        }
+        return false;
+      } catch (e) {
+        // Fallback
+      }
+    }
+
     String colStr = isCategory
         ? columnData.toString().replaceAll(' ', '').toLowerCase()
         : _standardizeClass(columnData.toString());
@@ -186,7 +198,7 @@ class _AlertsScreenState extends State<AlertsScreen>
         .replaceAll('six', '6');
   }
 
-  Future<void> _deleteAlert(String alertId) async {
+  Future<void> _deleteAlert(Map<String, dynamic> alert) async {
     bool? confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -223,20 +235,15 @@ class _AlertsScreenState extends State<AlertsScreen>
 
     if (confirm == true) {
       try {
-        await _supabase.from('alerts').delete().eq('id', alertId);
+        await _supabase
+            .from('alerts')
+            .delete()
+            .eq('school_id', _schoolId!)
+            .eq('title', alert['title'])
+            .eq('message', alert['message']);
+
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                "Alert deleted successfully.",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              backgroundColor: Colors.green,
-            ),
-          );
+          showSuccessDialog("Deleted", "Alert group deleted successfully.");
         }
       } catch (e) {
         showAuthErrorDialog("Error deleting alert: $e");
@@ -256,14 +263,13 @@ class _AlertsScreenState extends State<AlertsScreen>
             Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
             SizedBox(width: 10),
             Text(
-              "Alert Debtors",
+              "Targeted Debtor Alert",
               style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
             ),
           ],
         ),
-        // 🚨 FIXED: Alert modal now displays the dynamic term!
         content: Text(
-          "How would you like to notify parents with outstanding balances for $_currentTerm, $_currentSession?",
+          "The system will automatically calculate the wallet balance of every student. Only parents with an outstanding balance for $_currentTerm, $_currentSession will receive this alert.",
           style: TextStyle(
             color: isDark ? Colors.white70 : Colors.black87,
             height: 1.5,
@@ -305,6 +311,7 @@ class _AlertsScreenState extends State<AlertsScreen>
     );
   }
 
+  // 🚨 WALLET LOGIC ENGINE: Evaluates true debtors before sending the global alert.
   Future<void> _executeDebtorAlert({required bool sendSms}) async {
     final subGuard = SubscriptionGuard();
     bool canProceed = await subGuard.canPerformAction(context);
@@ -312,7 +319,87 @@ class _AlertsScreenState extends State<AlertsScreen>
 
     setState(() => _isSendingDebtorAlert = true);
     try {
-      // 🚨 FIXED: Template dynamically includes exact Session AND Term to prevent ambiguity
+      final rawFeeData = await _supabase
+          .from('fee_structures')
+          .select(
+            'amount, applicable_classes, applicable_categories, academic_term',
+          )
+          .eq('school_id', _schoolId!)
+          .eq('academic_session', _currentSession);
+
+      List<Map<String, dynamic>> feeData = [];
+      for (var f in rawFeeData) {
+        String t = (f['academic_term'] ?? 'All Terms').toString();
+        if (t == _currentTerm || t == 'All Terms') {
+          feeData.add(f);
+        }
+      }
+
+      final studentsData = await _supabase
+          .from('students')
+          .select('id, class_level, category, wallet_balance')
+          .eq('school_id', _schoolId!);
+
+      final transactions = await _supabase
+          .from('transactions')
+          .select('student_id, amount, academic_session, academic_term')
+          .eq('school_id', _schoolId!);
+
+      List<String> debtorIds = [];
+
+      for (var student in studentsData) {
+        String sId = student['id'].toString();
+        String sClass = (student['class_level'] ?? '').toString();
+        String sCategory = (student['category'] ?? '').toString();
+
+        double walletBalance = (student['wallet_balance'] ?? 0).toDouble();
+
+        double expected = 0.0;
+        for (var fee in feeData) {
+          if (_doesItApply(fee['applicable_classes'], sClass) &&
+              _doesItApply(
+                fee['applicable_categories'],
+                sCategory,
+                isCategory: true,
+              )) {
+            expected += (fee['amount'] ?? 0).toDouble();
+          }
+        }
+
+        double paid = 0.0;
+        for (var tx in transactions) {
+          if (tx['student_id'].toString() == sId) {
+            String txSession = (tx['academic_session'] ?? '').toString();
+            String txTerm = (tx['academic_term'] ?? 'All Terms').toString();
+            if ((txSession == _currentSession || txSession.isEmpty) &&
+                (txTerm == _currentTerm ||
+                    txTerm == 'All Terms' ||
+                    _currentTerm == 'All Terms')) {
+              paid += (tx['amount'] ?? 0).toDouble();
+            }
+          }
+        }
+
+        // Deducts wallet credits from their debt
+        double balance = expected - paid - walletBalance;
+        if (balance > 0) {
+          debtorIds.add(sId);
+        }
+      }
+
+      // If everyone is fully paid (or covered by wallets), we halt and don't spam anyone!
+      if (debtorIds.isEmpty) {
+        if (mounted) {
+          showSuccessDialog(
+            "No Debtors",
+            "There are currently no students with outstanding balances for this term.",
+          );
+        }
+        setState(() => _isSendingDebtorAlert = false);
+        return;
+      }
+
+      // 🚨 FIXED: Only inserts ONE perfectly formatted broadcast row so it doesn't crash on invalid columns.
       await _supabase.from('alerts').insert({
         'school_id': _schoolId,
         'title': 'FEE REMINDER: $_currentSession ($_currentTerm)',
@@ -320,11 +407,13 @@ class _AlertsScreenState extends State<AlertsScreen>
             'Dear Parent, our records show an outstanding balance for the $_currentTerm of the $_currentSession academic session. Kindly arrange for payment to avoid administrative interruptions.',
         'type': 'fee_urgent',
       });
+
       if (sendSms) await Future.delayed(const Duration(seconds: 2));
+
       if (mounted) {
         showSuccessDialog(
-          "Alerts Sent",
-          "Debtor alerts have been sent to the parent dashboards successfully!",
+          "Alerts Dispatched",
+          "Fee Reminders have been successfully published. \n\n(Note: The Parent App handles the hiding of this alert based on individual student financial statuses).",
         );
         _handleRefresh();
       }
@@ -492,16 +581,8 @@ class _AlertsScreenState extends State<AlertsScreen>
                         : () async {
                             if (titleCtrl.text.isEmpty ||
                                 msgCtrl.text.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    "Title and message required.",
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  backgroundColor: Colors.orange,
-                                ),
+                              showAuthErrorDialog(
+                                "Title and message are required.",
                               );
                               return;
                             }
@@ -519,8 +600,8 @@ class _AlertsScreenState extends State<AlertsScreen>
                                 'title': titleCtrl.text.trim(),
                                 'message': msgCtrl.text.trim(),
                                 'type': selectedAudience,
-                                'created_by': _supabase.auth.currentUser!.id,
                               });
+
                               if (context.mounted) {
                                 Navigator.pop(context);
                                 showSuccessDialog(
@@ -531,12 +612,7 @@ class _AlertsScreenState extends State<AlertsScreen>
                               }
                             } catch (e) {
                               if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text("Error: $e"),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
+                                showAuthErrorDialog("Failed to post alert: $e");
                               }
                             } finally {
                               setModalState(() => isSubmitting = false);
@@ -702,7 +778,7 @@ class _AlertsScreenState extends State<AlertsScreen>
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                "Awaiting financial data for $_currentTerm, $_currentSession.", // 🚨 Dynamic template string
+                "Awaiting financial data for $_currentTerm, $_currentSession.",
                 style: TextStyle(
                   color: Colors.grey.shade600,
                   fontWeight: FontWeight.bold,
@@ -879,7 +955,18 @@ class _AlertsScreenState extends State<AlertsScreen>
                   child: Center(child: TridetaLoader(color: primaryColor)),
                 );
               }
-              final alerts = snapshot.data ?? [];
+              final rawAlerts = snapshot.data ?? [];
+
+              List<Map<String, dynamic>> alerts = [];
+              Set<String> seen = {};
+              for (var a in rawAlerts) {
+                String key = '${a['title']}_${a['message']}_${a['type']}';
+                if (!seen.contains(key)) {
+                  seen.add(key);
+                  alerts.add(a);
+                }
+              }
+
               if (alerts.isEmpty) {
                 return SizedBox(
                   height: 250,
@@ -902,7 +989,7 @@ class _AlertsScreenState extends State<AlertsScreen>
                     alert: alerts[index],
                     primaryColor: primaryColor,
                     isDark: isDark,
-                    onDelete: () => _deleteAlert(alerts[index]['id']),
+                    onDelete: _deleteAlert,
                   );
                 },
               );
@@ -1081,7 +1168,7 @@ class _CollapsibleAlertCard extends StatefulWidget {
   final Map<String, dynamic> alert;
   final Color primaryColor;
   final bool isDark;
-  final VoidCallback onDelete;
+  final Function(Map<String, dynamic>) onDelete;
 
   const _CollapsibleAlertCard({
     required this.alert,
@@ -1191,7 +1278,7 @@ class _CollapsibleAlertCardState extends State<_CollapsibleAlertCard> {
                     ),
                     const SizedBox(width: 12),
                     GestureDetector(
-                      onTap: widget.onDelete,
+                      onTap: () => widget.onDelete(widget.alert),
                       child: Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(

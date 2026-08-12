@@ -1,3 +1,4 @@
+import 'dart:convert'; // 🚨 IMPORTED FOR SMART SHIELD JSON DECODING
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
@@ -66,7 +67,6 @@ class ParentAlertsMasterDetail extends StatefulWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 🚨 FIX 1: Prevent Date/Time Overflow
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -103,8 +103,7 @@ class ParentAlertsMasterDetail extends StatefulWidget {
                           fontWeight: FontWeight.w600,
                         ),
                         maxLines: 2,
-                        overflow: TextOverflow
-                            .ellipsis, // Fades gracefully if it's incredibly long
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -224,6 +223,58 @@ class _ParentAlertsMasterDetailState extends State<ParentAlertsMasterDetail> {
     _fetchAlerts();
   }
 
+  // ===========================================================================
+  // 🚨 SMART SHIELD UTILS (Copied perfectly from the Admin Engine)
+  // ===========================================================================
+  bool _doesItApply(
+    dynamic columnData,
+    String studentData, {
+    bool isCategory = false,
+  }) {
+    String cleanStudentData = isCategory
+        ? studentData.replaceAll(' ', '').toLowerCase()
+        : _standardizeClass(studentData);
+    if (isCategory && cleanStudentData.isEmpty) cleanStudentData = 'regular';
+    if (cleanStudentData.isEmpty) return false;
+    if (columnData == null) return true;
+
+    if (columnData is String && columnData.startsWith('[')) {
+      try {
+        List<dynamic> parsedList = jsonDecode(columnData);
+        if (parsedList.isEmpty) return true;
+        for (var item in parsedList) {
+          String cleanItem = isCategory
+              ? item.toString().replaceAll(' ', '').toLowerCase()
+              : _standardizeClass(item.toString());
+          if (cleanItem == 'all' || cleanItem == cleanStudentData) return true;
+        }
+        return false;
+      } catch (e) {
+        // Fallback
+      }
+    }
+
+    String colStr = isCategory
+        ? columnData.toString().replaceAll(' ', '').toLowerCase()
+        : _standardizeClass(columnData.toString());
+    return colStr.isEmpty ||
+        colStr == 'all' ||
+        colStr == '[]' ||
+        colStr.contains(cleanStudentData);
+  }
+
+  String _standardizeClass(String val) {
+    return val
+        .replaceAll(' ', '')
+        .toLowerCase()
+        .replaceAll('one', '1')
+        .replaceAll('two', '2')
+        .replaceAll('three', '3')
+        .replaceAll('four', '4')
+        .replaceAll('five', '5')
+        .replaceAll('six', '6');
+  }
+
   List<Map<String, dynamic>> get _filteredAlerts {
     if (_selectedFilterSchoolId == null) return _alerts;
     return _alerts
@@ -239,7 +290,8 @@ class _ParentAlertsMasterDetailState extends State<ParentAlertsMasterDetail> {
       final childrenData = await _supabase
           .from('students')
           .select(
-            '*, schools(id, name, logo_url, brand_color, current_session)',
+            // 🚨 FETCHED CURRENT TERM FOR THE DEBT ENGINE
+            '*, schools(id, name, logo_url, brand_color, current_session, current_term)',
           )
           .eq('parent_email', user.email ?? '');
 
@@ -260,16 +312,94 @@ class _ParentAlertsMasterDetailState extends State<ParentAlertsMasterDetail> {
           .map((s) => s['id'].toString())
           .toList();
 
-      // 🚨 FIX 2: Broadened alert types so they are ALWAYS loaded (No more strict debtor filtering)
+      // =======================================================================
+      // 🚨 SMART DEBTOR SHIELD ENGINE
+      // Runs instantly in the background to calculate if this parent is owing!
+      // =======================================================================
+      bool hasOutstandingDebt = false;
+      try {
+        List<String> childIds = childrenData
+            .map((c) => c['id'].toString())
+            .toList();
+
+        final txsData = await _supabase
+            .from('transactions')
+            .select('student_id, amount, academic_session, academic_term')
+            .filter('student_id', 'in', childIds);
+
+        final feesData = await _supabase
+            .from('fee_structures')
+            .select(
+              'amount, applicable_classes, applicable_categories, academic_term, academic_session, school_id',
+            )
+            .filter('school_id', 'in', schoolIds);
+
+        for (var child in childrenData) {
+          var school = child['schools'];
+          if (school == null) continue;
+
+          String currentSession = (school['current_session'] ?? '').toString();
+          String currentTerm = (school['current_term'] ?? '1st Term')
+              .toString();
+
+          String sClass = (child['class_level'] ?? child['current_class'] ?? '')
+              .toString();
+          String sCategory = (child['category'] ?? '').toString();
+          double walletBalance = (child['wallet_balance'] ?? 0).toDouble();
+
+          double expected = 0.0;
+          for (var fee in feesData) {
+            if (fee['school_id'].toString() == school['id'].toString() &&
+                fee['academic_session'].toString() == currentSession &&
+                (fee['academic_term'].toString() == currentTerm ||
+                    fee['academic_term'].toString() == 'All Terms')) {
+              if (_doesItApply(fee['applicable_classes'], sClass) &&
+                  _doesItApply(
+                    fee['applicable_categories'],
+                    sCategory,
+                    isCategory: true,
+                  )) {
+                expected += (fee['amount'] ?? 0).toDouble();
+              }
+            }
+          }
+
+          double paid = 0.0;
+          for (var tx in txsData) {
+            if (tx['student_id'].toString() == child['id'].toString()) {
+              String txSession = (tx['academic_session'] ?? '').toString();
+              String txTerm = (tx['academic_term'] ?? 'All Terms').toString();
+              if ((txSession == currentSession || txSession.isEmpty) &&
+                  (txTerm == currentTerm ||
+                      txTerm == 'All Terms' ||
+                      currentTerm == 'All Terms')) {
+                paid += (tx['amount'] ?? 0).toDouble();
+              }
+            }
+          }
+
+          double balance = expected - paid - walletBalance;
+          if (balance > 0) {
+            hasOutstandingDebt = true;
+            break;
+          }
+        }
+      } catch (e) {
+        debugPrint("Error checking debt logic: $e");
+      }
+      // =======================================================================
+
+      // Normal Announcements that everyone gets to see
       List<String> allowedAlertTypes = [
         'school_website',
         'general',
         'parent_alert',
-        'fee_urgent',
-        'fee',
-        'urgent',
-        'debtor',
       ];
+
+      // 🚨 SHIELD APPLIED: If the parent has no debt, the app completely ignores debtor alerts!
+      if (hasOutstandingDebt) {
+        allowedAlertTypes.addAll(['fee_urgent', 'fee', 'urgent', 'debtor']);
+      }
 
       final alertsData = await _supabase
           .from('alerts')

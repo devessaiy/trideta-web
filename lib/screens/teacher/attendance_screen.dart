@@ -467,10 +467,12 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
   Widget _buildManualTab() {
     if (_isLoading) return const Center(child: TridetaLoader());
-    if (_selectedClass == null)
+    if (_selectedClass == null) {
       return const Center(child: Text("Please select a class."));
-    if (_students.isEmpty)
+    }
+    if (_students.isEmpty) {
       return const Center(child: Text("No students found in this class."));
+    }
 
     return Column(
       children: [
@@ -604,8 +606,9 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   }
 
   Widget _buildScannerTab() {
-    if (_selectedClass == null)
+    if (_selectedClass == null) {
       return const Center(child: Text("Please select a class first."));
+    }
 
     return Stack(
       children: [
@@ -704,8 +707,9 @@ void showStudentQrCode(BuildContext context, Map<String, dynamic> student) {
                     .capture();
                 if (imageBytes != null) {
                   try {
-                    if (!await Gal.hasAccess(toAlbum: true))
+                    if (!await Gal.hasAccess(toAlbum: true)) {
                       await Gal.requestAccess(toAlbum: true);
+                    }
                     await Gal.putImageBytes(imageBytes);
                     if (ctx.mounted) {
                       Navigator.pop(ctx);

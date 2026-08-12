@@ -71,8 +71,9 @@ class _EndOfTermProceedingsScreenState extends State<EndOfTermProceedingsScreen>
 
   // 🚨 ADDED: Explicit Confirm Dialog before Execution
   Future<void> _advanceTerm() async {
-    if (!_confirmCheck || _nextTerm == 'End of Year' || _schoolId == null)
+    if (!_confirmCheck || _nextTerm == 'End of Year' || _schoolId == null) {
       return;
+    }
 
     final confirmController = TextEditingController();
     bool isConfirmed =

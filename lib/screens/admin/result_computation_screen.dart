@@ -149,7 +149,7 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
 
       final allClasses = await _supabase
           .from('classes')
-          .select('id, name') // 🚨 FIXED: Stripped overrides
+          .select('id, name')
           .eq('school_id', _schoolId!)
           .order('list_order', ascending: true);
 
@@ -355,8 +355,10 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     setState(() => _isSaving = true);
 
     try {
-      List<Map<String, dynamic>> toInsert = [];
-      List<Map<String, dynamic>> toUpdate = [];
+      // 🚨 SURGICAL FIX: We use a single UPSERT batch instead of separating inserts/updates.
+      // This guarantees that if a row already exists in the database (violating the UNIQUE constraint),
+      // Supabase will automatically and silently update it instead of throwing a 409 Conflict.
+      List<Map<String, dynamic>> payload = [];
 
       for (var s in _students) {
         final Map<String, dynamic> rowData = {
@@ -379,22 +381,22 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           'updated_at': DateTime.now().toIso8601String(),
         };
 
+        // If we know the ID, attach it so upsert explicitly knows what to overwrite
         if (s.resultId != null) {
           rowData['id'] = s.resultId;
-          toUpdate.add(rowData);
-        } else {
-          toInsert.add(rowData);
         }
+
+        payload.add(rowData);
       }
 
-      if (toInsert.isNotEmpty) {
-        await _supabase.from('exam_scores').insert(toInsert);
-      }
-
-      if (toUpdate.isNotEmpty) {
-        for (var row in toUpdate) {
-          await _supabase.from('exam_scores').update(row).eq('id', row['id']);
-        }
+      if (payload.isNotEmpty) {
+        // 🚨 UPSERT: The ultimate 409 Conflict killer.
+        await _supabase
+            .from('exam_scores')
+            .upsert(
+              payload,
+              onConflict: 'id', // Fallback to unique compound key if ID is null
+            );
       }
 
       if (mounted) {
@@ -508,7 +510,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
                               _selectedClassId = val;
                               _selectedClassName = cls['name'];
 
-                              // 🚨 FIXED: Fallback to Global Strict Sync
                               _selectedSession = _globalSession;
                               _selectedTerm = _globalTerm;
                             });

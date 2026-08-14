@@ -84,7 +84,8 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
       if (_userRole == 'admin' || _userRole == 'principal') {
         final classesData = await _supabase
             .from('classes')
-            .select('id, name') // 🚨 FIXED: Stripped overrides
+            // 🚨 FIX 1: Added list_order to select projection to prevent 400 Bad Request
+            .select('id, name, list_order')
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
         for (var c in classesData) {
@@ -104,7 +105,7 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
         if (uniqueIds.isNotEmpty) {
           final freshClasses = await _supabase
               .from('classes')
-              .select('id, name') // 🚨 FIXED: Stripped overrides
+              .select('id, name')
               .inFilter('id', uniqueIds.toList());
           for (var c in freshClasses) {
             String cName = c['name'].toString();
@@ -318,19 +319,19 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
             'updated_at': DateTime.now().toIso8601String(),
           });
         } else {
+          // 🚨 FIX 2: Explicitly update by unique ID to heal broken ghost records
           await _supabase
               .from('term_results')
               .update({
+                'class_id': _classNameToIdMap[_selectedClass], // Heal class ID
+                'class_level': _selectedClass, // Heal class Name
                 'total_score': stData['Total'],
                 'average_score': stData['Average'],
                 'position': position,
                 'position_suffix': _getOrdinalSuffix(position),
                 'updated_at': DateTime.now().toIso8601String(),
               })
-              .eq('student_id', sId)
-              .eq('academic_session', _selectedSession!)
-              .eq('term', _selectedTerm!)
-              .eq('class_id', _classNameToIdMap[_selectedClass]!);
+              .eq('id', existing['id']); // Targets the exact record
         }
       }
 
@@ -468,7 +469,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
                   setState(() {
                     _selectedClass = val;
                     if (val != null) {
-                      // 🚨 FIXED: Fallback to Global Strict Sync
                       _selectedSession = _globalSession;
                       _selectedTerm = _globalTerm;
                     }

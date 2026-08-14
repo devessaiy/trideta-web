@@ -3,8 +3,7 @@ import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'
-    show kIsWeb; // 🚨 Added to check for Web
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -28,22 +27,18 @@ class _ReportCardScreenState extends State<ReportCardScreen>
   String? _schoolId;
   String _userRole = 'teacher';
 
-  // 🚨 FIXED: Dynamic Sessions List initialized late
   late List<String> _sessions;
   final List<String> _terms = ['1st Term', '2nd Term', '3rd Term'];
   String? _selectedSession;
   String? _selectedTerm;
 
-  // 🚨 FIXED: Trackers to hold the global defaults for fallback
   String? _globalSession;
   String? _globalTerm;
 
   String? _selectedClass;
   List<String> _activeClasses = [];
 
-  // 🚨 ADDED: Dictionary maps to translate string names to UUIDs and async overrides
   final Map<String, String> _classNameToIdMap = {};
-  final Map<String, Map<String, String?>> _classOverridesMap = {};
 
   List<Map<String, dynamic>> _students = [];
   final Map<String, bool> _hasResultMap = {};
@@ -51,15 +46,13 @@ class _ReportCardScreenState extends State<ReportCardScreen>
   @override
   void initState() {
     super.initState();
-    _sessions = _generateDynamicSessions(); // 🚨 Initialize dynamically
+    _sessions = _generateDynamicSessions();
     _fetchInitialData();
   }
 
-  // 🚨 NEW: Generates an infinite rolling window of academic sessions
   List<String> _generateDynamicSessions() {
     int currentYear = DateTime.now().year;
     List<String> list = [];
-    // Generates a scalable window from 2020 into the future dynamically
     for (int i = 2020; i <= currentYear + 3; i++) {
       list.add("$i/${i + 1}");
     }
@@ -85,7 +78,6 @@ class _ReportCardScreenState extends State<ReportCardScreen>
           .eq('id', _schoolId!)
           .single();
 
-      // 🚨 Store the globals safely (calculates current year fallback just in case)
       int currentYr = DateTime.now().year;
       _globalSession =
           school['current_session'] ?? "$currentYr/${currentYr + 1}";
@@ -93,26 +85,19 @@ class _ReportCardScreenState extends State<ReportCardScreen>
 
       List<String> fetchedClasses = [];
       _classNameToIdMap.clear();
-      _classOverridesMap.clear();
 
       if (_userRole == 'admin' || _userRole == 'principal') {
-        // Fetch IDs, Names, and Overrides
         final classesData = await _supabase
             .from('classes')
-            .select('id, name, override_session, override_term')
+            .select('id, name, list_order')
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
         for (var c in classesData) {
           String cName = c['name'].toString();
           _classNameToIdMap[cName] = c['id'].toString();
-          _classOverridesMap[cName] = {
-            'session': c['override_session']?.toString(),
-            'term': c['override_term']?.toString(),
-          };
           fetchedClasses.add(cName);
         }
       } else {
-        // Teacher Logic: Get assigned UUIDs, then get fresh names and overrides
         final assignments = await _supabase
             .from('staff_assignments')
             .select('class_id')
@@ -124,15 +109,11 @@ class _ReportCardScreenState extends State<ReportCardScreen>
         if (uniqueIds.isNotEmpty) {
           final freshClasses = await _supabase
               .from('classes')
-              .select('id, name, override_session, override_term')
+              .select('id, name')
               .inFilter('id', uniqueIds.toList());
           for (var c in freshClasses) {
             String cName = c['name'].toString();
             _classNameToIdMap[cName] = c['id'].toString();
-            _classOverridesMap[cName] = {
-              'session': c['override_session']?.toString(),
-              'term': c['override_term']?.toString(),
-            };
             fetchedClasses.add(cName);
           }
           fetchedClasses.sort();
@@ -164,7 +145,6 @@ class _ReportCardScreenState extends State<ReportCardScreen>
           .from('students')
           .select('id, first_name, last_name, admission_no')
           .eq('school_id', _schoolId!)
-          // 🚨 TRANSLATED TO UUID
           .eq('class_id', _classNameToIdMap[_selectedClass]!)
           .order('first_name', ascending: true);
 
@@ -174,7 +154,6 @@ class _ReportCardScreenState extends State<ReportCardScreen>
           .eq('school_id', _schoolId!)
           .eq('academic_session', _selectedSession!)
           .eq('term', _selectedTerm!)
-          // 🚨 TRANSLATED TO UUID
           .eq('class_id', _classNameToIdMap[_selectedClass]!);
 
       final Set<String> studentsWithResults = resultsData
@@ -201,7 +180,6 @@ class _ReportCardScreenState extends State<ReportCardScreen>
     }
   }
 
-  // 🚨 ANIMATED POPUP GENERATOR 🚨
   Future<void> _generatePDFForStudent(Map<String, dynamic> student) async {
     if (!_hasResultMap[student['id'].toString()]!) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -217,7 +195,6 @@ class _ReportCardScreenState extends State<ReportCardScreen>
 
     String studentName = "${student['last_name']} ${student['first_name']}";
 
-    // 1. Show the Popup Dialog
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -241,7 +218,6 @@ class _ReportCardScreenState extends State<ReportCardScreen>
     );
 
     try {
-      // 2. Generate the PDF bytes in the background
       final bytes = await ReportCardPDFGenerator.generatePdfBytes(
         supabase: _supabase,
         studentId: student['id'].toString(),
@@ -254,10 +230,8 @@ class _ReportCardScreenState extends State<ReportCardScreen>
         format: PdfPageFormat.a4,
       );
 
-      // 3. Close the Popup
       if (mounted) Navigator.pop(context);
 
-      // 4. Navigate instantly to the Viewer using the pre-compiled bytes
       if (mounted) {
         Navigator.push(
           context,
@@ -270,31 +244,28 @@ class _ReportCardScreenState extends State<ReportCardScreen>
               className: _selectedClass!,
               studentName: studentName,
               admissionNo: student['admission_no']?.toString() ?? "N/A",
-              precompiledPdfBytes: bytes, // Pass bytes to load instantly!
+              precompiledPdfBytes: bytes,
             ),
           ),
         );
       }
     } catch (e) {
-      if (mounted) Navigator.pop(context); // Close popup on error
+      if (mounted) Navigator.pop(context);
       showAuthErrorDialog("Failed to generate: $e");
     }
   }
 
   Future<void> _bulkDownloadClassReports() async {
-    // 🚨 WEB BROWSER SAFETY CHECK 🚨
-    if (kIsWeb) {
-      showAuthErrorDialog(
-        "Web Browser Limitation!\n\nBulk Download requires access to a device's local folders to zip the files. Please open the App on your Android/iOS phone to use this feature.",
-      );
-      return;
-    }
-
     setState(() => _isBulkGenerating = true);
 
     try {
       List<XFile> generatedPdfFiles = [];
-      final tempDir = await getTemporaryDirectory();
+      Directory? tempDir;
+
+      // We only fetch a temporary directory if we are on a mobile device
+      if (!kIsWeb) {
+        tempDir = await getTemporaryDirectory();
+      }
 
       for (var student in _students) {
         String sId = student['id'].toString();
@@ -321,14 +292,27 @@ class _ReportCardScreenState extends State<ReportCardScreen>
             RegExp(r'[^a-zA-Z0-9]'),
             '_',
           );
-          File file = File('${tempDir.path}/${safeName}_ReportCard.pdf');
+          String fileName = '${safeName}_ReportCard.pdf';
 
-          await file.writeAsBytes(pdfBytes);
-          generatedPdfFiles.add(XFile(file.path));
+          // 🚨 THE FIX: Web holds the file in RAM; Mobile saves to disk
+          if (kIsWeb) {
+            generatedPdfFiles.add(
+              XFile.fromData(
+                pdfBytes,
+                name: fileName,
+                mimeType: 'application/pdf',
+              ),
+            );
+          } else {
+            File file = File('${tempDir!.path}/$fileName');
+            await file.writeAsBytes(pdfBytes);
+            generatedPdfFiles.add(XFile(file.path));
+          }
         }
       }
 
       if (generatedPdfFiles.isNotEmpty) {
+        // Share/Download mechanism handles Web Blobs perfectly
         await Share.shareXFiles(
           generatedPdfFiles,
           text: '$_selectedClass Report Cards - $_selectedTerm',
@@ -361,7 +345,6 @@ class _ReportCardScreenState extends State<ReportCardScreen>
 
     bool isAdmin = _userRole == 'admin' || _userRole == 'principal';
 
-    // 🚨 MAIN CONTENT EXTRACTED FOR LAYOUT BUILDER 🚨
     Widget mainContent = Column(
       children: [
         Container(
@@ -385,7 +368,6 @@ class _ReportCardScreenState extends State<ReportCardScreen>
                       "Session",
                       _sessions,
                       _selectedSession,
-                      // 🚨 SECURED: Teachers cannot change sessions manually
                       isAdmin
                           ? (val) {
                               setState(() {
@@ -404,7 +386,6 @@ class _ReportCardScreenState extends State<ReportCardScreen>
                       "Term",
                       _terms,
                       _selectedTerm,
-                      // 🚨 SECURED: Teachers cannot change terms manually
                       isAdmin
                           ? (val) {
                               setState(() {
@@ -428,11 +409,8 @@ class _ReportCardScreenState extends State<ReportCardScreen>
                   setState(() {
                     _selectedClass = val;
                     if (val != null) {
-                      // 🚨 ASYNC CALENDAR RESOLUTION
-                      _selectedSession =
-                          _classOverridesMap[val]?['session'] ?? _globalSession;
-                      _selectedTerm =
-                          _classOverridesMap[val]?['term'] ?? _globalTerm;
+                      _selectedSession = _globalSession;
+                      _selectedTerm = _globalTerm;
                     }
                     _students.clear();
                   });
@@ -485,11 +463,9 @@ class _ReportCardScreenState extends State<ReportCardScreen>
         centerTitle: true,
         elevation: 0,
       ),
-      // 🚨 SHAPE-SHIFTER: LayoutBuilder Added
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 800) {
-            // 💻 DESKTOP LAYOUT (Constrained Center Column)
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 800),
@@ -512,7 +488,6 @@ class _ReportCardScreenState extends State<ReportCardScreen>
               ),
             );
           } else {
-            // 📱 MOBILE LAYOUT (Full Width)
             return mainContent;
           }
         },

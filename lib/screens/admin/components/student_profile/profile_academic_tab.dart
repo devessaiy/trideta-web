@@ -30,50 +30,91 @@ class ProfileAcademicTab extends StatelessWidget {
     }
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 10, 24, 100),
+      padding: const EdgeInsets.only(bottom: 100),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: _buildStatCard(
-                "Attendance",
-                attendancePercentage,
-                Icons.calendar_month_rounded,
-                Colors.blue,
-              ),
+        // 🚨 UI FIX: Pure flat ListTiles matching Contact Info
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 8,
+          ),
+          leading: const Icon(
+            Icons.calendar_month_rounded,
+            color: Colors.blue,
+            size: 28,
+          ),
+          title: const Text(
+            "Attendance",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          trailing: Text(
+            attendancePercentage,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.blue,
+              fontSize: 16,
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _buildStatCard(
-                "Average",
-                gradeAverage,
-                Icons.auto_graph_rounded,
-                Colors.purple,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 30),
-        const Text(
-          "SUBJECT GRADES",
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-            fontSize: 11,
-            color: Colors.grey,
-            letterSpacing: 1.2,
           ),
         ),
-        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.only(left: 72, right: 24),
+          child: Divider(
+            height: 1,
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 8,
+          ),
+          leading: const Icon(
+            Icons.auto_graph_rounded,
+            color: Colors.purple,
+            size: 28,
+          ),
+          title: const Text(
+            "Grade Average",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          trailing: Text(
+            gradeAverage,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.purple,
+              fontSize: 16,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 72, right: 24),
+          child: Divider(
+            height: 1,
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
+
+        Container(
+          height: 12,
+          color: isDark ? Colors.black : Colors.grey.shade100,
+        ),
+
+        const Padding(
+          padding: EdgeInsets.fromLTRB(24, 24, 24, 8),
+          child: Text(
+            "SUBJECT GRADES",
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+              color: Colors.grey,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
         if (subjectGrades.isEmpty)
           Container(
             padding: const EdgeInsets.all(30),
-            decoration: BoxDecoration(
-              color: cardColor,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isDark ? Colors.white10 : Colors.grey.shade200,
-              ),
-            ),
+            color: cardColor,
             child: Center(
               child: Text(
                 "No scores recorded yet.",
@@ -86,13 +127,7 @@ class ProfileAcademicTab extends StatelessWidget {
           )
         else
           Container(
-            decoration: BoxDecoration(
-              color: cardColor,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isDark ? Colors.white10 : Colors.grey.shade200,
-              ),
-            ),
+            color: cardColor,
             child: Column(
               children: subjectGrades.map((gradeData) {
                 Color gColor = Colors.grey;
@@ -109,9 +144,12 @@ class ProfileAcademicTab extends StatelessWidget {
                       gColor,
                     ),
                     if (gradeData != subjectGrades.last)
-                      Divider(
-                        height: 1,
-                        color: isDark ? Colors.white10 : Colors.grey.shade100,
+                      Padding(
+                        padding: const EdgeInsets.only(left: 24, right: 24),
+                        child: Divider(
+                          height: 1,
+                          color: isDark ? Colors.white10 : Colors.grey.shade200,
+                        ),
                       ),
                   ],
                 );
@@ -122,64 +160,9 @@ class ProfileAcademicTab extends StatelessWidget {
     );
   }
 
-  Widget _buildStatCard(String title, String val, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: color, size: 20),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            title,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.grey.shade500,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 4),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              val,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                color: color,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildGradeTile(String name, String score, Color color) {
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
       title: Text(
         name,
         style: TextStyle(

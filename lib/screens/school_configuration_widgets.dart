@@ -382,63 +382,66 @@ class SubjectsPanel extends StatelessWidget {
           ),
           const SizedBox(height: 15),
 
-          Row(
+          // 🚨 THE FIX: Stacked Layout to completely eliminate RenderFlex Overflows
+          Column(
             children: [
-              Expanded(
-                flex: 5,
-                child: TextField(
-                  controller: subjectController,
-                  textCapitalization: TextCapitalization.characters,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                  decoration: buildConfigInputStyle(
-                    "Add subject",
-                    Icons.add_task_rounded,
-                    isDark,
-                    primaryColor,
-                  ),
-                  onSubmitted: (_) => onAddSubject(),
+              TextField(
+                controller: subjectController,
+                textCapitalization: TextCapitalization.characters,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
                 ),
+                decoration: buildConfigInputStyle(
+                  "Add subject",
+                  Icons.add_task_rounded,
+                  isDark,
+                  primaryColor,
+                ),
+                onSubmitted: (_) => onAddSubject(),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 4,
-                child: DropdownButtonFormField<String>(
-                  initialValue: subjectType,
-                  dropdownColor: isDark
-                      ? const Color(0xFF2C2C2C)
-                      : Colors.white,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white : Colors.black87,
-                    fontSize: 13,
+              const SizedBox(height: 15),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: subjectType,
+                      dropdownColor: isDark
+                          ? const Color(0xFF2C2C2C)
+                          : Colors.white,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : Colors.black87,
+                        fontSize: 13,
+                      ),
+                      isExpanded: true,
+                      decoration: buildConfigInputStyle(
+                        "Type",
+                        Icons.category_rounded,
+                        isDark,
+                        primaryColor,
+                      ),
+                      items: ['Compulsory', 'Elective']
+                          .map(
+                            (t) => DropdownMenuItem(value: t, child: Text(t)),
+                          )
+                          .toList(),
+                      onChanged: onSubjectTypeChanged,
+                    ),
                   ),
-                  isExpanded: true,
-                  decoration: buildConfigInputStyle(
-                    "Type",
-                    Icons.category_rounded,
-                    isDark,
-                    primaryColor,
+                  const SizedBox(width: 12),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      padding: const EdgeInsets.all(16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    onPressed: onAddSubject,
+                    child: const Icon(Icons.add_rounded, color: Colors.white),
                   ),
-                  items: ['Compulsory', 'Elective']
-                      .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                      .toList(),
-                  onChanged: onSubjectTypeChanged,
-                ),
-              ),
-              const SizedBox(width: 12),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  padding: const EdgeInsets.all(16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                onPressed: onAddSubject,
-                child: const Icon(Icons.add_rounded, color: Colors.white),
+                ],
               ),
             ],
           ),
@@ -768,8 +771,8 @@ class _EditClassDialogState extends State<EditClassDialog> {
           onPressed: () {
             Navigator.pop(context, {
               'newName': editController.text.trim().toUpperCase(),
-              'session': null, // 🚨 Forces database to wipe old async calendars
-              'term': null, // 🚨 Forces database to wipe old async calendars
+              'session': null,
+              'term': null,
               'promo_criteria': {
                 'pass_mark': passMark.toInt(),
                 'core_subjects': coreSubjects,

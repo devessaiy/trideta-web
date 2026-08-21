@@ -20,8 +20,10 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
   bool _isLoading = true;
   List<Map<String, dynamic>> _debtors = [];
 
-  // 🚨 ADDED TO HOLD OFFICIAL CLASSES
   List<String> _officialClasses = [];
+
+  bool _isFeesActivated = false;
+  String _activeSessionLabel = "CURRENT TERM";
 
   @override
   void initState() {
@@ -30,7 +32,7 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
   }
 
   // ===========================================================================
-  // 🚨 LOGIC ENGINE: STRICTLY UNTOUCHED
+  // 🚨 LOGIC ENGINE: UPGRADED & BULLETPROOFED (CURRENT TERM ONLY)
   // ===========================================================================
   Future<void> _fetchDebtors() async {
     setState(() => _isLoading = true);
@@ -45,21 +47,25 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
           .single();
       final schoolId = profile['school_id'];
 
-      // 1. FETCH ACTIVE SESSION FIRST
+      // 1. FETCH ACTIVE SESSION & TERM
       final schoolData = await _supabase
           .from('schools')
-          .select('current_session')
+          .select('current_session, current_term')
           .eq('id', schoolId)
           .single();
 
       String currentSession = schoolData['current_session'] ?? "";
+      String currentTerm = schoolData['current_term'] ?? "";
+      String sessionLabel = "CURRENT TERM";
 
-      if (currentSession.isEmpty) {
+      if (currentSession.isNotEmpty) {
+        sessionLabel = "$currentSession • $currentTerm".toUpperCase();
+      } else {
         if (mounted) setState(() => _isLoading = false);
         return;
       }
 
-      // 1.5 🚨 FETCH OFFICIAL CLASSES FROM RELATIONAL TABLE
+      // 1.5 FETCH OFFICIAL CLASSES FROM RELATIONAL TABLE
       final classesData = await _supabase
           .from('classes')
           .select('name')
@@ -68,40 +74,45 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
 
       _officialClasses = classesData.map((c) => c['name'].toString()).toList();
 
-      // 2. Get Fee Structure (NOW FETCHING id)
+      // 2. Get Fee Structure (STRICTLY FILTERED BY ACTIVE TIMELINE)
       final rawFeeData = await _supabase
           .from('fee_structures')
           .select(
-            'id, fee_name, amount, applicable_classes, applicable_class_ids, applicable_categories, academic_session',
+            'id, fee_name, amount, applicable_classes, applicable_class_ids, applicable_categories, academic_session, academic_term',
           )
           .eq('school_id', schoolId);
 
       List<Map<String, dynamic>> feeData = [];
       for (var fee in rawFeeData) {
         String feeSession = (fee['academic_session'] ?? '').toString();
-        if (feeSession == currentSession || feeSession.isEmpty) {
+        String feeTerm = (fee['academic_term'] ?? 'All Terms').toString();
+
+        if ((feeSession == currentSession || feeSession.isEmpty) &&
+            (feeTerm == currentTerm || feeTerm == 'All Terms')) {
           feeData.add(fee);
         }
       }
 
-      // 3. Get Transactions (NOW FETCHING fee_id)
+      // 3. Get Transactions (STRICTLY FILTERED BY ACTIVE TIMELINE)
       final txData = await _supabase
           .from('transactions')
-          .select('student_id, category, amount, academic_session, fee_id')
+          .select(
+            'student_id, category, amount, academic_session, academic_term, fee_id',
+          )
           .eq('school_id', schoolId);
 
-      // 🚨 GROUP PAYMENTS NATIVELY BY fee_id
       Map<String, Map<String, double>> studentCategoryPayments = {};
       for (var tx in txData) {
         String txSession = (tx['academic_session'] ?? '').toString();
+        String txTerm = (tx['academic_term'] ?? 'All Terms').toString();
 
-        if (txSession == currentSession || txSession.isEmpty) {
+        if ((txSession == currentSession || txSession.isEmpty) &&
+            (txTerm == currentTerm || txTerm == 'All Terms')) {
           String sId = tx['student_id'].toString();
           String txFeeId = (tx['fee_id'] ?? '').toString();
           String txCategory = (tx['category'] ?? '').toString();
           double amt = (tx['amount'] ?? 0).toDouble();
 
-          // 🚨 HYBRID GROUPING: Uses UUID if available, falls back to text if the migration script missed it
           String paymentKey = txFeeId.isNotEmpty ? txFeeId : txCategory;
 
           studentCategoryPayments.putIfAbsent(sId, () => {});
@@ -110,11 +121,14 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
         }
       }
 
-      // 4. Get All Students & Calculate True Debt
+      // 4. Get All Active Students & Calculate True Debt
       final studentsData = await _supabase
           .from('students')
-          .select('*')
-          .eq('school_id', schoolId);
+          .select(
+            'id, first_name, last_name, class_level, class_id, category, parent_phone, wallet_balance',
+          )
+          .eq('school_id', schoolId)
+          .eq('is_active', true);
 
       List<Map<String, dynamic>> tempDebtors = [];
 
@@ -123,8 +137,9 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
         String cClass = (student['class_level'] ?? '').toString();
         String sClassId = (student['class_id'] ?? '').toString();
         String cCategory = (student['category'] ?? '').toString();
+        double walletBalance = (student['wallet_balance'] ?? 0).toDouble();
 
-        double totalStudentDebt = 0.0;
+        double activeStudentDebt = 0.0;
 
         for (var fee in feeData) {
           String feeId = fee['id'].toString();
@@ -133,11 +148,18 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
 
           bool classMatch = false;
 
-          // Match by UUID first
-          final List<dynamic>? classIdsList = fee['applicable_class_ids'];
-          if (classIdsList != null &&
-              classIdsList.isNotEmpty &&
-              sClassId.isNotEmpty) {
+          final dynamic rawClassIds = fee['applicable_class_ids'];
+          List<dynamic> classIdsList = [];
+
+          if (rawClassIds is String && rawClassIds.startsWith('[')) {
+            try {
+              classIdsList = jsonDecode(rawClassIds);
+            } catch (e) {}
+          } else if (rawClassIds is List) {
+            classIdsList = rawClassIds;
+          }
+
+          if (classIdsList.isNotEmpty && sClassId.isNotEmpty) {
             classMatch = classIdsList.contains(sClassId);
           } else {
             classMatch = _doesItApply(
@@ -154,19 +176,22 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
           );
 
           if (classMatch && categoryMatch) {
-            // 🚨 NATIVE UUID LOOKUP: Checks for payments under the UUID, falls back to text name lookup
             double paidAmt =
                 (studentCategoryPayments[sId]?[feeId] ?? 0.0) +
                 (studentCategoryPayments[sId]?[feeName] ?? 0.0);
 
             double remaining = expectedAmt - paidAmt;
             if (remaining > 0) {
-              totalStudentDebt += remaining;
+              activeStudentDebt += remaining;
             }
           }
         }
 
-        if (totalStudentDebt > 0) {
+        // 🚨 FLAWLESS MATH: Use Wallet ONLY as a credit buffer.
+        double availableCredit = walletBalance > 0 ? walletBalance : 0.0;
+        double finalTrueDebt = activeStudentDebt - availableCredit;
+
+        if (finalTrueDebt > 0) {
           tempDebtors.add({
             'id': sId,
             'name':
@@ -174,17 +199,18 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
                     .trim(),
             'class': cClass,
             'phone': student['parent_phone'] ?? 'No Phone Provided',
-            'debt': totalStudentDebt,
+            'debt': finalTrueDebt,
           });
         }
       }
 
-      // Sort debtors by who owes the most
       tempDebtors.sort((a, b) => b['debt'].compareTo(a['debt']));
 
       if (mounted) {
         setState(() {
           _debtors = tempDebtors;
+          _isFeesActivated = feeData.isNotEmpty;
+          _activeSessionLabel = sessionLabel;
           _isLoading = false;
         });
       }
@@ -230,22 +256,9 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
         (cleanStudentData.isEmpty || cleanStudentData == 'notfound')) {
       cleanStudentData = 'regular';
     }
-
-    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound') {
+    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound')
       return false;
-    }
     if (columnData == null) return true;
-
-    String colStr = isCategory
-        ? columnData.toString().replaceAll(' ', '').toLowerCase()
-        : _standardizeClass(columnData.toString());
-
-    if (colStr.isEmpty ||
-        colStr == 'all' ||
-        colStr == '[]' ||
-        colStr == '["all"]') {
-      return true;
-    }
 
     if (columnData is List) {
       if (columnData.isEmpty) return true;
@@ -258,18 +271,34 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
       return false;
     }
 
-    try {
-      List<dynamic> targetList = jsonDecode(columnData.toString());
-      for (var item in targetList) {
-        String cleanItem = isCategory
-            ? item.toString().replaceAll(' ', '').toLowerCase()
-            : _standardizeClass(item.toString());
-        if (cleanItem == 'all' || cleanItem == cleanStudentData) return true;
+    if (columnData is String && columnData.startsWith('[')) {
+      try {
+        List<dynamic> parsedList = jsonDecode(columnData);
+        if (parsedList.isEmpty) return true;
+        for (var item in parsedList) {
+          String cleanItem = isCategory
+              ? item.toString().replaceAll(' ', '').toLowerCase()
+              : _standardizeClass(item.toString());
+          if (cleanItem == 'all' || cleanItem == cleanStudentData) return true;
+        }
+        return false;
+      } catch (e) {
+        // Fallback
       }
-      return false;
-    } catch (e) {
-      return colStr.contains(cleanStudentData);
     }
+
+    String colStr = isCategory
+        ? columnData.toString().replaceAll(' ', '').toLowerCase()
+        : _standardizeClass(columnData.toString());
+
+    if (colStr.isEmpty ||
+        colStr == 'all' ||
+        colStr == '[]' ||
+        colStr == '["all"]') {
+      return true;
+    }
+
+    return colStr.contains(cleanStudentData);
   }
 
   Future<void> _makePhoneCall(String phoneNumber) async {
@@ -293,7 +322,7 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
   }
 
   // ===========================================================================
-  // 🚨 PREMIUM UI (REFINED)
+  // 🚨 PREMIUM UI (REFINED & STICKY)
   // ===========================================================================
 
   void _showContactPopup(
@@ -302,12 +331,13 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
     Color primaryColor,
   ) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color modalColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          backgroundColor: modalColor,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
           ),
@@ -460,43 +490,62 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
     Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
     final currencyFormat = NumberFormat.currency(symbol: '₦', decimalDigits: 0);
 
-    // Calculate dynamic header stats
     double totalDebtAmount = _debtors.fold(
       0.0,
       (sum, item) => sum + (item['debt'] as double),
     );
     int totalDebtors = _debtors.length;
 
+    // 🚨 UI FIX: Rebuilt entirely as a CustomScrollView for Sticky Header integration
     Widget mainContent = _isLoading
         ? Center(child: TridetaLoader(color: primaryColor))
-        : _debtors.isEmpty
-        ? _buildEmptyState(isDark)
-        : Column(
-            children: [
-              _buildSummaryHeader(
-                totalDebtAmount,
-                totalDebtors,
-                currencyFormat,
-              ),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 10,
+        : RefreshIndicator(
+            onRefresh: _fetchDebtors,
+            color: primaryColor,
+            child: _debtors.isEmpty
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      SizedBox(
+                        height: MediaQuery.of(context).size.height * 0.7,
+                        child: _buildEmptyState(isDark),
+                      ),
+                    ],
+                  )
+                : CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      // ─── 1. SLIM STICKY HEADER ───
+                      SliverPersistentHeader(
+                        pinned: true,
+                        delegate: _StickyDebtHeaderDelegate(
+                          totalDebt: totalDebtAmount,
+                          count: totalDebtors,
+                          sessionLabel: _activeSessionLabel,
+                          f: currencyFormat,
+                          bgColor: bgColor,
+                        ),
+                      ),
+                      // ─── 2. EDGE-TO-EDGE DEBTORS LIST ───
+                      SliverPadding(
+                        padding: const EdgeInsets.only(bottom: 50),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate((
+                            context,
+                            index,
+                          ) {
+                            final debtor = _debtors[index];
+                            return _buildDebtorCard(
+                              debtor,
+                              isDark,
+                              currencyFormat,
+                              primaryColor,
+                            );
+                          }, childCount: _debtors.length),
+                        ),
+                      ),
+                    ],
                   ),
-                  itemCount: _debtors.length,
-                  itemBuilder: (context, index) {
-                    final debtor = _debtors[index];
-                    return _buildDebtorCard(
-                      debtor,
-                      isDark,
-                      currencyFormat,
-                      primaryColor,
-                    );
-                  },
-                ),
-              ),
-            ],
           );
 
     return Scaffold(
@@ -543,219 +592,100 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
     );
   }
 
-  Widget _buildSummaryHeader(double totalDebt, int count, NumberFormat f) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(24, 10, 24, 20),
-      width: double.infinity,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.redAccent.shade700, Colors.redAccent.shade400],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.redAccent.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -30,
-            top: -30,
-            child: CircleAvatar(
-              radius: 70,
-              backgroundColor: Colors.white.withValues(alpha: 0.1),
-            ),
-          ),
-          Positioned(
-            left: -20,
-            bottom: -40,
-            child: CircleAvatar(
-              radius: 60,
-              backgroundColor: Colors.white.withValues(alpha: 0.05),
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(
-                      Icons.warning_rounded,
-                      color: Colors.white70,
-                      size: 16,
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      "TOTAL OUTSTANDING DEBT",
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                FittedBox(
-                  child: Text(
-                    f.format(totalDebt),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 36,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    "Across $count Students",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildDebtorCard(
     Map<String, dynamic> debtor,
     bool isDark,
     NumberFormat f,
     Color primaryColor,
   ) {
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _showContactPopup(debtor, f, primaryColor),
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.person_off_rounded,
-                    color: Colors.redAccent,
-                    size: 24,
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _showContactPopup(debtor, f, primaryColor),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 8,
+              ),
+              leading: CircleAvatar(
+                radius: 24,
+                backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
+                child: const Icon(
+                  Icons.person_off_rounded,
+                  color: Colors.redAccent,
+                  size: 24,
+                ),
+              ),
+              title: Text(
+                debtor['name'],
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: textColor,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Text(
+                  debtor['class'],
+                  style: TextStyle(
+                    color: Colors.grey.shade500,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        debtor['name'],
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                          color: textColor,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        debtor['class'],
-                        style: TextStyle(
-                          color: Colors.grey.shade500,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+              ),
+              trailing: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    f.format(debtor['debt']),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: Colors.redAccent,
+                      fontSize: 15,
+                    ),
                   ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      f.format(debtor['debt']),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        color: Colors.redAccent,
-                        fontSize: 15,
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: primaryColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      "Contact",
+                      style: TextStyle(
+                        color: primaryColor,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: primaryColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        "Contact",
-                        style: TextStyle(
-                          color: primaryColor,
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-      ),
+        Padding(
+          padding: const EdgeInsets.only(left: 88, right: 24),
+          child: Divider(
+            height: 1,
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
+      ],
     );
   }
 
@@ -767,28 +697,193 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.green.withValues(alpha: 0.1),
+              color: _isFeesActivated
+                  ? Colors.green.withValues(alpha: 0.1)
+                  : Colors.orange.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.check_circle_rounded,
+            child: Icon(
+              _isFeesActivated
+                  ? Icons.check_circle_rounded
+                  : Icons.info_outline_rounded,
               size: 60,
-              color: Colors.green,
+              color: _isFeesActivated ? Colors.green : Colors.orange,
             ),
           ),
           const SizedBox(height: 20),
-          const Text(
-            "No Debtors Found!",
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+          Text(
+            _isFeesActivated ? "No Debtors Found!" : "Setup Required",
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 8),
-          Text(
-            "All students have fully paid their fees\nfor the current session.",
-            style: TextStyle(color: Colors.grey.shade500, height: 1.4),
-            textAlign: TextAlign.center,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              _isFeesActivated
+                  ? "All students have fully paid their school fees\nfor the current term."
+                  : "Fee structure hasn't been added for the current term, please add a fee structure to see debtors.",
+              style: TextStyle(color: Colors.grey.shade500, height: 1.4),
+              textAlign: TextAlign.center,
+            ),
           ),
         ],
       ),
     );
+  }
+}
+
+// ===========================================================================
+// 🚨 SLIM STICKY HEADER DELEGATE
+// ===========================================================================
+class _StickyDebtHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final double totalDebt;
+  final int count;
+  final String sessionLabel;
+  final NumberFormat f;
+  final Color bgColor;
+
+  _StickyDebtHeaderDelegate({
+    required this.totalDebt,
+    required this.count,
+    required this.sessionLabel,
+    required this.f,
+    required this.bgColor,
+  });
+
+  @override
+  double get minExtent => 100.0;
+
+  @override
+  double get maxExtent => 100.0;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return Container(
+      color: bgColor,
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+      child: Container(
+        width: double.infinity,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.redAccent.shade700, Colors.redAccent.shade400],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            if (overlapsContent)
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -20,
+              top: -20,
+              child: CircleAvatar(
+                radius: 50,
+                backgroundColor: Colors.white.withValues(alpha: 0.1),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.warning_rounded,
+                              color: Colors.white70,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              "OUTSTANDING DEBT",
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.0,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        FittedBox(
+                          child: Text(
+                            f.format(totalDebt),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          sessionLabel,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        "$count Students",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _StickyDebtHeaderDelegate oldDelegate) {
+    return totalDebt != oldDelegate.totalDebt ||
+        count != oldDelegate.count ||
+        sessionLabel != oldDelegate.sessionLabel ||
+        bgColor != oldDelegate.bgColor;
   }
 }

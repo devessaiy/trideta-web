@@ -18,106 +18,151 @@ class StudentQuickActionsBox extends StatelessWidget {
   Widget build(BuildContext context) {
     bool isDesktop = MediaQuery.of(context).size.width > 800;
 
-    return Container(
-      // 🚨 FIXED: Fixed width on Desktop ensures buttons stretch perfectly side-by-side with Status Card
-      width: isDesktop ? 300 : double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
+    // 🚨 UI FIX: Replaced heavy buttons with sleek ListTiles matching the WhatsApp vibe
+    Widget actionsList = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const StudentAdmissionScreen()),
+            ).then((_) => onRefresh());
+          },
+          child: Column(
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: isDesktop ? 16 : 4,
+                  vertical: 4,
+                ),
+                leading: CircleAvatar(
+                  radius: 24,
+                  backgroundColor: primaryColor.withValues(alpha: 0.1),
+                  child: Icon(
+                    Icons.person_add_rounded,
+                    color: primaryColor,
+                    size: 24,
+                  ),
+                ),
+                title: const Text(
+                  "Admit Student",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    "Enroll a new student to the system",
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                  ),
+                ),
+                trailing: Icon(
+                  Icons.chevron_right_rounded,
+                  color: Colors.grey.shade400,
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.only(
+                  left: isDesktop ? 70 : 60,
+                  right: isDesktop ? 16 : 4,
+                ),
+                child: Divider(
+                  height: 1,
+                  color: isDark ? Colors.white10 : Colors.grey.shade200,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment
-            .stretch, // 🚨 FIXED: Forces buttons to stretch full width
-        children: [
-          // 🚨 FIXED: Made title prominent to match Status Card
-          Text(
-            "Directory Tools",
-            style: TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 22,
-              color: isDark ? Colors.white : Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // 🚨 FIXED: Added Description Text
-          Text(
-            "Quickly admit new students or generate digital identity cards.",
-            style: TextStyle(
-              fontSize: 13,
-              color: isDark ? Colors.white70 : Colors.grey.shade600,
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // 🚨 FIXED: Stacked buttons vertically
-          FilledButton.icon(
-            style: FilledButton.styleFrom(
-              backgroundColor: primaryColor,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              elevation: 0,
-            ),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const StudentAdmissionScreen(),
+        InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const IdCardGeneratorScreen()),
+            );
+          },
+          child: Column(
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: isDesktop ? 16 : 4,
+                  vertical: 4,
                 ),
-              ).then((_) => onRefresh());
-            },
-            icon: const Icon(Icons.person_add_rounded, size: 18),
-            label: const Text(
-              "ADMIT STUDENT",
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: 12,
-                letterSpacing: 1.0,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          FilledButton.icon(
-            style: FilledButton.styleFrom(
-              backgroundColor: isDark
-                  ? Colors.white.withValues(alpha: 0.1)
-                  : primaryColor.withValues(alpha: 0.1),
-              foregroundColor: isDark ? Colors.white : primaryColor,
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              elevation: 0,
-            ),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const IdCardGeneratorScreen(),
+                leading: CircleAvatar(
+                  radius: 24,
+                  backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                  child: const Icon(
+                    Icons.badge_rounded,
+                    color: Colors.orange,
+                    size: 24,
+                  ),
                 ),
-              );
-            },
-            icon: const Icon(Icons.badge_rounded, size: 18),
-            label: const Text(
-              "GENERATE ID",
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: 12,
-                letterSpacing: 1.0,
+                title: const Text(
+                  "Generate ID Card",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    "Create digital identity cards",
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                  ),
+                ),
+                trailing: Icon(
+                  Icons.chevron_right_rounded,
+                  color: Colors.grey.shade400,
+                ),
               ),
-            ),
+              Padding(
+                padding: EdgeInsets.only(
+                  left: isDesktop ? 70 : 60,
+                  right: isDesktop ? 16 : 4,
+                ),
+                child: Divider(
+                  height: 1,
+                  color: isDark ? Colors.white10 : Colors.grey.shade200,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
+
+    // Desktop view safely keeps its bounding container to fit the grid
+    if (isDesktop) {
+      return Container(
+        width: 350,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                "Directory Tools",
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            actionsList,
+          ],
+        ),
+      );
+    }
+
+    // Mobile natively dumps the raw flat list right under the Status tile!
+    return actionsList;
   }
 }

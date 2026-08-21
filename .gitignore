@@ -47,3 +47,5 @@ app.*.map.json
 # Ignore Local Gradle Caches & Build Folders
 android/.gradle_local_cache/
 android/.gradle/
+*.exe
+build-0ld/

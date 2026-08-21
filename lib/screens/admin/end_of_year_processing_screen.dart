@@ -39,7 +39,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
   int _totalGraduating = 0;
   double _totalDebtToLock = 0.0;
 
-  // Payloads for Atomic Client-Side Execution
+  // Payloads for Atomic Server-Side Execution
   final List<Map<String, dynamic>> _promotionsPayload = [];
   final List<String> _graduationsPayload = [];
   final List<Map<String, dynamic>> _debtsPayload = [];
@@ -209,7 +209,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
           .eq('school_id', _schoolId!);
       final txData = await _supabase
           .from('transactions')
-          .select('student_id, fee_id, category, amount')
+          .select('student_id, fee_id, category, amount, academic_term')
           .eq('school_id', _schoolId!)
           .eq('academic_session', _currentSession);
       final allFeesRes = await _supabase
@@ -232,7 +232,6 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
           _currentSession,
         );
 
-        // Determine Destination (Need ID and Name now for safe architecture)
         String destinationName;
         String? destinationId;
         bool isTerminal = i == _allClasses.length - 1;
@@ -255,13 +254,14 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
         var classStudents = studentsData
             .where((s) => s['class_id'] == currentClassId)
             .toList();
-        var classFees = allFees
-            .where(
-              (f) =>
-                  _doesItApply(f['applicable_class_ids'], currentClassId) ||
-                  _doesItApply(f['applicable_classes'], currentClassName),
-            )
-            .toList();
+
+        // 🚨 PREVENTING DOUBLE-COUNTING: Since Term 1 and 2 lock debts natively, End Of Year ONLY evaluates 3rd Term fees!
+        var classFees = allFees.where((f) {
+          String fTerm = (f['academic_term'] ?? 'All Terms').toString();
+          return (_doesItApply(f['applicable_class_ids'], currentClassId) ||
+                  _doesItApply(f['applicable_classes'], currentClassName)) &&
+              fTerm == '3rd Term';
+        }).toList();
 
         int classPromoted = 0;
         int classRetained = 0;
@@ -271,7 +271,6 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
           // --- DEBT CHECK WITH WALLET INCLUDED ---
           double totalUnpaid = 0.0;
           String sCategory = (student['category'] ?? '').toString();
-          double walletBalance = (student['wallet_balance'] ?? 0).toDouble();
 
           for (var fee in classFees) {
             if (_doesItApply(
@@ -279,13 +278,18 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
               sCategory,
               isCategory: true,
             )) {
+              String feeName = (fee['fee_name'] ?? '').toString();
               double expected = (fee['amount'] ?? 0).toDouble();
               double paid = 0.0;
               for (var tx in txData) {
-                if (tx['student_id'] == student['id'] &&
-                    (tx['fee_id'] == fee['id'] ||
-                        tx['category'] == fee['fee_name'])) {
-                  paid += (tx['amount'] ?? 0).toDouble();
+                String txTerm = (tx['academic_term'] ?? 'All Terms').toString();
+                if (txTerm == '3rd Term' || txTerm == 'All Terms') {
+                  if (tx['student_id'] == student['id'] &&
+                      (tx['fee_id'] == fee['id'] ||
+                          tx['category'].toString().toLowerCase().trim() ==
+                              feeName.toLowerCase().trim())) {
+                    paid += (tx['amount'] ?? 0).toDouble();
+                  }
                 }
               }
               double remaining = expected - paid;
@@ -293,14 +297,14 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
             }
           }
 
-          double finalDebt = totalUnpaid - walletBalance;
-          if (finalDebt > 0) {
+          if (totalUnpaid > 0) {
+            // 🚨 FLAWLESS MATH: We pass 'unpaid_amount' directly to the RPC.
+            // The server natively updates: wallet_balance = wallet_balance - unpaid_amount
             _debtsPayload.add({
               'student_id': student['id'],
-              'unpaid_amount': finalDebt,
-              'original_wallet': walletBalance,
+              'unpaid_amount': totalUnpaid,
             });
-            _totalDebtToLock += finalDebt;
+            _totalDebtToLock += totalUnpaid;
           }
 
           // --- ACADEMIC CHECK ---
@@ -416,7 +420,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
   }
 
   // ===========================================================================
-  // 🚨 THE SAFE ATOMIC TRIGGER (Client-Side Batching)
+  // 🚨 THE SAFE ATOMIC TRIGGER (POWERED BY SERVER-SIDE RPC)
   // ===========================================================================
   Future<void> _executeUnifiedTrigger() async {
     final confirmController = TextEditingController();
@@ -440,7 +444,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  "You are about to safely advance the entire school to the next academic session without deleting historical infrastructure. Debts will be locked to wallets, students will be promoted/retained, and seniors will be processed. To proceed, type CONFIRM below.",
+                  "You are about to safely advance the entire school to the next academic session. Debts will be locked to wallets, students will be promoted/retained, and seniors will be processed. To proceed, type CONFIRM below.",
                 ),
                 const SizedBox(height: 15),
                 TextField(
@@ -483,88 +487,35 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
     setState(() => _isExecuting = true);
 
     try {
-      // 1. ADVANCE THE CALENDAR
-      await _supabase
-          .from('schools')
-          .update({'current_session': _nextSession, 'current_term': _nextTerm})
-          .eq('id', _schoolId!);
-
-      // 2. CREATE NEW TERMINAL CLASS (If Requested)
-      String? newTerminalClassId;
+      // 1. Pack New Classes if needed
+      List<Map<String, dynamic>> newClassesPayload = [];
       if (_terminalAction == 'create_class' &&
           _newClassNameController.text.trim().isNotEmpty) {
-        final newClassRes = await _supabase
-            .from('classes')
-            .insert({
-              'school_id': _schoolId,
-              'name': _newClassNameController.text.trim().toUpperCase(),
-              'list_order': _allClasses.length,
-              'promotion_criteria': {'pass_mark': 40, 'core_subjects': []},
-            })
-            .select('id');
-
-        if (newClassRes.isNotEmpty) {
-          newTerminalClassId = newClassRes.first['id'].toString();
-        }
+        newClassesPayload.add({
+          'name': _newClassNameController.text.trim().toUpperCase(),
+          'list_order': _allClasses.length,
+          'promotion_criteria': {'pass_mark': 40, 'core_subjects': []},
+        });
       }
 
-      // 3. EXECUTE PROMOTIONS (Safe Batch Update)
-      if (_promotionsPayload.isNotEmpty) {
-        for (var promo in _promotionsPayload) {
-          String destLevel = promo['new_class_level'];
-          String? destId = promo['new_class_id'];
-
-          if (destId == null &&
-              destLevel == _newClassNameController.text.trim().toUpperCase()) {
-            destId = newTerminalClassId; // Map to the newly created class
-          }
-
-          await _supabase
-              .from('students')
-              .update({
-                'class_level': destLevel,
-                'current_class': destLevel,
-                'class_id':
-                    destId, // 🚨 SAFE RELATIONAL ARCHITECTURE: Swaps the ID without deleting the old class
-              })
-              .eq('id', promo['student_id']);
-        }
-      }
-
-      // 4. EXECUTE GRADUATIONS
-      if (_graduationsPayload.isNotEmpty) {
-        for (var sId in _graduationsPayload) {
-          await _supabase
-              .from('students')
-              .update({
-                'is_active': false,
-                'class_level': 'GRADUATED',
-                'current_class': 'GRADUATED',
-              })
-              .eq('id', sId);
-        }
-      }
-
-      // 5. LOCK DEBTS TO WALLET
-      if (_debtsPayload.isNotEmpty) {
-        for (var debt in _debtsPayload) {
-          double originalWallet = debt['original_wallet'] ?? 0.0;
-          double unpaidAmount = debt['unpaid_amount'] ?? 0.0;
-
-          // Wallet logic: debt becomes a negative wallet balance
-          double newBalance = originalWallet - unpaidAmount;
-
-          await _supabase
-              .from('students')
-              .update({'wallet_balance': newBalance})
-              .eq('id', debt['student_id']);
-        }
-      }
+      // 🚨 2. FIRE THE SERVER-SIDE ATOMIC ENGINE (ONE NETWORK CALL)
+      await _supabase.rpc(
+        'execute_end_of_year_proceedings',
+        params: {
+          'p_school_id': _schoolId,
+          'p_new_session': _nextSession,
+          'p_new_term': _nextTerm,
+          'p_new_classes': newClassesPayload,
+          'p_promotions': _promotionsPayload,
+          'p_graduations': _graduationsPayload,
+          'p_debts': _debtsPayload,
+        },
+      );
 
       if (mounted) {
         showSuccessDialog(
           "Success",
-          "School successfully advanced to $_nextSession.",
+          "School successfully advanced to $_nextSession. The financial engine has safely preserved the historical records.",
         );
         setState(() {
           _classSummaries.clear();
@@ -647,13 +598,14 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
   }
 
   // ===========================================================================
-  // 🚨 UI BUILDER
+  // 🚨 FLAT UI BUILDER
   // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color thickDividerColor = isDark ? Colors.black : Colors.grey.shade100;
     Color primaryColor = Theme.of(context).primaryColor;
 
     if (_isLoading) {
@@ -681,226 +633,188 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
 
     String terminalClassName = _allClasses.last['name'];
 
-    return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        title: const Text(
-          "End of Year Processing",
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        backgroundColor: bgColor,
-        foregroundColor: isDark ? Colors.white : const Color(0xFF1A1A2E),
-        elevation: 0,
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 900),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // STEP 1: PIPELINE CONFIGURATION
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: cardColor,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: isDark ? Colors.white10 : Colors.grey.shade200,
+    Widget mainContent = SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 900),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "STEP 1: UNIFIED PROGRESSION PIPELINE",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                        color: Colors.grey,
+                        letterSpacing: 1.2,
+                      ),
                     ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Step 1: Unified Progression Pipeline",
+                    const SizedBox(height: 8),
+                    Text(
+                      "The system will automatically advance the school calendar and process all classes simultaneously based on their hierarchy.",
+                      style: TextStyle(
+                        color: isDark ? Colors.white70 : Colors.grey.shade600,
+                        fontSize: 13,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 25),
+
+                    // Calendar Advance UI
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildInfoField(
+                            "Closing Session",
+                            _currentSession,
+                            isDark,
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                          child: Icon(
+                            Icons.arrow_forward_rounded,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        Expanded(
+                          child: _buildInfoField(
+                            "Opening Session",
+                            _nextSession,
+                            isDark,
+                            highlight: true,
+                            color: primaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 25),
+
+                    // Terminal Class Config
+                    Text(
+                      "TERMINAL CLASS ACTION: ${terminalClassName.toUpperCase()}",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                        color: Colors.orange,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text(
+                        "Graduate Seniors",
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                          fontSize: 14,
                         ),
                       ),
-                      const SizedBox(height: 15),
-                      Text(
-                        "The system will automatically advance the school calendar and process all classes simultaneously based on their hierarchy.",
+                      subtitle: const Text(
+                        "Move to Alumni",
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      leading: Radio<String>(
+                        value: 'graduate',
+                        groupValue: _terminalAction,
+                        activeColor: Colors.orange,
+                        onChanged: (val) =>
+                            setState(() => _terminalAction = val!),
+                      ),
+                      onTap: () => setState(() => _terminalAction = 'graduate'),
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text(
+                        "Create Next Class",
                         style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 13,
-                          height: 1.4,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
                         ),
                       ),
-                      const SizedBox(height: 25),
-
-                      // Calendar Advance UI
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildInfoField(
-                              "Closing Session",
-                              _currentSession,
-                              isDark,
-                            ),
-                          ),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 16),
-                            child: Icon(
-                              Icons.arrow_forward_rounded,
-                              color: Colors.grey,
-                            ),
-                          ),
-                          Expanded(
-                            child: _buildInfoField(
-                              "Opening Session",
-                              _nextSession,
-                              isDark,
-                              highlight: true,
-                              color: primaryColor,
-                            ),
-                          ),
-                        ],
+                      subtitle: const Text(
+                        "Expand hierarchy",
+                        style: TextStyle(fontSize: 12),
                       ),
-                      const SizedBox(height: 25),
-
-                      // Terminal Class Config
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: Colors.orange.withValues(alpha: 0.3),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.school_rounded,
-                                  color: Colors.orange,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  "Terminal Class Action: $terminalClassName",
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                    color: Colors.orange,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 15),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: RadioListTile<String>(
-                                    title: const Text(
-                                      "Graduate Seniors",
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    subtitle: const Text(
-                                      "Move to Alumni",
-                                      style: TextStyle(fontSize: 11),
-                                    ),
-                                    value: 'graduate',
-                                    groupValue: _terminalAction,
-                                    activeColor: Colors.orange,
-                                    contentPadding: EdgeInsets.zero,
-                                    onChanged: (val) =>
-                                        setState(() => _terminalAction = val!),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: RadioListTile<String>(
-                                    title: const Text(
-                                      "Create Next Class",
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    subtitle: const Text(
-                                      "Expand hierarchy",
-                                      style: TextStyle(fontSize: 11),
-                                    ),
-                                    value: 'create_class',
-                                    groupValue: _terminalAction,
-                                    activeColor: Colors.orange,
-                                    contentPadding: EdgeInsets.zero,
-                                    onChanged: (val) =>
-                                        setState(() => _terminalAction = val!),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (_terminalAction == 'create_class') ...[
-                              const SizedBox(height: 15),
-                              TextField(
-                                controller: _newClassNameController,
-                                textCapitalization:
-                                    TextCapitalization.characters,
-                                decoration: InputDecoration(
-                                  labelText: "Name of new class (e.g. SS 2)",
-                                  filled: true,
-                                  fillColor: isDark
-                                      ? Colors.black26
-                                      : Colors.white,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
+                      leading: Radio<String>(
+                        value: 'create_class',
+                        groupValue: _terminalAction,
+                        activeColor: Colors.orange,
+                        onChanged: (val) =>
+                            setState(() => _terminalAction = val!),
                       ),
+                      onTap: () =>
+                          setState(() => _terminalAction = 'create_class'),
+                    ),
 
-                      const SizedBox(height: 25),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 55,
-                        child: FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: primaryColor,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          onPressed: _isAnalyzing ? null : _runUnifiedAnalytics,
-                          icon: _isAnalyzing
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.analytics_rounded),
-                          label: Text(
-                            _isAnalyzing
-                                ? "ANALYZING ENTIRE SCHOOL..."
-                                : "GENERATE PIPELINE PREVIEW",
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                    if (_terminalAction == 'create_class') ...[
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _newClassNameController,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: InputDecoration(
+                          labelText: "Name of new class (e.g. SS 2)",
+                          filled: true,
+                          fillColor: isDark
+                              ? Colors.white.withValues(alpha: 0.05)
+                              : Colors.grey.shade100,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
                           ),
                         ),
                       ),
                     ],
-                  ),
+
+                    const SizedBox(height: 25),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 55,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: primaryColor,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: _isAnalyzing ? null : _runUnifiedAnalytics,
+                        icon: _isAnalyzing
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.analytics_rounded),
+                        label: Text(
+                          _isAnalyzing
+                              ? "ANALYZING ENTIRE SCHOOL..."
+                              : "GENERATE PIPELINE PREVIEW",
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+
+              if (_classSummaries.isNotEmpty) ...[
+                const SizedBox(height: 30),
+                Container(height: 8, color: thickDividerColor),
+                const SizedBox(height: 20),
 
                 // STEP 2: ANALYTICS RESULTS
-                if (_classSummaries.isNotEmpty) ...[
-                  const SizedBox(height: 30),
-                  Row(
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
                     children: [
                       _buildMetricCard(
                         "PROMOTED",
@@ -908,21 +822,21 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                         Colors.green,
                         isDark,
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8),
                       _buildMetricCard(
                         "RETAINED",
                         "$_totalRetained",
                         Colors.orange,
                         isDark,
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8),
                       _buildMetricCard(
                         "GRADUATING",
                         "$_totalGraduating",
                         Colors.purple,
                         isDark,
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8),
                       _buildMetricCard(
                         "DEBT LOCKED",
                         "₦${_totalDebtToLock.toStringAsFixed(0)}",
@@ -931,31 +845,59 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                       ),
                     ],
                   ),
-                  const SizedBox(height: 30),
+                ),
 
-                  Container(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: cardColor,
-                      borderRadius: BorderRadius.circular(20),
+                      color: Colors.redAccent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                        color: Colors.redAccent.withValues(alpha: 0.3),
                       ),
                     ),
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _classSummaries.length,
-                      separatorBuilder: (ctx, i) => Divider(
-                        height: 1,
-                        color: isDark ? Colors.white10 : Colors.grey.shade100,
-                      ),
-                      itemBuilder: (ctx, i) {
-                        var sum = _classSummaries[i];
-                        bool isGrad = sum['destination'] == 'GRADUATION';
-                        return ListTile(
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          size: 18,
+                          color: Colors.redAccent,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            "The debt is calculated only for the current term (3rd term). This amount will be added as a negative value to the respective students’ perpetual wallets.",
+                            style: TextStyle(
+                              color: Colors.redAccent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 30),
+
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _classSummaries.length,
+                  itemBuilder: (ctx, i) {
+                    var sum = _classSummaries[i];
+                    bool isGrad = sum['destination'] == 'GRADUATION';
+                    return Column(
+                      children: [
+                        ListTile(
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 24,
-                            vertical: 12,
+                            vertical: 8,
                           ),
                           title: Row(
                             children: [
@@ -1008,13 +950,25 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                               ),
                             ),
                           ),
-                        );
-                      },
-                    ),
-                  ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 24, right: 24),
+                          child: Divider(
+                            height: 1,
+                            color: isDark
+                                ? Colors.white10
+                                : Colors.grey.shade200,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
 
-                  const SizedBox(height: 40),
-                  SizedBox(
+                const SizedBox(height: 30),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: SizedBox(
                     width: double.infinity,
                     height: 60,
                     child: FilledButton.icon(
@@ -1050,11 +1004,50 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                       ),
                     ),
                   ),
-                ],
+                ),
+                const SizedBox(height: 40),
               ],
-            ),
+            ],
           ),
         ),
+      ),
+    );
+
+    return Scaffold(
+      backgroundColor: bgColor,
+      appBar: AppBar(
+        title: const Text(
+          "End of Year Processing",
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        backgroundColor: bgColor,
+        foregroundColor: isDark ? Colors.white : const Color(0xFF1A1A2E),
+        elevation: 0,
+        centerTitle: true,
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth > 800) {
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    border: Border.symmetric(
+                      vertical: BorderSide(
+                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                      ),
+                    ),
+                  ),
+                  child: mainContent,
+                ),
+              ),
+            );
+          } else {
+            return mainContent;
+          }
+        },
       ),
     );
   }
@@ -1066,45 +1059,27 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
     bool highlight = false,
     Color? color,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: highlight
-            ? color!.withValues(alpha: 0.1)
-            : (isDark
-                  ? Colors.white.withValues(alpha: 0.05)
-                  : Colors.grey.shade50),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: highlight
-              ? color!.withValues(alpha: 0.3)
-              : (isDark ? Colors.white10 : Colors.grey.shade200),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: highlight ? color : Colors.grey.shade500,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              color: highlight ? color : Colors.grey.shade500,
-              fontWeight: FontWeight.bold,
-            ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w900,
+            color: highlight ? color : (isDark ? Colors.white : Colors.black87),
           ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              color: highlight
-                  ? color
-                  : (isDark ? Colors.white : Colors.black87),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -1116,11 +1091,10 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
   ) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
           children: [
@@ -1130,8 +1104,10 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                 color: color,
                 fontSize: 9,
                 fontWeight: FontWeight.w900,
-                letterSpacing: 1.0,
+                letterSpacing: 0.5,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 8),
             FittedBox(
@@ -1139,7 +1115,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                 value,
                 style: TextStyle(
                   color: color,
-                  fontSize: 24,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
                 ),
               ),

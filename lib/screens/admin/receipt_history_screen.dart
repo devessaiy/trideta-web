@@ -14,27 +14,84 @@ class ReceiptHistoryScreen extends StatefulWidget {
 
 class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen>
     with AuthErrorHandler {
-  // 🚨 Added AuthErrorHandler
   final _supabase = Supabase.instance.client;
 
   String? _schoolId;
 
+  // 🚨 ENGINE SWAP: Replaced Stream with stable State Variables
+  List<Map<String, dynamic>> _transactions = [];
+  bool _isLoading = true;
+  bool _hasError = false;
+
   @override
   void initState() {
     super.initState();
-    _fetchSchoolId();
+    _initData();
+  }
+
+  // ===========================================================================
+  // 🚨 STABLE FETCH ENGINE (Pull-to-Refresh instead of WebSockets)
+  // ===========================================================================
+  Future<void> _initData() async {
+    await _fetchSchoolId();
+    await _fetchTransactions();
   }
 
   Future<void> _fetchSchoolId() async {
-    final user = _supabase.auth.currentUser;
-    if (user != null) {
-      final profile = await _supabase
-          .from('profiles')
-          .select('school_id')
-          .eq('id', user.id)
-          .single();
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user != null) {
+        final profile = await _supabase
+            .from('profiles')
+            .select('school_id')
+            .eq('id', user.id)
+            .single();
+        _schoolId = profile['school_id'];
+      }
+    } catch (e) {
+      debugPrint("School ID Fetch Error: $e");
+    }
+  }
+
+  Future<void> _fetchTransactions() async {
+    if (_schoolId == null) {
       if (mounted) {
-        setState(() => _schoolId = profile['school_id']);
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _hasError = false;
+      });
+    }
+
+    try {
+      final data = await _supabase
+          .from('transactions')
+          .select()
+          .eq('school_id', _schoolId!)
+          .order('created_at', ascending: false)
+          .limit(100);
+
+      if (mounted) {
+        setState(() {
+          _transactions = List<Map<String, dynamic>>.from(data);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Transaction Fetch Error: $e");
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
       }
     }
   }
@@ -45,69 +102,65 @@ class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen>
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
 
-    // 🚨 ADDED DYNAMIC COLOR HERE
     Color primaryColor = Theme.of(context).primaryColor;
 
-    final Stream<List<Map<String, dynamic>>>? transactionStream =
-        _schoolId == null
-        ? null
-        : _supabase
-              .from('transactions')
-              .stream(primaryKey: ['id'])
-              .eq('school_id', _schoolId!)
-              .order('created_at', ascending: false);
-
-    // 🚨 EXTRACTED MAIN CONTENT FOR LAYOUT BUILDER
-    Widget mainContent = transactionStream == null
-        ? Center(child: TridetaLoader(color: primaryColor))
-        : StreamBuilder<List<Map<String, dynamic>>>(
-            stream: transactionStream,
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                // 🚨 Shows clean layman UI instead of raw DB errors
-                return _buildErrorState(isDark, primaryColor);
-              }
-              if (!snapshot.hasData) {
-                return Center(child: TridetaLoader(color: primaryColor));
-              }
-
-              final transactions = snapshot.data!;
-
-              if (transactions.isEmpty) return _buildEmptyState(isDark);
-
-              return ListView.builder(
-                padding: const EdgeInsets.all(20),
-                itemCount: transactions.length,
-                itemBuilder: (context, index) {
-                  final tx = transactions[index];
-                  return _buildTransactionCard(
-                    tx,
-                    cardColor,
-                    isDark,
-                    primaryColor,
-                  ); // Passed color down
-                },
-              );
-            },
-          );
+    // 🚨 UI FIX: Wrapped everything in a RefreshIndicator for pull-to-reload
+    Widget mainContent = RefreshIndicator(
+      onRefresh: _fetchTransactions,
+      color: primaryColor,
+      child: _isLoading && _transactions.isEmpty
+          ? Center(child: TridetaLoader(color: primaryColor))
+          : _hasError && _transactions.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.7,
+                  child: _buildErrorState(isDark, primaryColor),
+                ),
+              ],
+            )
+          : _transactions.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.7,
+                  child: _buildEmptyState(isDark),
+                ),
+              ],
+            )
+          : ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(top: 8, bottom: 50),
+              itemCount: _transactions.length,
+              itemBuilder: (context, index) {
+                final tx = _transactions[index];
+                return _buildTransactionCard(
+                  tx,
+                  cardColor,
+                  isDark,
+                  primaryColor,
+                );
+              },
+            ),
+    );
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
         title: const Text(
           "Transaction History",
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        backgroundColor: primaryColor, // 🚨 Dynamic color
-        foregroundColor: Colors.white,
+        backgroundColor: bgColor,
+        foregroundColor: isDark ? Colors.white : Colors.black87,
         elevation: 0,
         centerTitle: true,
       ),
-      // 🚨 SHAPE-SHIFTER: LayoutBuilder
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 800) {
-            // 💻 DESKTOP LAYOUT (Constrained center column)
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 800),
@@ -130,7 +183,6 @@ class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen>
               ),
             );
           } else {
-            // 📱 MOBILE LAYOUT
             return mainContent;
           }
         },
@@ -138,7 +190,9 @@ class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen>
     );
   }
 
-  // 🚨 Updated to receive primaryColor
+  // ===========================================================================
+  // 🚨 FLAT UI BUILDERS (STRICTLY UNTOUCHED)
+  // ===========================================================================
   Widget _buildTransactionCard(
     Map<String, dynamic> tx,
     Color cardColor,
@@ -147,21 +201,20 @@ class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen>
   ) {
     final amountFormatted = NumberFormat.currency(
       symbol: '₦',
+      decimalDigits: 0,
     ).format(tx['amount'] ?? 0);
 
     String dateFormatted = "Unknown Date";
     if (tx['created_at'] != null) {
       try {
-        final date = DateTime.parse(tx['created_at']);
+        final date = DateTime.parse(tx['created_at']).toLocal();
         dateFormatted = DateFormat('dd MMM yyyy, hh:mm a').format(date);
       } catch (e) {
         dateFormatted = "Invalid Date";
       }
     }
 
-    // Logic for category icons
     IconData catIcon = Icons.payments_rounded;
-    // 🚨 Default color now matches Brand instead of hardcoded blue
     Color catColor = primaryColor;
 
     String category = (tx['category'] ?? '').toString().toLowerCase();
@@ -176,88 +229,102 @@ class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen>
       catColor = Colors.purple;
     }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.grey.shade100,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: catColor.withValues(alpha: 0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(catIcon, color: catColor, size: 24),
-        ),
-        title: Text(
-          tx['student_name'] ?? 'Unknown Student',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "${tx['category'] ?? 'Fee'} • ${tx['payment_method'] ?? 'N/A'}",
-                style: const TextStyle(fontSize: 12),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                dateFormatted,
-                style: TextStyle(fontSize: 10, color: Colors.grey[500]),
-              ),
-            ],
-          ),
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              amountFormatted,
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: 16,
-                color: isDark ? Colors.white : Colors.black87,
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ReceiptViewScreen(transactionData: tx),
+                ),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: catColor.withValues(alpha: 0.1),
+                    child: Icon(catIcon, color: catColor, size: 24),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          tx['student_name'] ?? 'Unknown Student',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          "${tx['category'] ?? 'Fee'} • ${tx['payment_method'] ?? 'N/A'}",
+                          style: TextStyle(
+                            color: Colors.grey.shade500,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          dateFormatted,
+                          style: TextStyle(
+                            color: Colors.grey.shade400,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        amountFormatted,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        "SUCCESSFUL",
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 4),
-            const Text(
-              "SUCCESSFUL",
-              style: TextStyle(
-                color: Colors.green,
-                fontSize: 9,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ],
+          ),
         ),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ReceiptViewScreen(transactionData: tx),
-            ),
-          );
-        },
-      ),
+        Padding(
+          padding: const EdgeInsets.only(left: 80, right: 24),
+          child: Divider(
+            height: 1,
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
+      ],
     );
   }
 
@@ -284,7 +351,6 @@ class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen>
     );
   }
 
-  // 🚨 CLEAN, LAYMAN ERROR UI (Matches the rest of the app)
   Widget _buildErrorState(bool isDark, Color primaryColor) {
     return Center(
       child: Padding(
@@ -308,7 +374,7 @@ class _ReceiptHistoryScreenState extends State<ReceiptHistoryScreen>
             ),
             const SizedBox(height: 10),
             Text(
-              "We couldn't load the transaction history. Please check your connection.",
+              "We couldn't load the transaction history. Please check your connection or pull down to refresh.",
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: isDark ? Colors.white54 : Colors.grey[600],

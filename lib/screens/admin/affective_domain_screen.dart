@@ -74,13 +74,17 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
           school['current_session'] ?? "$currentYr/${currentYr + 1}";
       _globalTerm = school['current_term'] ?? _terms[0];
 
+      if (!_sessions.contains(_globalSession)) {
+        _sessions.add(_globalSession!);
+      }
+
       List<String> fetchedClasses = [];
       _classNameToIdMap.clear();
 
       if (_userRole == 'admin' || _userRole == 'principal') {
         final classesData = await _supabase
             .from('classes')
-            .select('id, name') // 🚨 FIXED: Stripped overrides
+            .select('id, name') 
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
         for (var c in classesData) {
@@ -91,7 +95,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
       } else {
         final classesData = await _supabase
             .from('classes')
-            .select('id, name') // 🚨 FIXED: Stripped overrides
+            .select('id, name') 
             .eq('school_id', _schoolId!)
             .order('list_order', ascending: true);
 
@@ -278,6 +282,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color primaryColor = Theme.of(context).primaryColor;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
 
     bool isAdmin = _userRole == 'admin' || _userRole == 'principal';
 
@@ -289,134 +294,67 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
         clsLower.contains('pre');
     String headTitle = isPrimary ? "Headmaster" : "Principal";
 
-    return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        title: const Text(
-          "Affective Domain",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth > 800) {
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 800),
-                child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 20),
-                  decoration: BoxDecoration(
-                    color: bgColor,
-                    borderRadius: BorderRadius.circular(15),
-                    border: Border.all(
-                      color: isDark ? Colors.white10 : Colors.grey.shade200,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(15),
-                    child: _buildMainContent(
-                      isDark,
-                      primaryColor,
-                      cardColor,
-                      headTitle,
-                      isAdmin,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          } else {
-            return _buildMainContent(
-              isDark,
-              primaryColor,
-              cardColor,
-              headTitle,
-              isAdmin,
-            );
-          }
-        },
-      ),
-      floatingActionButton: _students.isNotEmpty
-          ? FloatingActionButton.extended(
-              backgroundColor: primaryColor,
-              onPressed: _saveAllTraits,
-              icon: const Icon(Icons.save_rounded, color: Colors.white),
-              label: const Text(
-                "SAVE TRAITS",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            )
-          : null,
-    );
-  }
-
-  Widget _buildMainContent(
-    bool isDark,
-    Color primaryColor,
-    Color cardColor,
-    String headTitle,
-    bool isAdmin,
-  ) {
-    return Column(
+    Widget mainContent = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // 🚨 Dynamic Island / Notch Safe Header
+        SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 10, top: 16, bottom: 16, right: 24),
+            child: Row(
+              children: [
+                BackButton(color: textColor),
+                const SizedBox(width: 4),
+                Text(
+                  "Affective Domain",
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: textColor,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
           decoration: BoxDecoration(
             color: cardColor,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 5),
+            border: Border(
+              bottom: BorderSide(
+                color: isDark ? Colors.white10 : Colors.grey.shade200,
+                width: 1,
               ),
-            ],
+            ),
           ),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   Expanded(
-                    child: _buildFilterDropdown(
-                      "Session",
-                      _sessions,
-                      _selectedSession,
-                      isAdmin
-                          ? (val) => setState(() => _selectedSession = val)
-                          : null,
+                    child: _buildInfoField(
+                      "Academic Session",
+                      _selectedSession ?? "--",
                       isDark,
-                      primaryColor,
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: _buildFilterDropdown(
-                      "Term",
-                      _terms,
-                      _selectedTerm,
-                      isAdmin
-                          ? (val) => setState(() => _selectedTerm = val)
-                          : null,
+                    child: _buildInfoField(
+                      "Current Term",
+                      _selectedTerm ?? "--",
                       isDark,
-                      primaryColor,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              _buildFilterDropdown(
+              const SizedBox(height: 20),
+              _buildClassDropdown(
                 "Select Class",
                 _activeClasses,
                 _selectedClass,
@@ -424,7 +362,6 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
                   setState(() {
                     _selectedClass = val;
                     if (val != null) {
-                      // 🚨 FIXED: Fallback to Global Strict Sync
                       _selectedSession = _globalSession;
                       _selectedTerm = _globalTerm;
                     }
@@ -434,10 +371,9 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
                 isDark,
                 primaryColor,
               ),
-
               if (isAdmin && _selectedClass != null)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.only(top: 12),
                   child: Text(
                     "Note: $headTitle remarks will only save for students whose results have been published in the Broadsheet.",
                     style: TextStyle(
@@ -460,9 +396,13 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
                     style: TextStyle(color: Colors.grey),
                   ),
                 )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
+              : ListView.separated(
+                  padding: EdgeInsets.zero,
                   itemCount: _students.length,
+                  separatorBuilder: (ctx, i) => Divider(
+                    height: 1,
+                    color: isDark ? Colors.white10 : Colors.grey.shade200,
+                  ),
                   itemBuilder: (ctx, i) {
                     final s = _students[i];
                     final sId = s['id'].toString();
@@ -480,9 +420,117 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
         ),
       ],
     );
+
+    return Scaffold(
+      backgroundColor: bgColor,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth > 800) {
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    border: Border.symmetric(
+                      vertical: BorderSide(
+                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                      ),
+                    ),
+                  ),
+                  child: mainContent,
+                ),
+              ),
+            );
+          } else {
+            return mainContent;
+          }
+        },
+      ),
+      bottomNavigationBar: _students.isNotEmpty
+          ? Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 800),
+                  child: Container(
+                    width: MediaQuery.of(context).size.width > 800 
+                        ? 800 
+                        : MediaQuery.of(context).size.width,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      border: Border(
+                        top: BorderSide(
+                          color: isDark ? Colors.white10 : Colors.grey.shade200,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    child: SafeArea(
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 55,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: primaryColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: _isLoading ? null : _saveAllTraits,
+                          icon: const Icon(Icons.save_rounded, color: Colors.white),
+                          label: const Text(
+                            "SAVE TRAITS",
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : null,
+    );
   }
 
-  Widget _buildFilterDropdown(
+  Widget _buildInfoField(
+    String label,
+    String value,
+    bool isDark,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey.shade500,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w900,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildClassDropdown(
     String hint,
     List<String> items,
     String? value,
@@ -490,14 +538,11 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
     bool isDark,
     Color primaryColor,
   ) {
-    bool isLocked = onChanged == null;
-    if (items.isEmpty && !isLocked) return const SizedBox.shrink();
+    if (items.isEmpty) return const SizedBox.shrink();
 
     return Container(
       decoration: BoxDecoration(
-        color: isLocked
-            ? (isDark ? Colors.white.withValues(alpha: 0.02) : Colors.grey[200])
-            : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50]),
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50],
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.grey.shade300,
@@ -516,11 +561,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
           ),
           icon: Padding(
             padding: const EdgeInsets.only(right: 10),
-            child: Icon(
-              isLocked ? Icons.lock_outline : Icons.arrow_drop_down,
-              color: isLocked ? Colors.grey : primaryColor,
-              size: isLocked ? 16 : 24,
-            ),
+            child: Icon(Icons.arrow_drop_down, color: primaryColor),
           ),
           items: items
               .map(
@@ -530,10 +571,9 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
                     padding: const EdgeInsets.only(left: 10),
                     child: Text(
                       e,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: isLocked ? Colors.grey : null,
                       ),
                     ),
                   ),
@@ -558,16 +598,12 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
   ) {
     var data = _affectiveData[sId]!;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      color: cardColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-        side: BorderSide(color: isDark ? Colors.white10 : Colors.grey.shade300),
-      ),
+    return Container(
+      color: isDark ? const Color(0xFF121212) : Colors.white,
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
           title: Text(
             name.toUpperCase(),
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
@@ -576,7 +612,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
             "Tap to rate behaviors & add remarks",
             style: TextStyle(fontSize: 11, color: Colors.grey),
           ),
-          childrenPadding: const EdgeInsets.all(15),
+          childrenPadding: const EdgeInsets.only(left: 24, right: 24, bottom: 20),
           children: [
             _buildRatingRow("Punctuality", sId, 'punctuality', primaryColor),
             _buildRatingRow("Neatness", sId, 'neatness', primaryColor),

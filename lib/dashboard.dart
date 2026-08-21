@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:local_auth/local_auth.dart';
 
-import 'package:trideta_v2/widgets/trideta_loader.dart';
-
 // MODULAR UI IMPORTS
 import 'package:trideta_v2/widgets/admin_bottom_nav_bar.dart';
 import 'package:trideta_v2/screens/admin/admin_dashboard_carousel.dart';
@@ -61,9 +59,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  // SECURITY GATE (v3.0.1 Syntax)
-  // 🚨 CONFIDENTIAL SECURITY GATE
-  // 🚨 CONFIDENTIAL SECURITY GATE (Using the proven, error-free syntax)
   Future<bool> _authenticateAdmin(String reason) async {
     try {
       final bool canAuthenticateWithBiometrics =
@@ -73,7 +68,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       if (!canAuthenticate) return true;
 
-      // 🚨 FIXED: Using the simple API that perfectly matches your setup!
       return await _localAuth.authenticate(localizedReason: reason);
     } catch (e) {
       debugPrint("Local auth error: $e");
@@ -164,12 +158,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       const ProfileMenuScreen(),
     ];
 
-    if (_isLoading) {
-      return Scaffold(
-        backgroundColor: bgColor,
-        body: Center(child: TridetaLoader(color: primaryColor)),
-      );
-    }
+    // 🚨 UI FIX: Removed the massive full-screen _isLoading blocker right here!
+    // The screen will now instantly render with "Loading..." text and smoothly snap the data into place.
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -184,7 +174,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Column(
                     children: [
                       const SizedBox(height: 40),
-                      // 🚨 FIXED: Now uses School Logo or School Icon in Sidebar
                       _schoolLogoUrl != null
                           ? CircleAvatar(
                               radius: 25,
@@ -250,6 +239,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         return Scaffold(
           backgroundColor: bgColor,
+          extendBody: true,
           body: PageView(
             controller: _pageController,
             physics: const BouncingScrollPhysics(),
@@ -294,6 +284,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     Color subTextColor = isDark ? Colors.white70 : const Color(0xFF9098B1);
 
     return SafeArea(
+      bottom: false,
       child: RefreshIndicator(
         onRefresh: _fetchSchoolData,
         color: primaryColor,
@@ -335,7 +326,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 icon: Icons.account_balance_wallet_rounded,
                 color: Colors.green.shade600,
                 title: "Finance Centre",
-                subtitle: "Manage fees, receipts, and debtors",
+                subtitle: "Manage School Finance here!",
                 onTap: () async {
                   bool auth = await _authenticateAdmin(
                     'Authenticate to access the Finance Centre.',
@@ -355,7 +346,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 icon: Icons.badge_rounded,
                 color: Colors.orange.shade600,
                 title: "Staff Directory",
-                subtitle: "Manage teachers and role assignments",
+                subtitle: "Manage teachers & other staff",
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -364,7 +355,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
 
-              // 🚨 REMOVED: School Configuration module removed from here!
               const SizedBox(height: 30),
               Text(
                 "ACADEMIC & RESULTS",
@@ -382,7 +372,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 icon: Icons.edit_document,
                 color: primaryColor,
                 title: "Enter Subject Scores",
-                subtitle: "Input CA and Exam marks securely",
+                subtitle: "Input CA and Exam scores here",
                 onTap: () async {
                   bool auth = await _authenticateAdmin(
                     'Authenticate to modify student examination scores.',
@@ -401,8 +391,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 isDark: isDark,
                 icon: Icons.psychology_alt_rounded,
                 color: Colors.purple.shade500,
-                title: "Affective Domain & Remarks",
-                subtitle: "Rate behavior and add Form Master comments",
+                title: "Performance overview",
+                subtitle: "Add behavior & Form Master comments",
                 onTap: () async {
                   bool auth = await _authenticateAdmin(
                     'Authenticate to enter affective domains and remarks.',
@@ -442,7 +432,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 icon: Icons.print_rounded,
                 color: Colors.redAccent,
                 title: "Report Cards",
-                subtitle: "Generate and print student dossiers",
+                subtitle: "Generate & Print Report Cards.",
                 onTap: () async {
                   bool auth = await _authenticateAdmin(
                     'Authenticate to view and print Report Cards.',
@@ -457,7 +447,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   }
                 },
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 80),
             ],
           ),
         ),
@@ -472,7 +462,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ) {
     return Row(
       children: [
-        // 🚨 FIXED: Now explicitly uses the School Logo, with a School Icon fallback
         Container(
           height: 55,
           width: 55,
@@ -539,8 +528,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         boxShadow: [
           BoxShadow(
             color: primaryColor.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
           ),
         ],
         border: Border.all(
@@ -636,73 +625,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+    return InkWell(
+      onTap: onTap,
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 0,
+              vertical: 4,
+            ),
+            leading: CircleAvatar(
+              radius: 26,
+              backgroundColor: color.withValues(alpha: 0.12),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            title: Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: textColor,
+              ),
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? Colors.white70 : Colors.grey.shade500,
+                ),
+              ),
+            ),
+            trailing: Icon(
+              Icons.chevron_right_rounded,
+              size: 24,
+              color: Colors.grey.shade400,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 68, right: 0),
+            child: Divider(
+              height: 1,
+              color: isDark ? Colors.white10 : Colors.grey.shade200,
+            ),
           ),
         ],
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: color, size: 24),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: textColor,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? Colors.white70 : Colors.grey.shade500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 24,
-                color: Colors.grey.shade400,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -710,40 +680,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildLogoWarning(bool isDark, Color primaryColor) {
     return Container(
       margin: const EdgeInsets.only(bottom: 30),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: primaryColor.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: primaryColor.withValues(alpha: 0.2)),
-      ),
-      child: Row(
+      child: Column(
         children: [
-          Icon(
-            Icons.add_photo_alternate_rounded,
-            color: primaryColor,
-            size: 28,
-          ),
-          const SizedBox(width: 15),
-          const Expanded(
-            child: Text(
-              "Enhance your documents by adding your school logo.",
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: primaryColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: CircleAvatar(
+              radius: 24,
+              backgroundColor: primaryColor.withValues(alpha: 0.1),
+              child: Icon(
+                Icons.add_photo_alternate_rounded,
+                color: primaryColor,
+                size: 24,
               ),
             ),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SchoolProfileScreen()),
-            ).then((_) => _fetchSchoolData()),
-            child: const Text(
-              "Add Now",
-              style: TextStyle(fontWeight: FontWeight.bold),
+            title: const Text(
+              "Add School Logo",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+            subtitle: const Text(
+              "Enhance your documents by adding your school logo.",
+              style: TextStyle(fontSize: 12),
+            ),
+            trailing: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: primaryColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SchoolProfileScreen()),
+              ).then((_) => _fetchSchoolData()),
+              child: const Text(
+                "Add",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 64),
+            child: Divider(
+              height: 1,
+              color: isDark ? Colors.white10 : Colors.grey.shade200,
             ),
           ),
         ],

@@ -19,166 +19,75 @@ class StudentMobileHeader extends StatelessWidget {
     required this.onRefresh,
   });
 
-  Widget _buildMobileMiniStat(IconData icon, String label, String value) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.2),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: Colors.white, size: 18),
-        ),
-        const SizedBox(width: 10),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-              ),
-            ),
-            Text(
-              value,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [primaryColor, primaryColor.withValues(alpha: 0.8)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: primaryColor.withValues(alpha: 0.3),
-                blurRadius: 15,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
+        // 🚨 UI FIX: Replaced massive gradient card with a sleek, flat ListTile
+        InkWell(
+          onTap: null, // Keeps the layout structure standard
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(
-                          Icons.admin_panel_settings_rounded,
-                          color: Colors.white,
-                          size: 14,
-                        ),
-                        SizedBox(width: 6),
-                        Text(
-                          "Active Session",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(
-                    Icons.school_rounded,
-                    color: Colors.white70,
-                    size: 30,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                "Total Enrolled",
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.5,
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 8,
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                "$totalStudents",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 42,
-                  fontWeight: FontWeight.w900,
-                  height: 1.0,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 16,
-                  horizontal: 20,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.1),
+                leading: CircleAvatar(
+                  radius: 26,
+                  backgroundColor: primaryColor.withValues(alpha: 0.1),
+                  child: Icon(
+                    Icons.analytics_rounded,
+                    color: primaryColor,
+                    size: 28,
                   ),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildMobileMiniStat(
-                      Icons.male_rounded,
-                      "MALES",
-                      maleCount.toString(),
+                title: Text(
+                  "Total Enrolled: $totalStudents",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 4.0),
+                  child: Text(
+                    "Males: $maleCount  •  Females: $femaleCount",
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                  ),
+                ),
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    "Active",
+                    style: TextStyle(
+                      color: Colors.green,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
                     ),
-                    Container(
-                      width: 1,
-                      height: 35,
-                      color: Colors.white.withValues(alpha: 0.2),
-                    ),
-                    _buildMobileMiniStat(
-                      Icons.female_rounded,
-                      "FEMALES",
-                      femaleCount.toString(),
-                    ),
-                  ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 60, right: 4),
+                child: Divider(
+                  height: 1,
+                  color: isDark ? Colors.white10 : Colors.grey.shade200,
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 16),
+
+        // 🚨 The Quick Actions Box flows seamlessly underneath
         StudentQuickActionsBox(
           primaryColor: primaryColor,
           isDark: isDark,

@@ -13,19 +13,24 @@ import 'package:pdf/pdf.dart' show PdfColor, PdfColors, PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import 'package:http/http.dart' as http;
+import 'dart:ui' as ui;
+import 'package:pro_image_editor/pro_image_editor.dart';
+
 import 'package:trideta_v2/screens/admin/components/student_profile/profile_hero_header.dart';
 import 'package:trideta_v2/screens/admin/components/student_profile/parent_security_dialogs.dart';
 import 'package:trideta_v2/screens/admin/components/student_profile/profile_academic_tab.dart';
 import 'package:trideta_v2/screens/admin/components/student_profile/profile_records_tab.dart';
 import 'package:trideta_v2/screens/admin/components/student_profile/profile_edit_form.dart';
 
-class ParentSecurityCard extends StatefulWidget {
+class ParentSecurityCard extends StatelessWidget {
   final bool isCheckingStatus;
   final String? dbParentPhone;
   final VoidCallback onSecurityTap;
   final VoidCallback onCallTap;
   final Color primaryColor;
   final bool isDesktop;
+  final bool isDark;
 
   const ParentSecurityCard({
     super.key,
@@ -35,21 +40,12 @@ class ParentSecurityCard extends StatefulWidget {
     required this.onCallTap,
     required this.primaryColor,
     required this.isDesktop,
+    required this.isDark,
   });
 
   @override
-  State<ParentSecurityCard> createState() => _ParentSecurityCardState();
-}
-
-class _ParentSecurityCardState extends State<ParentSecurityCard> {
-  bool _isExpanded = false;
-
-  @override
   Widget build(BuildContext context) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color pColor = widget.primaryColor;
-
-    if (widget.isCheckingStatus) {
+    if (isCheckingStatus) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(20),
@@ -58,185 +54,66 @@ class _ParentSecurityCardState extends State<ParentSecurityCard> {
       );
     }
 
-    return Container(
-      margin: widget.isDesktop
-          ? EdgeInsets.zero
-          : const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: Theme(
-          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-          child: ExpansionTile(
-            initiallyExpanded: _isExpanded,
-            onExpansionChanged: (expanded) {
-              setState(() {
-                _isExpanded = expanded;
-              });
-            },
-            tilePadding: const EdgeInsets.symmetric(
-              horizontal: 20,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (dbParentPhone != null && dbParentPhone!.isNotEmpty) ...[
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
               vertical: 8,
             ),
-            childrenPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-            iconColor: Colors.grey.shade500,
-            collapsedIconColor: Colors.grey.shade400,
-            title: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.verified_user_rounded,
-                    color: Colors.green,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Parent Account Active",
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 15,
-                          color: Colors.green,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _isExpanded
-                            ? "Portal access is granted and secured."
-                            : "Tap to manage access & contact",
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade500,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            leading: const Icon(
+              Icons.phone_in_talk_rounded,
+              color: Colors.green,
+              size: 28,
             ),
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.03)
-                      : Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isDark ? Colors.white10 : Colors.grey.shade200,
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.info_outline_rounded, color: pColor, size: 18),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        "Manage application access, monitor login credentials, reset passwords, and initiate direct communications with the student's guardian.",
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? Colors.white70 : Colors.grey.shade700,
-                          height: 1.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  if (widget.dbParentPhone != null &&
-                      widget.dbParentPhone!.isNotEmpty) ...[
-                    Expanded(
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 0,
-                        ),
-                        onPressed: widget.onCallTap,
-                        icon: const Icon(
-                          Icons.phone_in_talk_rounded,
-                          color: Colors.white,
-                          size: 18,
-                        ),
-                        label: const Text(
-                          "CALL",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            letterSpacing: 1.0,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                  Expanded(
-                    flex:
-                        widget.dbParentPhone != null &&
-                            widget.dbParentPhone!.isNotEmpty
-                        ? 1
-                        : 2,
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: pColor,
-                        side: BorderSide(
-                          color: pColor.withValues(alpha: 0.3),
-                          width: 1.5,
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onPressed: widget.onSecurityTap,
-                      icon: Icon(Icons.shield_rounded, color: pColor, size: 18),
-                      label: const Text(
-                        "SECURITY",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                          letterSpacing: 1.0,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            title: const Text(
+              "Call Parent",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            subtitle: Text(
+              dbParentPhone!,
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+            ),
+            onTap: onCallTap,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 72, right: 24),
+            child: Divider(
+              height: 1,
+              color: isDark ? Colors.white10 : Colors.grey.shade200,
+            ),
+          ),
+        ],
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 8,
+          ),
+          leading: Icon(Icons.shield_rounded, color: primaryColor, size: 28),
+          title: const Text(
+            "Parent App Security",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          subtitle: Text(
+            "Manage portal access & passwords",
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+          ),
+          trailing: Icon(
+            Icons.chevron_right_rounded,
+            color: Colors.grey.shade400,
+          ),
+          onTap: onSecurityTap,
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 72, right: 24),
+          child: Divider(
+            height: 1,
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
           ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -290,6 +167,8 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
 
   bool _isEditing = false;
   bool _isSaving = false;
+  bool _isInteractingWithSystem = false;
+
   final _firstNameController = TextEditingController();
   final _middleNameController = TextEditingController();
   final _lastNameController = TextEditingController();
@@ -343,8 +222,9 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
         (cleanStudentData.isEmpty || cleanStudentData == 'notfound')) {
       cleanStudentData = 'regular';
     }
-    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound')
+    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound') {
       return false;
+    }
     if (columnData == null) return true;
 
     if (columnData is String && columnData.startsWith('[')) {
@@ -477,7 +357,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
   Future<void> _fetchAcademicData() async {
     if (_schoolId == null || _currentSession.isEmpty) return;
     try {
-      // 🚨 THE FIX: Get the total open days for the entire SCHOOL instead of a single class string!
       final schoolAttRes = await _supabase
           .from('attendance')
           .select('date')
@@ -490,7 +369,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
           .toSet()
           .length;
 
-      // Fetch specifically how many days Ibrahim was marked present
       final stuAttRes = await _supabase
           .from('attendance')
           .select('status')
@@ -509,7 +387,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
         _attendancePercentage = "No Class Records";
       }
 
-      // Safe fetch for exams using exactly the session and term
       final scoresRes = await _supabase
           .from('exam_scores')
           .select('subject_name, total_score, grade')
@@ -539,19 +416,252 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     }
   }
 
-  Future<void> _pickImage() async {
-    final XFile? image = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 70,
-      maxWidth: 600,
-      maxHeight: 600,
+  void _showImagePreview(String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer(
+              child: Image.network(
+                imageUrl,
+                fit: BoxFit.contain,
+                width: double.infinity,
+                height: double.infinity,
+              ),
+            ),
+            Positioned(
+              top: 40,
+              left: 20,
+              child: IconButton(
+                icon: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: Colors.white,
+                  size: 30,
+                ),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ),
+            Positioned(
+              bottom: 40,
+              child: Column(
+                children: [
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.white24,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () async {
+                      final Uri url = Uri.parse(imageUrl);
+                      if (await canLaunchUrl(url)) {
+                        await launchUrl(
+                          url,
+                          mode: LaunchMode.externalApplication,
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.download_rounded),
+                    label: const Text("SAVE TO DEVICE"),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Theme.of(context).primaryColor,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      await _pickImage();
+                      if (_pickedFile != null) {
+                        await _saveQuickPhotoChange();
+                      }
+                    },
+                    icon: const Icon(Icons.edit_rounded),
+                    label: const Text("CHANGE PHOTO"),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
-    if (image != null) {
-      final bytes = await image.readAsBytes();
-      setState(() {
-        _pickedFile = image;
-        _webImage = bytes;
-      });
+  }
+
+  Future<void> _pickImage() async {
+    setState(() => _isInteractingWithSystem = true);
+
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70,
+        maxWidth: 1000,
+        maxHeight: 1000,
+      );
+
+      if (image != null) {
+        final bytes = await image.readAsBytes();
+        if (!mounted) return;
+
+        Uint8List imageToEdit = bytes;
+
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) =>
+              const Center(child: TridetaLoader(color: Colors.white)),
+        );
+
+        try {
+          final request = http.MultipartRequest(
+            'POST',
+            Uri.parse('https://api.remove.bg/v1.0/removebg'),
+          );
+
+          request.headers['X-Api-Key'] = 'xDZscf4d861ip44UcfKRuaYN';
+          request.files.add(
+            http.MultipartFile.fromBytes(
+              'image_file',
+              bytes,
+              filename: 'upload.jpg',
+            ),
+          );
+
+          final response = await request.send();
+
+          if (response.statusCode == 200) {
+            final transparentBytes = await response.stream.toBytes();
+
+            final codec = await ui.instantiateImageCodec(transparentBytes);
+            final frame = await codec.getNextFrame();
+            final ui.Image aiImage = frame.image;
+
+            final ui.PictureRecorder recorder = ui.PictureRecorder();
+            final ui.Canvas canvas = ui.Canvas(recorder);
+
+            final ui.Paint paint = ui.Paint()
+              ..color = Theme.of(context).primaryColor;
+            final Rect rect = Rect.fromLTWH(
+              0,
+              0,
+              aiImage.width.toDouble(),
+              aiImage.height.toDouble(),
+            );
+            canvas.drawRect(rect, paint);
+            canvas.drawImage(aiImage, Offset.zero, ui.Paint());
+
+            final ui.Picture picture = recorder.endRecording();
+            final ui.Image mergedImage = await picture.toImage(
+              aiImage.width,
+              aiImage.height,
+            );
+            final ByteData? byteData = await mergedImage.toByteData(
+              format: ui.ImageByteFormat.png,
+            );
+
+            imageToEdit = byteData!.buffer.asUint8List();
+          } else {
+            debugPrint("Cloud API Failed. Status: ${response.statusCode}");
+          }
+        } catch (error) {
+          debugPrint("Background Removal Skipped (Network Error): $error");
+        }
+
+        if (mounted) Navigator.pop(context);
+
+        bool hasPopped = false;
+
+        final Uint8List? editedBytes = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (editorContext) => ProImageEditor.memory(
+              imageToEdit,
+              callbacks: ProImageEditorCallbacks(
+                onImageEditingComplete: (Uint8List result) async {
+                  if (!hasPopped) {
+                    hasPopped = true;
+                    Navigator.pop(editorContext, result);
+                  }
+                },
+                onCloseEditor: (mode) {
+                  if (!hasPopped) {
+                    hasPopped = true;
+                    Navigator.pop(editorContext, null);
+                  }
+                },
+              ),
+            ),
+          ),
+        );
+
+        if (editedBytes != null) {
+          if (editedBytes.lengthInBytes > 500 * 1024) {
+            showAuthErrorDialog(
+              "Image is too large. Please choose a simpler photo.",
+            );
+            return;
+          }
+          setState(() {
+            _pickedFile = image;
+            _webImage = editedBytes;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Image Picker Error: $e");
+    } finally {
+      if (mounted) setState(() => _isInteractingWithSystem = false);
+    }
+  }
+
+  Future<void> _saveQuickPhotoChange() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: TridetaLoader(color: Colors.white)),
+    );
+    try {
+      if (_pickedFile != null && _webImage != null && _schoolId != null) {
+        final fileExt = _pickedFile!.name.split('.').last;
+        final fileName =
+            '$_schoolId/${widget.id}_update_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+        await _supabase.storage
+            .from('student_passports')
+            .uploadBinary(
+              fileName,
+              _webImage!,
+              fileOptions: const FileOptions(upsert: true),
+            );
+        String newPassportUrl = _supabase.storage
+            .from('student_passports')
+            .getPublicUrl(fileName);
+
+        await _supabase
+            .from('students')
+            .update({'passport_url': newPassportUrl})
+            .eq('id', widget.id);
+
+        if (mounted) {
+          setState(() {
+            _currentImagePath = newPassportUrl;
+          });
+          Navigator.pop(context);
+          showSuccessDialog(
+            "Photo Updated",
+            "Student profile picture has been successfully updated.",
+          );
+        }
+      } else {
+        if (mounted) Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        showAuthErrorDialog("Failed to update photo: $e");
+      }
     }
   }
 
@@ -877,8 +987,11 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     }
   }
 
+  // 🚨 UI FIX: Security check added to require typing "CONFIRM"
   void _confirmDeletion(bool isDark) {
     bool shouldDeleteAuth = false;
+    String confirmText = "";
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -887,9 +1000,18 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text(
-            "Delete Record?",
-            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+          title: const Row(
+            children: [
+              Icon(Icons.person_off_rounded, color: Colors.red),
+              SizedBox(width: 10),
+              Text(
+                "Delete Record?",
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -899,6 +1021,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
               ),
               const SizedBox(height: 15),
               CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
                 title: const Text(
                   "Also remove parent login credentials?",
                   style: TextStyle(fontSize: 13),
@@ -906,6 +1029,21 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                 value: shouldDeleteAuth,
                 onChanged: (v) => setS(() => shouldDeleteAuth = v!),
                 activeColor: Colors.red,
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                onChanged: (val) => setS(() => confirmText = val),
+                decoration: InputDecoration(
+                  labelText: "Type CONFIRM to continue",
+                  labelStyle: TextStyle(color: Colors.red.shade300),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.red, width: 2),
+                  ),
+                ),
               ),
             ],
           ),
@@ -921,7 +1059,12 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onPressed: () => _deleteStudent(shouldDeleteAuth),
+              onPressed: confirmText == "CONFIRM"
+                  ? () {
+                      Navigator.pop(ctx);
+                      _deleteStudent(shouldDeleteAuth);
+                    }
+                  : null,
               child: const Text(
                 "CONFIRM DELETE",
                 style: TextStyle(
@@ -942,134 +1085,102 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     if (await canLaunchUrl(url)) await launchUrl(url);
   }
 
+  // 🚨 UI FIX: Flattened into pure WhatsApp ListTiles
   Widget _buildFinancialCard(bool isDark, Color primaryColor) {
     if (_isCheckingStatus) return const SizedBox.shrink();
 
     final currencyFmt = NumberFormat.currency(symbol: '₦', decimalDigits: 0);
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.blue.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.account_balance_wallet_rounded,
-                        color: Colors.blue,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        "WALLET",
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.blue.shade700,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    currencyFmt.format(_walletBalance),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.blue,
-                    ),
-                  ),
-                ],
-              ),
+    return Column(
+      children: [
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 4,
+          ),
+          leading: const Icon(
+            Icons.account_balance_wallet_rounded,
+            color: Colors.blue,
+            size: 28,
+          ),
+          title: const Text(
+            "Wallet Balance",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          subtitle: Text(
+            "Available credit",
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+          ),
+          trailing: Text(
+            currencyFmt.format(_walletBalance),
+            style: const TextStyle(
+              fontWeight: FontWeight.w900,
+              color: Colors.blue,
+              fontSize: 16,
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: _outstandingDebt > 0
-                    ? Colors.redAccent.withValues(alpha: 0.1)
-                    : Colors.green.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: _outstandingDebt > 0
-                      ? Colors.redAccent.withValues(alpha: 0.3)
-                      : Colors.green.withValues(alpha: 0.3),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        _outstandingDebt > 0
-                            ? Icons.warning_rounded
-                            : Icons.check_circle_rounded,
-                        color: _outstandingDebt > 0
-                            ? Colors.redAccent
-                            : Colors.green,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        "DEBT ($_currentTerm)",
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          color: _outstandingDebt > 0
-                              ? Colors.redAccent
-                              : Colors.green,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    currencyFmt.format(_outstandingDebt),
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: _outstandingDebt > 0
-                          ? Colors.redAccent
-                          : Colors.green,
-                    ),
-                  ),
-                ],
-              ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 72, right: 24),
+          child: Divider(
+            height: 1,
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 4,
+          ),
+          leading: Icon(
+            _outstandingDebt > 0
+                ? Icons.warning_rounded
+                : Icons.check_circle_rounded,
+            color: _outstandingDebt > 0 ? Colors.redAccent : Colors.green,
+            size: 28,
+          ),
+          title: const Text(
+            "Outstanding Debt",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          subtitle: Text(
+            "For $_currentTerm",
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+          ),
+          trailing: Text(
+            currencyFmt.format(_outstandingDebt),
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              color: _outstandingDebt > 0 ? Colors.redAccent : Colors.green,
+              fontSize: 16,
             ),
           ),
-        ],
-      ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 72, right: 24),
+          child: Divider(
+            height: 1,
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color primaryColor = Theme.of(context).primaryColor;
+
+    // 🚨 UI FIX: Pure Material Matte Backgrounds globally forced
+    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
         title: Text(
-          _isEditing ? "Edit Profile" : "Student Profile",
+          _isEditing ? "Edit Profile" : "Student Info",
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         backgroundColor: bgColor,
@@ -1093,14 +1204,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
               icon: const Icon(Icons.edit_rounded, color: Colors.blue),
               onPressed: () => setState(() => _isEditing = true),
             ),
-          if (!_isEditing)
-            IconButton(
-              icon: const Icon(
-                Icons.delete_forever_rounded,
-                color: Colors.redAccent,
-              ),
-              onPressed: () => _confirmDeletion(isDark),
-            ),
+          // 🚨 UI FIX: Delete icon removed from Top App Bar (moved to bottom)
         ],
       ),
       body: LayoutBuilder(
@@ -1146,7 +1250,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                     }
                   },
                   primaryColor: primaryColor,
-                  cardColor: cardColor,
+                  cardColor: bgColor,
                   textColor: textColor,
                   isDark: isDark,
                 ),
@@ -1158,136 +1262,144 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 850),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: bgColor,
-                    border: Border(
-                      left: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
-                      ),
-                      right: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
-                      ),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-                        child: IntrinsicHeight(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Expanded(
-                                flex: 5,
-                                child: ProfileHeroHeader(
-                                  id: widget.id,
-                                  displayName: _currentNameDisplay.isEmpty
-                                      ? widget.name
-                                      : _currentNameDisplay,
-                                  studentClass: widget.studentClass,
-                                  admissionNo: _admissionNo,
-                                  displayImagePath:
-                                      _currentImagePath ??
-                                      widget.imagePath ??
-                                      "",
-                                  primaryColor: primaryColor,
-                                  cardColor: cardColor,
-                                  isDark: isDark,
-                                  isDesktop: true,
-                                ),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                      child: IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              flex: 5,
+                              child: ProfileHeroHeader(
+                                id: widget.id,
+                                displayName: _currentNameDisplay.isEmpty
+                                    ? widget.name
+                                    : _currentNameDisplay,
+                                studentClass: widget.studentClass,
+                                admissionNo: _admissionNo,
+                                displayImagePath:
+                                    _currentImagePath ?? widget.imagePath ?? "",
+                                primaryColor: primaryColor,
+                                cardColor: bgColor,
+                                isDark: isDark,
+                                isDesktop: true,
+                                onImageTap: () {
+                                  if (_currentImagePath != null &&
+                                      _currentImagePath!.startsWith('http')) {
+                                    _showImagePreview(_currentImagePath!);
+                                  } else if (widget.imagePath != null &&
+                                      widget.imagePath!.startsWith('http')) {
+                                    _showImagePreview(widget.imagePath!);
+                                  } else {
+                                    _pickImage().then((_) {
+                                      if (_pickedFile != null) {
+                                        _saveQuickPhotoChange();
+                                      }
+                                    });
+                                  }
+                                },
                               ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                flex: 4,
-                                child: Column(
-                                  children: [
-                                    _buildFinancialCard(isDark, primaryColor),
-                                    Expanded(
-                                      child: ParentSecurityCard(
-                                        isCheckingStatus: _isCheckingStatus,
-                                        dbParentPhone: _dbParentPhone,
-                                        onSecurityTap: () =>
-                                            _handleSecurityTap(primaryColor),
-                                        onCallTap: _callParent,
-                                        primaryColor: primaryColor,
-                                        isDesktop: true,
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              flex: 4,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _buildFinancialCard(isDark, primaryColor),
+                                  ParentSecurityCard(
+                                    isCheckingStatus: _isCheckingStatus,
+                                    dbParentPhone: _dbParentPhone,
+                                    onSecurityTap: () =>
+                                        _handleSecurityTap(primaryColor),
+                                    onCallTap: _callParent,
+                                    primaryColor: primaryColor,
+                                    isDesktop: true,
+                                    isDark: isDark,
+                                  ),
+                                  // 🚨 UI FIX: WhatsApp Delete Tile (Desktop Column)
+                                  InkWell(
+                                    onTap: () => _confirmDeletion(isDark),
+                                    child: const ListTile(
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 24,
+                                        vertical: 12,
+                                      ),
+                                      leading: Icon(
+                                        Icons.delete_outline_rounded,
+                                        color: Colors.red,
+                                        size: 28,
+                                      ),
+                                      title: Text(
+                                        "Remove Student",
+                                        style: TextStyle(
+                                          color: Colors.red,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Container(
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.05)
-                              : Colors.grey.shade200,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: TabBar(
-                          controller: _tabController,
-                          dividerColor: Colors.transparent,
-                          indicatorSize: TabBarIndicatorSize.tab,
-                          indicator: BoxDecoration(
-                            color: primaryColor,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          labelColor: Colors.white,
-                          unselectedLabelColor: isDark
-                              ? Colors.white54
-                              : Colors.grey.shade600,
-                          labelStyle: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                          tabs: const [
-                            Tab(text: "ACADEMICS"),
-                            Tab(text: "RECORDS"),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: TabBarView(
-                          controller: _tabController,
-                          children: [
-                            ProfileAcademicTab(
-                              isFetchingAcademics: _isFetchingAcademics,
-                              attendancePercentage: _attendancePercentage,
-                              gradeAverage: _gradeAverage,
-                              subjectGrades: _subjectGrades,
-                              primaryColor: primaryColor,
-                              cardColor: cardColor,
-                              textColor: textColor,
-                              isDark: isDark,
-                            ),
-                            ProfileRecordsTab(
-                              isGeneratingRecord: _isGeneratingRecord,
-                              onGenerateTap: _generateComprehensiveRecord,
-                              primaryColor: primaryColor,
-                              cardColor: cardColor,
-                              isDark: isDark,
                             ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    Container(
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 8,
+                      ),
+                      child: TabBar(
+                        controller: _tabController,
+                        indicatorColor: primaryColor,
+                        indicatorWeight: 3,
+                        labelColor: primaryColor,
+                        unselectedLabelColor: Colors.grey,
+                        labelStyle: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                        tabs: const [
+                          Tab(text: "ACADEMICS"),
+                          Tab(text: "RECORDS"),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          ProfileAcademicTab(
+                            isFetchingAcademics: _isFetchingAcademics,
+                            attendancePercentage: _attendancePercentage,
+                            gradeAverage: _gradeAverage,
+                            subjectGrades: _subjectGrades,
+                            primaryColor: primaryColor,
+                            cardColor: bgColor,
+                            textColor: textColor,
+                            isDark: isDark,
+                          ),
+                          ProfileRecordsTab(
+                            isGeneratingRecord: _isGeneratingRecord,
+                            onGenerateTap: _generateComprehensiveRecord,
+                            primaryColor: primaryColor,
+                            cardColor: bgColor,
+                            isDark: isDark,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             );
           }
 
-          // 🚨 MOBILE NESTED SCROLL VIEW
           return NestedScrollView(
             headerSliverBuilder: (context, innerBoxIsScrolled) {
               return [
@@ -1304,10 +1416,24 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                         displayImagePath:
                             _currentImagePath ?? widget.imagePath ?? "",
                         primaryColor: primaryColor,
-                        cardColor: cardColor,
+                        cardColor: bgColor,
                         isDark: isDark,
                         isDesktop: false,
+                        onImageTap: () {
+                          if (_currentImagePath != null &&
+                              _currentImagePath!.startsWith('http')) {
+                            _showImagePreview(_currentImagePath!);
+                          } else if (widget.imagePath != null &&
+                              widget.imagePath!.startsWith('http')) {
+                            _showImagePreview(widget.imagePath!);
+                          } else {
+                            _pickImage().then((_) {
+                              if (_pickedFile != null) _saveQuickPhotoChange();
+                            });
+                          }
+                        },
                       ),
+                      // 🚨 UI FIX: Removed thick 12px divider blocks
                       _buildFinancialCard(isDark, primaryColor),
                       ParentSecurityCard(
                         isCheckingStatus: _isCheckingStatus,
@@ -1316,6 +1442,30 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                         onCallTap: _callParent,
                         primaryColor: primaryColor,
                         isDesktop: false,
+                        isDark: isDark,
+                      ),
+                      // 🚨 UI FIX: WhatsApp Delete Tile securely appended to the bottom
+                      InkWell(
+                        onTap: () => _confirmDeletion(isDark),
+                        child: const ListTile(
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
+                          ),
+                          leading: Icon(
+                            Icons.delete_outline_rounded,
+                            color: Colors.red,
+                            size: 28,
+                          ),
+                          title: Text(
+                            "Remove Student",
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -1325,16 +1475,10 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                   delegate: _SliverAppBarDelegate(
                     TabBar(
                       controller: _tabController,
-                      dividerColor: Colors.transparent,
-                      indicatorSize: TabBarIndicatorSize.tab,
-                      indicator: BoxDecoration(
-                        color: primaryColor,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      labelColor: Colors.white,
-                      unselectedLabelColor: isDark
-                          ? Colors.white54
-                          : Colors.grey.shade600,
+                      indicatorColor: primaryColor,
+                      indicatorWeight: 3,
+                      labelColor: primaryColor,
+                      unselectedLabelColor: Colors.grey,
                       labelStyle: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
@@ -1357,7 +1501,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                   gradeAverage: _gradeAverage,
                   subjectGrades: _subjectGrades,
                   primaryColor: primaryColor,
-                  cardColor: cardColor,
+                  cardColor: bgColor,
                   textColor: textColor,
                   isDark: isDark,
                 ),
@@ -1365,7 +1509,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                   isGeneratingRecord: _isGeneratingRecord,
                   onGenerateTap: _generateComprehensiveRecord,
                   primaryColor: primaryColor,
-                  cardColor: cardColor,
+                  cardColor: bgColor,
                   isDark: isDark,
                 ),
               ],
@@ -1383,9 +1527,9 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   final TabBar _tabBar;
 
   @override
-  double get minExtent => _tabBar.preferredSize.height + 16;
+  double get minExtent => _tabBar.preferredSize.height;
   @override
-  double get maxExtent => _tabBar.preferredSize.height + 16;
+  double get maxExtent => _tabBar.preferredSize.height;
 
   @override
   Widget build(
@@ -1396,19 +1540,7 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
 
-    return Container(
-      color: bgColor,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-      child: Container(
-        decoration: BoxDecoration(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: _tabBar,
-      ),
-    );
+    return Container(color: bgColor, child: _tabBar);
   }
 
   @override

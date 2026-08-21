@@ -2,8 +2,10 @@ import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+// 🚨 FIX: Restored the proper connection to the actual Staff Profile screen!
 import 'add_staff_screen.dart';
-import 'staff_profile_screen.dart'; // Ensure this exists
+import 'staff_profile_screen.dart';
 
 class StaffDirectoryScreen extends StatefulWidget {
   const StaffDirectoryScreen({super.key});
@@ -14,7 +16,6 @@ class StaffDirectoryScreen extends StatefulWidget {
 
 class _StaffDirectoryScreenState extends State<StaffDirectoryScreen>
     with AuthErrorHandler {
-  // 🚨 MIXED IN THE ERROR HANDLER
   final _supabase = Supabase.instance.client;
 
   bool _isLoading = true;
@@ -76,7 +77,6 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen>
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        // 🚨 REPLACED SNACKBAR WITH UNIVERSAL POPUP
         showAuthErrorDialog(
           "We couldn't load the staff directory. Please check your connection and try again.",
         );
@@ -91,36 +91,35 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen>
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
 
-    // ✅ ADDED DYNAMIC COLOR HERE
+    // Premium matte backgrounds
+    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color primaryColor = Theme.of(context).primaryColor;
 
-    // 🚨 EXTRACTED MAIN CONTENT FOR LAYOUT BUILDER
     Widget mainContent = Column(
       children: [
-        // --- SEARCH BAR AREA ---
         Container(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-          color: isDark ? bgColor : Colors.white,
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+          color: bgColor,
           child: TextField(
             controller: _searchCtrl,
             decoration: InputDecoration(
               hintText: "Search name or role...",
               hintStyle: TextStyle(
                 color: isDark ? Colors.white38 : Colors.grey[400],
+                fontSize: 14,
               ),
               prefixIcon: Icon(
                 Icons.search_rounded,
-                color: primaryColor,
-              ), // Dynamic!
+                color: Colors.grey.shade400,
+                size: 20,
+              ),
               filled: true,
               fillColor: isDark
                   ? Colors.white.withValues(alpha: 0.05)
-                  : Colors.grey[100],
+                  : Colors.grey.shade200,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(15),
+                borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
               ),
               contentPadding: const EdgeInsets.symmetric(vertical: 0),
@@ -128,13 +127,12 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen>
           ),
         ),
 
-        // --- LIST AREA ---
         Expanded(
           child: _isLoading
               ? Center(child: TridetaLoader(color: primaryColor))
               : RefreshIndicator(
                   onRefresh: _handleRefresh,
-                  color: primaryColor, // Dynamic!
+                  color: primaryColor,
                   child: _filteredList.isEmpty
                       ? ListView(
                           children: [
@@ -144,17 +142,19 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen>
                             _buildEmptyState(isDark),
                           ],
                         )
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(20),
-                          itemCount: _filteredList.length,
-                          itemBuilder: (context, index) {
-                            return _buildStaffCard(
-                              _filteredList[index],
-                              cardColor,
-                              isDark,
-                              primaryColor, // 🚨 Pass dynamic color here!
-                            );
-                          },
+                      : Container(
+                          color: bgColor,
+                          child: ListView.builder(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            itemCount: _filteredList.length,
+                            itemBuilder: (context, index) {
+                              return _buildStaffCard(
+                                _filteredList[index],
+                                isDark,
+                                primaryColor,
+                              );
+                            },
+                          ),
                         ),
                 ),
         ),
@@ -166,32 +166,25 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen>
       appBar: AppBar(
         title: const Text(
           "Staff Directory",
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        backgroundColor: primaryColor, // Dynamic!
-        foregroundColor: Colors.white,
+        backgroundColor: bgColor,
+        foregroundColor: isDark ? Colors.white : Colors.black87,
         elevation: 0,
         centerTitle: true,
       ),
-      // 🚨 SHAPE-SHIFTER: LayoutBuilder
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 800) {
-            // 💻 DESKTOP LAYOUT (Constrained center column)
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 800),
                 child: Container(
                   decoration: BoxDecoration(
                     color: bgColor,
-                    border: Border(
-                      left: BorderSide(
+                    border: Border.symmetric(
+                      vertical: BorderSide(
                         color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
-                      ),
-                      right: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
                       ),
                     ),
                   ),
@@ -200,7 +193,6 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen>
               ),
             );
           } else {
-            // 📱 MOBILE LAYOUT (Full Width)
             return mainContent;
           }
         },
@@ -211,13 +203,12 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen>
             context,
             MaterialPageRoute(builder: (_) => const AddStaffScreen()),
           );
-          // If the add screen returns true (success), refresh the list
           if (result == true) {
             setState(() => _isLoading = true);
             _fetchStaff();
           }
         },
-        backgroundColor: primaryColor, // Dynamic!
+        backgroundColor: primaryColor,
         icon: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white),
         label: const Text(
           "NEW STAFF",
@@ -250,144 +241,124 @@ class _StaffDirectoryScreenState extends State<StaffDirectoryScreen>
     );
   }
 
-  // 🚨 Helper updated to accept primaryColor
   Widget _buildStaffCard(
     Map<String, dynamic> staff,
-    Color cardColor,
     bool isDark,
     Color primaryColor,
   ) {
-    final String id = staff['id'].toString(); // Used for Hero tag
+    final String id = staff['id'].toString();
     final String fullName = staff['full_name'] ?? "Unknown Staff";
     final String designation = staff['designation'] ?? "Staff Member";
     final String role = (staff['role'] ?? 'TEACHER').toString().toUpperCase();
     final String? passportUrl = staff['passport_url'];
 
-    // 🚨 Make default 'Teacher' role use the Brand Color!
     Color roleColor = primaryColor;
     if (role == 'BURSAR') roleColor = Colors.green;
     if (role == 'PRINCIPAL') roleColor = Colors.purple;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.grey.shade100,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(15),
-          onTap: () async {
-            final result = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => StaffProfileScreen(staffData: staff),
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => StaffProfileScreen(staffData: staff),
+                ),
+              );
+              if (result == true) {
+                setState(() => _isLoading = true);
+                _fetchStaff();
+              }
+            },
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 8,
               ),
-            );
-            // Refresh if the profile screen indicates a change (like a deletion)
-            if (result == true) {
-              setState(() => _isLoading = true);
-              _fetchStaff();
-            }
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Hero(
-                  tag:
-                      'staff_avatar_$id', // Ensure smooth transition to profile
-                  child: Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: roleColor.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                      image: passportUrl != null
-                          ? DecorationImage(
-                              image: NetworkImage(passportUrl),
-                              fit: BoxFit.cover,
-                            )
-                          : null,
-                    ),
-                    child: passportUrl == null
-                        ? Center(
-                            child: Text(
-                              fullName.isNotEmpty
-                                  ? fullName[0].toUpperCase()
-                                  : "?",
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: roleColor,
-                                fontSize: 20,
-                              ),
-                            ),
+              leading: Hero(
+                tag: 'staff_avatar_$id',
+                child: Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: roleColor.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                    image: passportUrl != null
+                        ? DecorationImage(
+                            image: NetworkImage(passportUrl),
+                            fit: BoxFit.cover,
                           )
                         : null,
                   ),
+                  child: passportUrl == null
+                      ? Center(
+                          child: Text(
+                            fullName.isNotEmpty
+                                ? fullName[0].toUpperCase()
+                                : "?",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: roleColor,
+                              fontSize: 20,
+                            ),
+                          ),
+                        )
+                      : null,
                 ),
-                const SizedBox(width: 15),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        fullName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        designation,
-                        style: TextStyle(
-                          color: isDark ? Colors.white54 : Colors.grey[600],
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
+              ),
+              title: Text(
+                fullName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Text(
+                  designation,
+                  style: TextStyle(
+                    color: isDark ? Colors.white54 : Colors.grey[600],
+                    fontSize: 13,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: roleColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  role,
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    color: roleColor,
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: roleColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: roleColor.withValues(alpha: 0.3)),
-                  ),
-                  child: Text(
-                    role,
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
-                      color: isDark
-                          ? roleColor.withValues(alpha: 0.8)
-                          : roleColor,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
-      ),
+        Padding(
+          padding: const EdgeInsets.only(left: 89, right: 24),
+          child: Divider(
+            height: 1,
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
+      ],
     );
   }
 }

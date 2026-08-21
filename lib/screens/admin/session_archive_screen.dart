@@ -41,6 +41,9 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
     _fetchInitialData();
   }
 
+  // ===========================================================================
+  // 🚨 LOGIC ENGINE: STRICTLY UNTOUCHED
+  // ===========================================================================
   List<String> _generateDynamicSessions() {
     int currentYear = DateTime.now().year;
     List<String> sessions = [];
@@ -160,7 +163,7 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
   }
 
   // ===========================================================================
-  // 🚨 SMART FINANCIAL CSV GENERATOR
+  // 🚨 SMART FINANCIAL CSV GENERATOR (STRICTLY UNTOUCHED)
   // ===========================================================================
   Future<void> _generateClassArchive() async {
     if (_selectedArchiveClassId == null) return;
@@ -371,7 +374,7 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
   }
 
   // ===========================================================================
-  // 🚨 UI BUILDER
+  // 🚨 UI BUILDER (FLAT, EDGE-TO-EDGE WHATSAPP STYLE)
   // ===========================================================================
   @override
   Widget build(BuildContext context) {
@@ -398,6 +401,7 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
           backgroundColor: bgColor,
           foregroundColor: isDark ? Colors.white : const Color(0xFF1A1A2E),
           elevation: 0,
+          centerTitle: true,
         ),
         body: const Center(
           child: Text(
@@ -406,6 +410,178 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
         ),
       );
     }
+
+    // 🚨 UI FIX: Rebuilt strictly flat to remove floating card constraints
+    Widget mainContent = SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
+            decoration: BoxDecoration(
+              color: cardColor,
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark ? Colors.white10 : Colors.grey.shade200,
+                  width: 1,
+                ),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.download_rounded, color: Colors.blueAccent),
+                    SizedBox(width: 10),
+                    Text(
+                      "Download Financial Report (CSV)",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 15),
+                Text(
+                  "Select a class, session, and term below. This will download a spreadsheet containing the total expected revenue, an individual breakdown of student debts/credits, and a complete transaction history.",
+                  style: TextStyle(
+                    color: isDark ? Colors.white70 : Colors.black87,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 30),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        initialValue: _selectedArchiveSession,
+                        dropdownColor: cardColor,
+                        decoration: _inputStyle(
+                          "Session",
+                          Icons.history_edu_rounded,
+                          isDark,
+                          primaryColor,
+                        ),
+                        items: _generateDynamicSessions()
+                            .map(
+                              (e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(
+                                  e,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (val) =>
+                            setState(() => _selectedArchiveSession = val!),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        initialValue: _selectedArchiveTerm,
+                        dropdownColor: cardColor,
+                        decoration: _inputStyle(
+                          "Term",
+                          Icons.calendar_month_rounded,
+                          isDark,
+                          primaryColor,
+                        ),
+                        items: ["1st Term", "2nd Term", "3rd Term", "All Terms"]
+                            .map(
+                              (e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(
+                                  e,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (val) =>
+                            setState(() => _selectedArchiveTerm = val!),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  initialValue: _selectedArchiveClassId,
+                  dropdownColor: cardColor,
+                  decoration: _inputStyle(
+                    "Target Class",
+                    Icons.class_rounded,
+                    isDark,
+                    primaryColor,
+                  ),
+                  items: _allClasses
+                      .map(
+                        (c) => DropdownMenuItem<String>(
+                          value: c['id'],
+                          child: Text(
+                            c['name'],
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (val) =>
+                      setState(() => _selectedArchiveClassId = val),
+                ),
+                const SizedBox(height: 35),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 55,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    onPressed: _isGenerating ? null : _generateClassArchive,
+                    icon: _isGenerating
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(Icons.download_rounded),
+                    label: Text(
+                      _isGenerating ? "GENERATING CSV..." : "DOWNLOAD REPORT",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -419,202 +595,29 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
         elevation: 0,
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 800),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(24),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth > 800) {
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: Container(
                   decoration: BoxDecoration(
-                    color: cardColor,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: isDark ? Colors.white10 : Colors.grey.shade200,
-                      width: 1.5,
+                    color: bgColor,
+                    border: Border.symmetric(
+                      vertical: BorderSide(
+                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                      ),
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.02),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(
-                            Icons.download_rounded,
-                            color: Colors.blueAccent,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            "Download Financial Report (CSV)",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 15),
-                      Text(
-                        "Select a class, session, and term below. This will download a spreadsheet containing the total expected revenue, an individual breakdown of student debts/credits, and a complete transaction history.",
-                        style: TextStyle(
-                          color: isDark ? Colors.white70 : Colors.black87,
-                          fontSize: 13,
-                          height: 1.4,
-                        ),
-                      ),
-                      const SizedBox(height: 25),
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              isExpanded: true,
-                              initialValue: _selectedArchiveSession,
-                              dropdownColor: cardColor,
-                              decoration: _inputStyle(
-                                "Session",
-                                Icons.history_edu_rounded,
-                                isDark,
-                                primaryColor,
-                              ),
-                              items: _generateDynamicSessions()
-                                  .map(
-                                    (e) => DropdownMenuItem(
-                                      value: e,
-                                      child: Text(
-                                        e,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (val) => setState(
-                                () => _selectedArchiveSession = val!,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              isExpanded: true,
-                              initialValue: _selectedArchiveTerm,
-                              dropdownColor: cardColor,
-                              decoration: _inputStyle(
-                                "Term",
-                                Icons.calendar_month_rounded,
-                                isDark,
-                                primaryColor,
-                              ),
-                              items:
-                                  [
-                                        "1st Term",
-                                        "2nd Term",
-                                        "3rd Term",
-                                        "All Terms",
-                                      ]
-                                      .map(
-                                        (e) => DropdownMenuItem(
-                                          value: e,
-                                          child: Text(
-                                            e,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      )
-                                      .toList(),
-                              onChanged: (val) =>
-                                  setState(() => _selectedArchiveTerm = val!),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        initialValue: _selectedArchiveClassId,
-                        dropdownColor: cardColor,
-                        decoration: _inputStyle(
-                          "Target Class",
-                          Icons.class_rounded,
-                          isDark,
-                          primaryColor,
-                        ),
-                        items: _allClasses
-                            .map(
-                              (c) => DropdownMenuItem<String>(
-                                value: c['id'],
-                                child: Text(
-                                  c['name'],
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (val) =>
-                            setState(() => _selectedArchiveClassId = val),
-                      ),
-                      const SizedBox(height: 25),
-
-                      SizedBox(
-                        width: double.infinity,
-                        height: 55,
-                        child: FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Colors.blueAccent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                          onPressed: _isGenerating
-                              ? null
-                              : _generateClassArchive,
-                          icon: _isGenerating
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.download_rounded),
-                          label: Text(
-                            _isGenerating
-                                ? "GENERATING CSV..."
-                                : "DOWNLOAD REPORT",
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.0,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  child: mainContent,
                 ),
-              ],
-            ),
-          ),
-        ),
+              ),
+            );
+          } else {
+            return mainContent;
+          }
+        },
       ),
     );
   }

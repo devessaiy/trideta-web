@@ -3,6 +3,7 @@ import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // 🚨 IMPORT: Points to the separated UI components
 import '../school_configuration_widgets.dart';
@@ -204,17 +205,54 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   Future<void> _saveConfig() async {
     setState(() => _isSaving = true);
     try {
+      bool hasDeleteConflicts = false;
+
+      // Safe Loop for Classes
       if (_deletedClassIds.isNotEmpty) {
-        await _supabase
-            .from('classes')
-            .delete()
-            .filter('id', 'in', _deletedClassIds);
+        for (String id in _deletedClassIds) {
+          try {
+            await _supabase.from('classes').delete().eq('id', id);
+          } catch (e) {
+            hasDeleteConflicts = true;
+          }
+        }
       }
+
+      // 🚨 THE FIX: "Zero-is-Null" Engine for Subjects
       if (_deletedSubjectIds.isNotEmpty) {
-        await _supabase
-            .from('class_subjects')
-            .delete()
-            .filter('id', 'in', _deletedSubjectIds);
+        for (String id in _deletedSubjectIds) {
+          try {
+            // 1. Fetch all scores tied to this subject
+            final scoresData = await _supabase
+                .from('exam_scores')
+                .select('total_score')
+                .eq('subject_id', id);
+
+            bool hasRealScores = false;
+
+            // 2. Scan for any score greater than 0
+            for (var row in scoresData) {
+              double score =
+                  double.tryParse(row['total_score']?.toString() ?? '0') ?? 0;
+              if (score > 0) {
+                hasRealScores = true;
+                break;
+              }
+            }
+
+            if (hasRealScores) {
+              // Protect the database: Block deletion
+              hasDeleteConflicts = true;
+            } else {
+              // Treat 0 as Null: Wipe the empty placeholder rows first!
+              await _supabase.from('exam_scores').delete().eq('subject_id', id);
+              // Now the database constraint is unlocked, safely delete the subject
+              await _supabase.from('class_subjects').delete().eq('id', id);
+            }
+          } catch (e) {
+            hasDeleteConflicts = true;
+          }
+        }
       }
 
       for (String oldName in _renamedClasses.keys) {
@@ -319,11 +357,19 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
         setState(() {
           _isSaving = false;
           _renamedClasses.clear();
+          _deletedClassIds.clear();
+          _deletedSubjectIds.clear();
         });
-        showSuccessDialog(
-          "Success",
-          "School structure secured to the database.",
-        );
+
+        if (hasDeleteConflicts) {
+          _showDeleteConflictDialog();
+          _fetchRelationalConfig();
+        } else {
+          showSuccessDialog(
+            "Success",
+            "School structure secured to the database.",
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -336,6 +382,83 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   // ===========================================================================
   // 🚨 DIALOG HANDLERS
   // ===========================================================================
+
+  void _showDeleteConflictDialog() {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            SizedBox(width: 10),
+            Text(
+              "Action Blocked",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: const Text(
+          "This Subject contains past scores, to delete it contact Trideta IT Suport.",
+          style: TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              "Close",
+              style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+            ),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final String message =
+                  "Hello Trideta Support, I need help safely deleting a subject that contains past records for my school.";
+              final Uri whatsappUrl = Uri.parse(
+                "https://wa.me/2347015339793?text=${Uri.encodeComponent(message)}",
+              );
+
+              if (await canLaunchUrl(whatsappUrl)) {
+                await launchUrl(
+                  whatsappUrl,
+                  mode: LaunchMode.externalApplication,
+                );
+              } else {
+                final Uri smsUrl = Uri.parse(
+                  "sms:+2347015339793?body=${Uri.encodeComponent(message)}",
+                );
+                if (await canLaunchUrl(smsUrl)) {
+                  await launchUrl(smsUrl);
+                }
+              }
+            },
+            icon: const Icon(
+              Icons.support_agent_rounded,
+              color: Colors.white,
+              size: 18,
+            ),
+            label: const Text(
+              "Contact IT Support",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _editClass(Map<String, dynamic> cls) async {
     final oldName = cls['name'];
@@ -714,7 +837,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
               ),
             );
           } else {
-            // 🚨 UPDATED MOBILE LAYOUT: NestedScrollView handles the sticky Tabs!
             return DefaultTabController(
               length: 2,
               child: NestedScrollView(
@@ -882,7 +1004,7 @@ class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
   _StickyTabBarDelegate({required this.child, required this.backgroundColor});
 
   @override
-  double get minExtent => 66.0; // Height of container (46) + margins (10 + 10)
+  double get minExtent => 66.0;
 
   @override
   double get maxExtent => 66.0;

@@ -105,7 +105,6 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
     }
   }
 
-  // 🚨 SMART SYNC: Applies Overpaid Credit to Current Invoices
   Future<void> _syncStudentFinancials(Map<String, dynamic> student) async {
     try {
       final studentData = await _supabase
@@ -120,12 +119,10 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
 
       double walletBalance = (studentData['wallet_balance'] ?? 0).toDouble();
 
-      // 🚨 Separate the wallet into active Credit vs Past Arrears
       double availableCredit = walletBalance > 0 ? walletBalance : 0.0;
       double totalDebt = 0.0;
       List<Map<String, dynamic>> options = [];
 
-      // 1. ADD PAST ARREARS TO DEBT
       if (walletBalance < 0) {
         double arrearsOwed = walletBalance.abs();
         options.add({
@@ -172,7 +169,6 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
           .eq('academic_session', _globalSession)
           .eq('school_id', _schoolId!);
 
-      // 2. CALCULATE CURRENT FEES WITH WALLET OFFSET
       for (var fee in applicableFees) {
         String feeId = fee['id'].toString();
         String feeName = fee['fee_name'].toString();
@@ -186,9 +182,11 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
               _globalTerm == 'All Terms') {
             String txFeeId = (tx['fee_id'] ?? '').toString();
             String txCategory = (tx['category'] ?? '').toString();
+            
+            // 🚨 CRITICAL BUG FIX: Smart, forgiving string match prevents fake debts!
             if (txFeeId.isNotEmpty && txFeeId == feeId) {
               paidAmt += (tx['amount'] ?? 0).toDouble();
-            } else if (txFeeId.isEmpty && txCategory == feeName) {
+            } else if (txCategory.toLowerCase().trim() == feeName.toLowerCase().trim()) {
               paidAmt += (tx['amount'] ?? 0).toDouble();
             }
           }
@@ -197,13 +195,12 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
         double remaining = expectedAmt - paidAmt;
 
         if (remaining > 0) {
-          // 🚨 THE MAGIC: Absorb available credit into this invoice!
           if (availableCredit >= remaining) {
             availableCredit -= remaining;
-            remaining = 0; // Fully covered by wallet!
+            remaining = 0;
           } else if (availableCredit > 0) {
             remaining -= availableCredit;
-            availableCredit = 0; // Wallet credit exhausted
+            availableCredit = 0;
           }
 
           if (remaining > 0) {
@@ -433,8 +430,9 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // 🚨 UI FIX: Pure Material Matte Backgrounds
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
     Color primaryColor = Theme.of(context).primaryColor;
 
@@ -446,50 +444,42 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
     }
 
     Widget mainContent = SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
+      padding: const EdgeInsets.symmetric(
+        vertical: 30,
+      ), 
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_selectedStudent == null) ...[
-            _buildLabel("SEARCH STUDENT", isDark, primaryColor),
-            TextField(
-              controller: _searchController,
-              onChanged: _searchStudent,
-              style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
-              decoration: _inputStyle(
-                "Type name or admission number...",
-                Icons.person_search_rounded,
-                isDark,
-                primaryColor,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: _buildLabel("SEARCH STUDENT", isDark, primaryColor),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: TextField(
+                controller: _searchController,
+                onChanged: _searchStudent,
+                style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
+                decoration: _inputStyle(
+                  "Type name or admission number...",
+                  Icons.person_search_rounded,
+                  isDark,
+                  primaryColor,
+                ),
               ),
             ),
+            const SizedBox(height: 12),
 
             if (_searchResults.isNotEmpty)
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isDark ? Colors.white10 : Colors.grey.shade200,
-                    width: 1.5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 15,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: Column(
-                    children: _searchResults.map((s) {
-                      return ListTile(
+              Column(
+                children: _searchResults.map((s) {
+                  return Column(
+                    children: [
+                      ListTile(
                         contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 8,
+                          horizontal: 24,
+                          vertical: 4,
                         ),
                         leading: CircleAvatar(
                           backgroundColor: primaryColor.withValues(alpha: 0.1),
@@ -517,108 +507,98 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
                         ),
                         trailing: Icon(
                           Icons.chevron_right_rounded,
-                          color: Colors.grey.shade300,
+                          color: Colors.grey.shade400,
                         ),
                         onTap: () => _onStudentSelected(s),
-                      );
-                    }).toList(),
-                  ),
-                ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 88, right: 24),
+                        child: Divider(
+                          height: 1,
+                          color: isDark ? Colors.white10 : Colors.grey.shade200,
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
               ),
 
             if (_searchController.text.isEmpty &&
                 _activeClasses.isNotEmpty) ...[
               const SizedBox(height: 35),
-              _buildLabel("OR BROWSE BY CLASS", isDark, primaryColor),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 2.2,
-                ),
-                itemCount: _activeClasses.length,
-                itemBuilder: (ctx, i) {
-                  final c = _activeClasses[i];
-                  return InkWell(
-                    onTap: () => _showClassRoster(c, primaryColor, isDark),
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: cardColor,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isDark ? Colors.white10 : Colors.grey.shade200,
-                          width: 1.5,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: _buildLabel("OR BROWSE BY CLASS", isDark, primaryColor),
+              ),
+              const SizedBox(height: 8),
+
+              // 🚨 UI FIX: Flat ListTiles
+              Column(
+                children: _activeClasses.map((c) {
+                  return Column(
+                    children: [
+                      ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 4,
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.02),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
+                        leading: CircleAvatar(
+                          backgroundColor: primaryColor.withValues(alpha: 0.1),
+                          child: Icon(
                             Icons.class_rounded,
-                            color: primaryColor.withValues(alpha: 0.7),
+                            color: primaryColor,
                             size: 20,
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              c['name'],
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                color: textColor,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                        ),
+                        title: Text(
+                          c['name'],
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: textColor,
                           ),
-                        ],
+                        ),
+                        trailing: Icon(
+                          Icons.chevron_right_rounded,
+                          color: Colors.grey.shade400,
+                        ),
+                        onTap: () => _showClassRoster(c, primaryColor, isDark),
                       ),
-                    ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 88, right: 24),
+                        child: Divider(
+                          height: 1,
+                          color: isDark ? Colors.white10 : Colors.grey.shade200,
+                        ),
+                      ),
+                    ],
                   );
-                },
+                }).toList(),
               ),
             ],
           ],
 
           if (_selectedStudent != null) ...[
-            _buildBalanceCard(primaryColor, isDark),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: _buildBalanceCard(primaryColor, isDark),
+            ),
             const SizedBox(height: 35),
-            _buildLabel("PAYMENT DETAILS", isDark, primaryColor),
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: isDark ? Colors.white10 : Colors.grey.shade200,
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.02),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: _buildLabel("PAYMENT DETAILS", isDark, primaryColor),
+            ),
+
+            // 🚨 UI FIX: Stripped the shadowed container. Inputs sit cleanly on background
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Column(
                 children: [
                   DropdownButtonFormField<String>(
                     initialValue: _selectedCategory,
                     isExpanded: true,
                     dropdownColor: isDark
-                        ? const Color(0xFF2C2C2C)
+                        ? const Color(0xFF1E1E1E)
                         : Colors.white,
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
@@ -671,7 +651,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
                   DropdownButtonFormField<String>(
                     initialValue: _paymentMethod,
                     dropdownColor: isDark
-                        ? const Color(0xFF2C2C2C)
+                        ? const Color(0xFF1E1E1E)
                         : Colors.white,
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
@@ -693,39 +673,42 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
               ),
             ),
             const SizedBox(height: 35),
-            SizedBox(
-              width: double.infinity,
-              height: 60,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.green.shade600,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: SizedBox(
+                width: double.infinity,
+                height: 60,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.green.shade600,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
-                ),
-                onPressed: (_isProcessing || _selectedCategory == null)
-                    ? null
-                    : _processPayment,
-                icon: _isProcessing
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: TridetaLoader(color: Colors.white),
-                      )
-                    : const Icon(
-                        Icons.check_circle_rounded,
-                        color: Colors.white,
-                      ),
-                label: Text(
-                  _selectedCategory == null
-                      ? "FEES COMPLETED"
-                      : "PROCESS PAYMENT",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    letterSpacing: 1.0,
+                  onPressed: (_isProcessing || _selectedCategory == null)
+                      ? null
+                      : _processPayment,
+                  icon: _isProcessing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: TridetaLoader(color: Colors.white),
+                        )
+                      : const Icon(
+                          Icons.check_circle_rounded,
+                          color: Colors.white,
+                        ),
+                  label: Text(
+                    _selectedCategory == null
+                        ? "FEES COMPLETED"
+                        : "PROCESS PAYMENT",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      letterSpacing: 1.0,
+                    ),
                   ),
                 ),
               ),
@@ -805,17 +788,6 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: primaryColor.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.2),
-          width: 1.5,
-        ),
       ),
       child: Stack(
         children: [
@@ -926,6 +898,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
     );
   }
 
+  // 🚨 UI FIX: Borderless, highly-rounded modern inputs
   InputDecoration _inputStyle(
     String label,
     IconData icon,
@@ -938,17 +911,11 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
       prefixIcon: Icon(icon, color: pColor, size: 20),
       filled: true,
       fillColor: isDark
-          ? Colors.white.withValues(alpha: 0.03)
-          : Colors.grey.shade50,
+          ? Colors.white.withValues(alpha: 0.05)
+          : Colors.grey.shade100,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide.none,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
@@ -1005,15 +972,17 @@ class _ClassRosterSheetState extends State<_ClassRosterSheet> {
 
   @override
   Widget build(BuildContext context) {
-    Color cardColor = widget.isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color textColor = widget.isDark ? Colors.white : const Color(0xFF1A1A2E);
+
+    // 🚨 UI FIX: Pure Material Matte Backgrounds
+    Color bgColor = widget.isDark
+        ? const Color(0xFF121212)
+        : const Color(0xFFF8FAFC);
 
     return Container(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
       decoration: BoxDecoration(
-        color: widget.isDark
-            ? const Color(0xFF121212)
-            : const Color(0xFFF8FAFC),
+        color: bgColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
       ),
       child: Column(
@@ -1052,65 +1021,63 @@ class _ClassRosterSheetState extends State<_ClassRosterSheet> {
                       style: TextStyle(color: Colors.grey.shade500),
                     ),
                   )
+                // 🚨 UI FIX: Removed heavy container borders to yield flat indented ListTiles
                 : ListView.builder(
                     shrinkWrap: true,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 10,
-                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                     itemCount: _students.length,
                     itemBuilder: (ctx, i) {
                       final s = _students[i];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: cardColor,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: widget.isDark
-                                ? Colors.white10
-                                : Colors.grey.shade200,
-                            width: 1.5,
-                          ),
-                        ),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 8,
-                          ),
-                          leading: CircleAvatar(
-                            backgroundColor: widget.primaryColor.withValues(
-                              alpha: 0.1,
+                      return Column(
+                        children: [
+                          ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 8,
                             ),
-                            child: Text(
-                              s['first_name'][0].toUpperCase(),
-                              style: TextStyle(
-                                color: widget.primaryColor,
-                                fontWeight: FontWeight.bold,
+                            leading: CircleAvatar(
+                              backgroundColor: widget.primaryColor.withValues(
+                                alpha: 0.1,
+                              ),
+                              child: Text(
+                                s['first_name'][0].toUpperCase(),
+                                style: TextStyle(
+                                  color: widget.primaryColor,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
+                            title: Text(
+                              "${s['first_name']} ${s['last_name']}",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: textColor,
+                              ),
+                            ),
+                            subtitle: Text(
+                              s['admission_no'] ?? 'NO ID',
+                              style: TextStyle(
+                                color: Colors.grey.shade500,
+                                fontSize: 12,
+                              ),
+                            ),
+                            trailing: Icon(
+                              Icons.arrow_forward_ios_rounded,
+                              color: widget.primaryColor,
+                              size: 16,
+                            ),
+                            onTap: () => widget.onStudentSelected(s),
                           ),
-                          title: Text(
-                            "${s['first_name']} ${s['last_name']}",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: textColor,
+                          Padding(
+                            padding: const EdgeInsets.only(left: 88, right: 24),
+                            child: Divider(
+                              height: 1,
+                              color: widget.isDark
+                                  ? Colors.white10
+                                  : Colors.grey.shade200,
                             ),
                           ),
-                          subtitle: Text(
-                            s['admission_no'] ?? 'NO ID',
-                            style: TextStyle(
-                              color: Colors.grey.shade500,
-                              fontSize: 12,
-                            ),
-                          ),
-                          trailing: Icon(
-                            Icons.arrow_forward_ios_rounded,
-                            color: widget.primaryColor,
-                            size: 16,
-                          ),
-                          onTap: () => widget.onStudentSelected(s),
-                        ),
+                        ],
                       );
                     },
                   ),

@@ -2,7 +2,7 @@ import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// 🚨 IMPORT: Pulls in all separated UI components!
+// 🚨 IMPORT: Properly pulls in all separated UI components!
 import 'components/student_desktop_header.dart';
 import 'components/student_mobile_header.dart';
 import 'components/student_controls_bar.dart';
@@ -261,6 +261,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   void _showPromotionDialog(Color primaryColor) {
     String? selectedTargetClass;
     bool isProcessing = false;
+    String confirmText = "";
 
     List<String> validTargetClasses = List.from(_officialClassOrder);
     validTargetClasses.addAll(["Graduated", "Withdrawn", "Expelled"]);
@@ -282,9 +283,36 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
-                    "Select the new target class for the selected students. This will update their current active class immediately.",
-                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.orange.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.orange,
+                          size: 20,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            "Moving the student will automatically make them a member of the reassigned class. They will inherit everything just like a newly admitted student to that class.",
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.orange,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 20),
                   DropdownButtonFormField<String>(
@@ -301,6 +329,26 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                     onChanged: (val) =>
                         setDialogState(() => selectedTargetClass = val),
                   ),
+                  const SizedBox(height: 16),
+
+                  TextField(
+                    onChanged: (val) => setDialogState(() => confirmText = val),
+                    decoration: InputDecoration(
+                      labelText: "Type CONFIRM to continue",
+                      labelStyle: TextStyle(color: Colors.red.shade300),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                          color: Colors.red,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                  ),
+
                   if (isProcessing)
                     const Padding(
                       padding: EdgeInsets.only(top: 20.0),
@@ -325,7 +373,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    onPressed: selectedTargetClass == null
+                    onPressed:
+                        (selectedTargetClass == null ||
+                            confirmText != "CONFIRM")
                         ? null
                         : () async {
                             setDialogState(() => isProcessing = true);
@@ -399,110 +449,90 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   }
 
   // ===========================================================================
-  // 🚨 UI BUILDERS
+  // 🚨 UI BUILDERS (WHATSAPP-STYLE LIST TILES)
   // ===========================================================================
 
-  Widget _buildClassCard(
+  Widget _buildClassListItem(
     String className,
     int count,
     String formMaster,
     Color primaryColor,
     bool isDark,
-    Color cardColor,
   ) {
-    return Container(
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedClassFilter = className;
+          _searchQuery = "";
+        });
+        _filterAndSortStudents();
+      },
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 8,
+            ),
+            leading: CircleAvatar(
+              radius: 26,
+              backgroundColor: primaryColor.withValues(alpha: 0.1),
+              child: Icon(Icons.groups_rounded, color: primaryColor, size: 28),
+            ),
+            title: Text(
+              className,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            subtitle: Row(
+              children: [
+                Icon(
+                  Icons.person_outline_rounded,
+                  size: 14,
+                  color: Colors.grey.shade500,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    formMaster,
+                    style: TextStyle(
+                      color: Colors.grey.shade500,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 13,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            trailing: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  "$count",
+                  style: TextStyle(
+                    color: primaryColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  "Students",
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 76, right: 20),
+            child: Divider(
+              height: 1,
+              color: isDark ? Colors.white10 : Colors.grey.shade200,
+            ),
           ),
         ],
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: () {
-          setState(() {
-            _selectedClassFilter = className;
-            _searchQuery = "";
-          });
-          _filterAndSortStudents();
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: primaryColor.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.class_rounded,
-                      color: primaryColor,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      className,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Text(
-                "$count Students",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Icon(
-                    Icons.person_outline_rounded,
-                    size: 14,
-                    color: Colors.grey.shade500,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      formMaster,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade500,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -512,7 +542,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color primaryColor = Theme.of(context).primaryColor;
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
 
     bool isDesktop = MediaQuery.of(context).size.width > 800;
     double horizontalPadding = isDesktop ? 30.0 : 16.0;
@@ -539,36 +568,75 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
 
     Widget rosterContent = CustomScrollView(
       slivers: [
-        // ─── MODULAR TOP HEADER ───
-        SliverPadding(
-          padding: EdgeInsets.fromLTRB(
-            horizontalPadding,
-            horizontalPadding,
-            horizontalPadding,
-            16.0,
-          ),
-          sliver: SliverToBoxAdapter(
-            child: totalStudents == 0
-                ? const SizedBox.shrink()
-                : (isDesktop
-                      ? StudentDesktopHeader(
-                          primaryColor: primaryColor,
-                          isDark: isDark,
-                          totalStudents: totalStudents,
-                          maleCount: maleCount,
-                          femaleCount: femaleCount,
-                          onRefresh: _fetchStudents,
-                        )
-                      : StudentMobileHeader(
-                          primaryColor: primaryColor,
-                          isDark: isDark,
-                          totalStudents: totalStudents,
-                          maleCount: maleCount,
-                          femaleCount: femaleCount,
-                          onRefresh: _fetchStudents,
-                        )),
+        // ─── 1. GLOBAL STICKY CONTROLS (MOVED TO THE ABSOLUTE TOP) ───
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: StickyControlsDelegate(
+            bgColor: bgColor,
+            height: isDesktop ? 80.0 : 170.0,
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+            child: StudentControlsBar(
+              primaryColor: primaryColor,
+              isDark: isDark,
+              isDesktop: isDesktop,
+              searchQuery: _searchQuery,
+              selectedClassFilter: _selectedClassFilter,
+              selectedSort: _selectedSort,
+              availableClasses: _availableClasses,
+              onSearchChanged: (val) {
+                setState(() => _searchQuery = val);
+                _filterAndSortStudents();
+              },
+              onClassChanged: (newValue) {
+                if (newValue != null) {
+                  setState(() {
+                    _selectedClassFilter = newValue;
+                    _isSelecting = false;
+                    _selectedStudentIds.clear();
+                  });
+                  _filterAndSortStudents();
+                }
+              },
+              onSortChanged: (newValue) {
+                if (newValue != null) {
+                  setState(() => _selectedSort = newValue);
+                  _filterAndSortStudents();
+                }
+              },
+            ),
           ),
         ),
+
+        // ─── 2. MODULAR TOP HEADER (STATS & QUICK ACTIONS) ───
+        // Only displays when the global "All Classes" view is active AND the admin is not actively typing a search query
+        if (_selectedClassFilter == 'All Classes' && _searchQuery.isEmpty)
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              10.0, // Reduced top padding since it's now under the search bar
+              horizontalPadding,
+              16.0,
+            ),
+            sliver: SliverToBoxAdapter(
+              child: isDesktop
+                  ? StudentDesktopHeader(
+                      primaryColor: primaryColor,
+                      isDark: isDark,
+                      totalStudents: totalStudents,
+                      maleCount: maleCount,
+                      femaleCount: femaleCount,
+                      onRefresh: _fetchStudents,
+                    )
+                  : StudentMobileHeader(
+                      primaryColor: primaryColor,
+                      isDark: isDark,
+                      totalStudents: totalStudents,
+                      maleCount: maleCount,
+                      femaleCount: femaleCount,
+                      onRefresh: _fetchStudents,
+                    ),
+            ),
+          ),
 
         if (_isLoading)
           SliverToBoxAdapter(
@@ -577,224 +645,179 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
               child: Center(child: TridetaLoader(color: primaryColor)),
             ),
           )
-        // ─── STATE 1: CLASS ROSTER GRID ───
-        else if (_selectedClassFilter == 'All Classes') ...[
-          SliverPadding(
-            padding: EdgeInsets.symmetric(
-              horizontal: horizontalPadding,
-              vertical: 10,
-            ),
-            sliver: SliverToBoxAdapter(
-              child: Text(
-                "Select a Class to View Roster",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  color: Colors.grey.shade500,
-                  letterSpacing: 1.2,
-                ),
-              ),
-            ),
-          ),
-          SliverPadding(
-            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-            sliver: SliverGrid(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: isDesktop ? 3 : 2,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                childAspectRatio: isDesktop ? 1.5 : 1.1,
-              ),
-              delegate: SliverChildBuilderDelegate((context, index) {
-                String className = classesToShow[index];
-                int count;
-                if (className == 'Unassigned') {
-                  count = unassignedCount;
-                } else {
-                  count = _allStudentsUnfiltered
-                      .where((s) => s['class_level'] == className)
-                      .length;
-                }
-                String formMaster = _formMasters[className] ?? 'No Form Master';
-
-                return _buildClassCard(
-                  className,
-                  count,
-                  formMaster,
-                  primaryColor,
-                  isDark,
-                  cardColor,
-                );
-              }, childCount: classesToShow.length),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 50)),
-        ]
-        // ─── STATE 2: STUDENT DRILL-DOWN LIST ───
         else ...[
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: horizontalPadding,
-                vertical: 10,
-              ),
-              child: Row(
-                children: [
-                  InkWell(
-                    onTap: () {
-                      setState(() {
-                        _selectedClassFilter = 'All Classes';
-                        _searchQuery = "";
-                        _isSelecting = false;
-                        _selectedStudentIds.clear();
-                      });
-                      _filterAndSortStudents();
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: primaryColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.arrow_back_rounded,
-                            color: primaryColor,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            "Back to Classes",
-                            style: TextStyle(
-                              color: primaryColor,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 15),
-                  Expanded(
-                    child: Text(
-                      "$_selectedClassFilter Roster",
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 18,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // ─── MODULAR STICKY CONTROLS ───
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: StickyControlsDelegate(
-              bgColor: bgColor,
-              height: isDesktop ? 80.0 : 170.0,
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-              child: StudentControlsBar(
-                primaryColor: primaryColor,
-                isDark: isDark,
-                isDesktop: isDesktop,
-                searchQuery: _searchQuery,
-                selectedClassFilter: _selectedClassFilter,
-                selectedSort: _selectedSort,
-                availableClasses: _availableClasses,
-                onSearchChanged: (val) {
-                  setState(() => _searchQuery = val);
-                  _filterAndSortStudents();
-                },
-                onClassChanged: (newValue) {
-                  if (newValue != null) {
-                    setState(() {
-                      _selectedClassFilter = newValue;
-                      _isSelecting = false;
-                      _selectedStudentIds.clear();
-                    });
-                    _filterAndSortStudents();
-                  }
-                },
-                onSortChanged: (newValue) {
-                  if (newValue != null) {
-                    setState(() => _selectedSort = newValue);
-                    _filterAndSortStudents();
-                  }
-                },
-              ),
-            ),
-          ),
-
-          // ─── MODULAR STUDENT LIST CARDS ───
-          SliverPadding(
-            padding: EdgeInsets.only(
-              left: horizontalPadding,
-              right: horizontalPadding,
-              bottom: horizontalPadding,
-            ),
-            sliver: _students.isEmpty
-                ? SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 50.0),
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+          // ─── 3. BACK BUTTON (Only when drilled into a specific class) ───
+          if (_selectedClassFilter != 'All Classes')
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: horizontalPadding,
+                  vertical: 10,
+                ),
+                child: Row(
+                  children: [
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          _selectedClassFilter = 'All Classes';
+                          _searchQuery = "";
+                          _isSelecting = false;
+                          _selectedStudentIds.clear();
+                        });
+                        _filterAndSortStudents();
+                      },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: primaryColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
                           children: [
                             Icon(
-                              Icons.search_off_rounded,
-                              size: 80,
-                              color: Colors.grey.shade300,
+                              Icons.arrow_back_rounded,
+                              color: primaryColor,
+                              size: 16,
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(width: 8),
                             Text(
-                              _searchQuery.isEmpty
-                                  ? "No Students in this class"
-                                  : "No Students Found",
+                              "Back to Classes",
                               style: TextStyle(
-                                fontSize: 18,
+                                color: primaryColor,
                                 fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.white : Colors.black87,
+                                fontSize: 12,
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            if (_searchQuery.isNotEmpty)
-                              Text(
-                                "Try adjusting your search.",
-                                style: TextStyle(color: Colors.grey.shade500),
-                              ),
                           ],
                         ),
                       ),
                     ),
-                  )
-                : SliverList(
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      return StudentListCard(
-                        student: _students[index],
-                        isDark: isDark,
-                        primaryColor: primaryColor,
-                        isSelected: _selectedStudentIds.contains(
-                          _students[index]['id'],
+                    const SizedBox(width: 15),
+                    Expanded(
+                      child: Text(
+                        "$_selectedClassFilter Roster",
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 18,
+                          color: isDark ? Colors.white : Colors.black87,
                         ),
-                        isSelecting: _isSelecting,
-                        onToggleSelection: _toggleSelection,
-                        onRefresh: _fetchStudents,
-                      );
-                    }, childCount: _students.length),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // ─── STATE 1: CLASS ROSTER LIST (No Global Search & No Class Selected) ───
+          if (_selectedClassFilter == 'All Classes' &&
+              _searchQuery.isEmpty) ...[
+            SliverPadding(
+              padding: EdgeInsets.symmetric(
+                horizontal: horizontalPadding,
+                vertical: 10,
+              ),
+              sliver: SliverToBoxAdapter(
+                child: Text(
+                  "Select a Class to View Roster",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: Colors.grey.shade500,
+                    letterSpacing: 1.2,
                   ),
-          ),
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: EdgeInsets.zero,
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  String className = classesToShow[index];
+                  int count;
+                  if (className == 'Unassigned') {
+                    count = unassignedCount;
+                  } else {
+                    count = _allStudentsUnfiltered
+                        .where((s) => s['class_level'] == className)
+                        .length;
+                  }
+                  String formMaster =
+                      _formMasters[className] ?? 'No Form Master';
+
+                  return _buildClassListItem(
+                    className,
+                    count,
+                    formMaster,
+                    primaryColor,
+                    isDark,
+                  );
+                }, childCount: classesToShow.length),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 50)),
+          ]
+          // ─── STATE 2: STUDENT LIST (Global Search Results OR Class Drill-Down) ───
+          else ...[
+            SliverPadding(
+              padding: const EdgeInsets.only(bottom: 50.0),
+              sliver: _students.isEmpty
+                  ? SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 50.0),
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.search_off_rounded,
+                                size: 80,
+                                color: Colors.grey.shade300,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _searchQuery.isEmpty
+                                    ? "No Students in this class"
+                                    : "No Students Found",
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.white : Colors.black87,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              if (_searchQuery.isNotEmpty)
+                                Text(
+                                  "Try adjusting your search.",
+                                  style: TextStyle(color: Colors.grey.shade500),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                  : SliverList(
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        return StudentListCard(
+                          student: _students[index],
+                          isDark: isDark,
+                          primaryColor: primaryColor,
+                          isSelected: _selectedStudentIds.contains(
+                            _students[index]['id'],
+                          ),
+                          isSelecting: _isSelecting,
+                          onToggleSelection: _toggleSelection,
+                          onRefresh: _fetchStudents,
+                        );
+                      }, childCount: _students.length),
+                    ),
+            ),
+          ],
         ],
       ],
     );

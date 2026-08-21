@@ -560,7 +560,6 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                   ),
                 ),
               ),
-              // 🚨 NEWLY ADDED END OF TERM PROCESSING LINK
               _buildSettingsItem(
                 title: "End of Term Proceedings",
                 subtitle: "Process term closures & freeze data",
@@ -574,7 +573,6 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                   ),
                 ),
               ),
-              // 🚨 EXISTING END OF YEAR PROCESSING LINK
               _buildSettingsItem(
                 title: "End of Year Proceedings",
                 subtitle: "Promote students & graduate seniors",
@@ -800,6 +798,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
     );
   }
 
+  // 🚨 UI FIX: Replaced heavy shadow/border container with a sleek, flat ListTile and Divider
   Widget _buildSettingsItem({
     required String title,
     String? subtitle,
@@ -809,54 +808,58 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
     required VoidCallback onTap,
     Widget? trailing,
   }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.grey.shade200,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.01),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+
+    return InkWell(
+      onTap: onTap,
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 4,
+            ),
+            leading: CircleAvatar(
+              radius: 24,
+              backgroundColor: color.withValues(alpha: 0.12),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            title: Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: textColor,
+              ),
+            ),
+            subtitle: subtitle != null
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.white54 : Colors.grey[600],
+                      ),
+                    ),
+                  )
+                : null,
+            trailing:
+                trailing ??
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 24,
+                  color: Colors.grey.shade400,
+                ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 64, right: 8),
+            child: Divider(
+              height: 1,
+              color: isDark ? Colors.white10 : Colors.grey.shade200,
+            ),
           ),
         ],
-      ),
-      child: ListTile(
-        onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: color, size: 24),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-        ),
-        subtitle: subtitle != null
-            ? Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: isDark ? Colors.white54 : Colors.grey[600],
-                ),
-              )
-            : null,
-        trailing:
-            trailing ??
-            Icon(
-              Icons.chevron_right,
-              color: isDark ? Colors.white30 : Colors.grey[400],
-            ),
       ),
     );
   }
@@ -1163,40 +1166,53 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
-            Container(
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.05)
-                      : Colors.grey.shade200,
+            // 🚨 UI FIX: Replaced heavy shadow box with edge-to-edge WhatsApp style
+            Column(
+              children: [
+                SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  title: Text(
+                    "Biometric Login",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: isDark ? Colors.white : const Color(0xFF1A1A2E),
+                    ),
+                  ),
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      "Use fingerprint or face to login quickly",
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.white54 : Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                  secondary: CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Colors.green.withValues(alpha: 0.12),
+                    child: const Icon(
+                      Icons.fingerprint,
+                      color: Colors.green,
+                      size: 24,
+                    ),
+                  ),
+                  activeThumbColor: dynamicPrimaryColor,
+                  value: _isBiometricEnabled,
+                  onChanged: _toggleBiometrics,
                 ),
-              ),
-              child: SwitchListTile(
-                title: const Text(
-                  "Biometric Login",
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Text(
-                  "Use fingerprint or face to login quickly",
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.white54 : Colors.grey[600],
+                Padding(
+                  padding: const EdgeInsets.only(left: 64, right: 8),
+                  child: Divider(
+                    height: 1,
+                    color: isDark ? Colors.white10 : Colors.grey.shade200,
                   ),
                 ),
-                secondary: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.fingerprint, color: Colors.green),
-                ),
-                activeThumbColor: dynamicPrimaryColor,
-                value: _isBiometricEnabled,
-                onChanged: _toggleBiometrics,
-              ),
+              ],
             ),
           ],
         ],
@@ -1204,6 +1220,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
     );
   }
 
+  // 🚨 UI FIX: Replaced heavy shadow/border container with a sleek, flat ListTile and Divider
   Widget _buildSettingsItem({
     required String title,
     String? subtitle,
@@ -1213,54 +1230,58 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
     required VoidCallback onTap,
     Widget? trailing,
   }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.grey.shade200,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.01),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+
+    return InkWell(
+      onTap: onTap,
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 4,
+            ),
+            leading: CircleAvatar(
+              radius: 24,
+              backgroundColor: color.withValues(alpha: 0.12),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            title: Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: textColor,
+              ),
+            ),
+            subtitle: subtitle != null
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.white54 : Colors.grey[600],
+                      ),
+                    ),
+                  )
+                : null,
+            trailing:
+                trailing ??
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 24,
+                  color: Colors.grey.shade400,
+                ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 64, right: 8),
+            child: Divider(
+              height: 1,
+              color: isDark ? Colors.white10 : Colors.grey.shade200,
+            ),
           ),
         ],
-      ),
-      child: ListTile(
-        onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: color, size: 24),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-        ),
-        subtitle: subtitle != null
-            ? Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: isDark ? Colors.white54 : Colors.grey[600],
-                ),
-              )
-            : null,
-        trailing:
-            trailing ??
-            Icon(
-              Icons.chevron_right,
-              color: isDark ? Colors.white30 : Colors.grey[400],
-            ),
       ),
     );
   }

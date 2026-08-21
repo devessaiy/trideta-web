@@ -10,7 +10,10 @@ class ProfileHeroHeader extends StatelessWidget {
   final Color primaryColor;
   final Color cardColor;
   final bool isDark;
-  final bool isDesktop; // 🚨 Receives the Desktop flag here!
+  final bool isDesktop;
+
+  // 🚨 UI FIX: Added callback to allow the preview/edit dialog
+  final VoidCallback? onImageTap;
 
   const ProfileHeroHeader({
     super.key,
@@ -23,117 +26,78 @@ class ProfileHeroHeader extends StatelessWidget {
     required this.cardColor,
     required this.isDark,
     required this.isDesktop,
+    this.onImageTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    // 🚨 UI FIX: Completely flattened the header, vertically stacked matching WhatsApp
     return Container(
-      // 🚨 Smart Layout: Clean card on Desktop, Edge-to-Edge gradient on Mobile
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
-      decoration: isDesktop
-          ? BoxDecoration(
-              color: cardColor,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isDark ? Colors.white10 : Colors.grey.shade200,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            )
-          : BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  primaryColor.withValues(alpha: 0.05),
-                  Colors.transparent,
-                ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-              border: Border(
-                bottom: BorderSide(
-                  color: isDark ? Colors.white10 : Colors.grey.shade200,
-                ),
-              ),
-            ),
-      child: Row(
+      width: double.infinity,
+      padding: const EdgeInsets.only(top: 20, bottom: 30),
+      color: cardColor,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Hero(
-            tag: id,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: primaryColor.withValues(alpha: 0.3),
-                  width: 2,
+          GestureDetector(
+            onTap: onImageTap,
+            child: Hero(
+              tag: id,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: primaryColor.withValues(alpha: 0.3),
+                    width: 2,
+                  ),
                 ),
-              ),
-              child: CircleAvatar(
-                radius: 40,
-                backgroundColor: primaryColor.withValues(alpha: 0.1),
-                backgroundImage: (displayImagePath.isNotEmpty)
-                    ? (displayImagePath.startsWith('http')
-                          ? NetworkImage(displayImagePath)
-                          : FileImage(File(displayImagePath)) as ImageProvider)
-                    : null,
-                child: (displayImagePath.isEmpty)
-                    ? Icon(Icons.person_rounded, size: 40, color: primaryColor)
-                    : null,
+                child: CircleAvatar(
+                  radius: 65, // Massive WhatsApp-style avatar
+                  backgroundColor: primaryColor.withValues(alpha: 0.1),
+                  backgroundImage: (displayImagePath.isNotEmpty)
+                      ? (displayImagePath.startsWith('http')
+                            ? NetworkImage(displayImagePath)
+                            : FileImage(File(displayImagePath))
+                                  as ImageProvider)
+                      : null,
+                  child: (displayImagePath.isEmpty)
+                      ? Icon(
+                          Icons.person_rounded,
+                          size: 50,
+                          color: primaryColor,
+                        )
+                      : null,
+                ),
               ),
             ),
           ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  displayName,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: primaryColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        studentClass,
-                        style: TextStyle(
-                          color: primaryColor,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      admissionNo != null ? "ID: $admissionNo" : "Loading...",
-                      style: TextStyle(
-                        color: Colors.grey.shade500,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+          const SizedBox(height: 16),
+          Text(
+            displayName,
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -0.5,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            "$studentClass  •  ID: ${admissionNo ?? 'N/A'}",
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade500,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            "Tap photo to preview or change",
+            style: TextStyle(
+              fontSize: 11,
+              color: primaryColor,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],

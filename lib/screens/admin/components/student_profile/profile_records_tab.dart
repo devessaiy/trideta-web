@@ -19,91 +19,57 @@ class ProfileRecordsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 100),
-      child: Container(
-        padding: const EdgeInsets.all(30),
-        decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
+    // 🚨 UI FIX: Pure Flat ListView Structure
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 100),
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(24, 24, 24, 8),
+          child: Text(
+            "DOCUMENTS & EXPORTS",
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+              color: Colors.grey,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 8,
+          ),
+          leading: const Icon(
+            Icons.picture_as_pdf_rounded,
+            color: Colors.redAccent,
+            size: 28,
+          ),
+          title: const Text(
+            "Comprehensive Dossier",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          subtitle: Text(
+            "Generate historic results & biodata",
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+          ),
+          trailing: isGeneratingRecord
+              ? SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: TridetaLoader(color: primaryColor),
+                )
+              : Icon(Icons.download_rounded, color: primaryColor),
+          onTap: isGeneratingRecord ? null : onGenerateTap,
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 72, right: 24),
+          child: Divider(
+            height: 1,
             color: isDark ? Colors.white10 : Colors.grey.shade200,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
         ),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: primaryColor.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.assignment_ind_rounded,
-                size: 60,
-                color: primaryColor,
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              "Comprehensive Student Dossier",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              "Generate a complete, printable PDF record including historic term results, attendance records, and active biodata.",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey.shade500,
-                height: 1.5,
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 30),
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                onPressed: isGeneratingRecord ? null : onGenerateTap,
-                icon: isGeneratingRecord
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: TridetaLoader(color: Colors.white),
-                      )
-                    : const Icon(
-                        Icons.picture_as_pdf_rounded,
-                        color: Colors.white,
-                      ),
-                label: Text(
-                  isGeneratingRecord
-                      ? "PACKAGING FILES..."
-                      : "GENERATE FULL RECORD",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 }

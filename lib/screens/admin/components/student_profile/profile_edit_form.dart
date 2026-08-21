@@ -12,8 +12,7 @@ class ProfileEditForm extends StatelessWidget {
   final TextEditingController dobController;
   final TextEditingController addressController;
 
-  final String
-  studentClass; // 🚨 Added studentClass to evaluate the Department logic
+  final String studentClass;
   final String selectedGender;
   final Function(String) onGenderChanged;
   final String selectedDepartment;
@@ -37,7 +36,7 @@ class ProfileEditForm extends StatelessWidget {
     required this.lastNameController,
     required this.dobController,
     required this.addressController,
-    required this.studentClass, // 🚨 Required here
+    required this.studentClass,
     required this.selectedGender,
     required this.onGenderChanged,
     required this.selectedDepartment,
@@ -53,29 +52,15 @@ class ProfileEditForm extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 🚨 SMART DETECTION: Ensures JSS does not accidentally trigger the SS logic!
     bool isSeniorSecondary =
         studentClass.toUpperCase().contains("SS") &&
         !studentClass.toUpperCase().contains("JSS");
 
+    // 🚨 UI FIX: Flattened background wrapper
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(30),
+      padding: const EdgeInsets.all(24),
       child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isDark ? Colors.white10 : Colors.grey.shade200,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
+        color: cardColor,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -198,7 +183,6 @@ class ProfileEditForm extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
-            // 🚨 CONDITIONAL RENDER: Department logic smoothly integrates here
             if (isSeniorSecondary)
               Row(
                 children: [
@@ -305,6 +289,7 @@ class ProfileEditForm extends StatelessWidget {
     );
   }
 
+  // 🚨 UI FIX: Reverted to borderless matte WhatsApp fields
   Widget _buildTextField(
     TextEditingController ctrl,
     String label,
@@ -330,17 +315,11 @@ class ProfileEditForm extends StatelessWidget {
             : null,
         filled: true,
         fillColor: isDark
-            ? Colors.white.withValues(alpha: 0.03)
-            : Colors.grey.shade50,
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.grey.shade100,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
-            color: isDark ? Colors.white10 : Colors.grey.shade200,
-          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
@@ -363,12 +342,9 @@ class ProfileEditForm extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: isDark
-            ? Colors.white.withValues(alpha: 0.03)
-            : Colors.grey.shade50,
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(

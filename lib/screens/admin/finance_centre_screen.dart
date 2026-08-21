@@ -42,7 +42,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
   }
 
   // ===========================================================================
-  // 🚨 STRICT GLOBAL LOGIC ENGINE
+  // 🚨 STRICT GLOBAL LOGIC ENGINE (CURRENT TERM ONLY)
   // ===========================================================================
   Future<void> _fetchFinanceData() async {
     setState(() => _isLoading = true);
@@ -57,7 +57,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
           .single();
       final schoolId = profile['school_id'];
 
-      // 🚨 1. FETCH GLOBAL ACTIVE SESSION AND TERM
+      // 1. FETCH GLOBAL ACTIVE SESSION AND TERM
       final schoolData = await _supabase
           .from('schools')
           .select('current_session, current_term')
@@ -76,7 +76,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
 
       _officialClasses = classesData.map((c) => c['name'].toString()).toList();
 
-      // 2. FETCH FEE STRUCTURE (STRICTLY GLOBAL)
+      // 2. FETCH FEE STRUCTURE (STRICTLY FILTERED BY ACTIVE TIMELINE)
       final rawFeeData = await _supabase
           .from('fee_structures')
           .select(
@@ -99,7 +99,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
         _activeSessionLabel = "$_currentSession • $_currentTerm".toUpperCase();
       }
 
-      // 3. FETCH TRANSACTIONS (STRICTLY GLOBAL)
+      // 3. FETCH TRANSACTIONS (STRICTLY FILTERED BY ACTIVE TIMELINE)
       final txData = await _supabase
           .from('transactions')
           .select(
@@ -135,11 +135,12 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
         }
       }
 
-      // 4. FETCH STUDENTS & CALCULATE TRUE INDIVIDUAL DEBT
+      // 4. FETCH ACTIVE STUDENTS & CALCULATE TRUE INDIVIDUAL DEBT
       final studentsData = await _supabase
           .from('students')
-          .select('*')
-          .eq('school_id', schoolId);
+          .select('id, class_level, class_id, category, wallet_balance')
+          .eq('school_id', schoolId)
+          .eq('is_active', true);
 
       double totalDebt = 0.0;
 
@@ -148,8 +149,9 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
         String sClass = (student['class_level'] ?? '').toString();
         String sClassId = (student['class_id'] ?? '').toString();
         String sCategory = (student['category'] ?? '').toString();
+        double walletBalance = (student['wallet_balance'] ?? 0).toDouble();
 
-        double studentDebt = 0.0;
+        double activeStudentDebt = 0.0;
 
         for (var fee in feeData) {
           String feeId = fee['id'].toString();
@@ -158,12 +160,19 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
 
           bool classMatch = false;
 
-          if (fee['applicable_class_ids'] != null &&
-              (fee['applicable_class_ids'] as List).isNotEmpty &&
-              sClassId.isNotEmpty) {
-            classMatch = (fee['applicable_class_ids'] as List).contains(
-              sClassId,
-            );
+          final dynamic rawClassIds = fee['applicable_class_ids'];
+          List<dynamic> classIdsList = [];
+          
+          if (rawClassIds is String && rawClassIds.startsWith('[')) {
+             try {
+                 classIdsList = jsonDecode(rawClassIds);
+             } catch(e) {}
+          } else if (rawClassIds is List) {
+             classIdsList = rawClassIds;
+          }
+
+          if (classIdsList.isNotEmpty && sClassId.isNotEmpty) {
+            classMatch = classIdsList.contains(sClassId);
           } else {
             classMatch = _doesItApply(
               fee['applicable_classes'],
@@ -185,19 +194,26 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
 
             double remaining = expectedAmt - paidAmt;
             if (remaining > 0) {
-              studentDebt += remaining;
+              activeStudentDebt += remaining;
             }
           }
         }
 
-        totalDebt += studentDebt;
+        // 🚨 FLAWLESS MATH: Use Wallet ONLY as a credit buffer. 
+        // If the wallet is negative (past debt), it is treated as 0.0 so we strictly calculate CURRENT term debt.
+        double availableCredit = walletBalance > 0 ? walletBalance : 0.0;
+        double finalTrueDebt = activeStudentDebt - availableCredit;
+
+        if (finalTrueDebt > 0) {
+          totalDebt += finalTrueDebt;
+        }
       }
 
       if (mounted) {
         setState(() {
           _isFeesActivated = feeData.isNotEmpty;
           _rawCollected = totalCollected;
-          _rawDebt = totalDebt;
+          _rawDebt = totalDebt; 
           _invoiceCount = validInvoiceCount;
           _isLoading = false;
         });
@@ -213,21 +229,11 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
     }
   }
 
-  // --- THE BUILT-IN TRANSLATOR & MATCHER ---
   String _standardizeClass(String val) {
     String v = val.replaceAll(' ', '').toLowerCase();
-    v = v
-        .replaceAll('one', '1')
-        .replaceAll('two', '2')
-        .replaceAll('three', '3');
-    v = v
-        .replaceAll('four', '4')
-        .replaceAll('five', '5')
-        .replaceAll('six', '6');
-    v = v
-        .replaceAll('seven', '7')
-        .replaceAll('eight', '8')
-        .replaceAll('nine', '9');
+    v = v.replaceAll('one', '1').replaceAll('two', '2').replaceAll('three', '3');
+    v = v.replaceAll('four', '4').replaceAll('five', '5').replaceAll('six', '6');
+    v = v.replaceAll('seven', '7').replaceAll('eight', '8').replaceAll('nine', '9');
     return v;
   }
 
@@ -249,17 +255,6 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
     }
     if (columnData == null) return true;
 
-    String colStr = isCategory
-        ? columnData.toString().replaceAll(' ', '').toLowerCase()
-        : _standardizeClass(columnData.toString());
-
-    if (colStr.isEmpty ||
-        colStr == 'all' ||
-        colStr == '[]' ||
-        colStr == '["all"]') {
-      return true;
-    }
-
     if (columnData is List) {
       if (columnData.isEmpty) return true;
       for (var item in columnData) {
@@ -270,6 +265,17 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
         if (cleanItem == 'all' || cleanItem == cleanStudentData) return true;
       }
       return false;
+    }
+
+    String colStr = isCategory
+        ? columnData.toString().replaceAll(' ', '').toLowerCase()
+        : _standardizeClass(columnData.toString());
+
+    if (colStr.isEmpty ||
+        colStr == 'all' ||
+        colStr == '[]' ||
+        colStr == '["all"]') {
+      return true;
     }
 
     try {
@@ -286,9 +292,6 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
     }
   }
 
-  // ===========================================================================
-  // 🚨 PREMIUM UI (REFINED)
-  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -305,35 +308,39 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
           ? Center(child: TridetaLoader(color: primaryColor))
           : SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.symmetric(vertical: 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildFinanceSnapshot(isDark, currencyFormat, primaryColor),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: _buildFinanceSnapshot(
+                      isDark,
+                      currencyFormat,
+                      primaryColor,
+                    ),
+                  ),
                   const SizedBox(height: 30),
 
                   if (!_isFeesActivated) _buildSetupWarning(isDark),
 
-                  Text(
-                    "FINANCIAL OPERATIONS",
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: Colors.grey.shade500,
-                      fontSize: 12,
-                      letterSpacing: 1.2,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Text(
+                      "FINANCIAL OPERATIONS",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: Colors.grey.shade500,
+                        fontSize: 12,
+                        letterSpacing: 1.2,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 15),
 
-                  GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: 1.1,
+                  Column(
                     children: [
-                      _buildActionCard(
+                      _buildActionTile(
                         context,
                         title: "Record Fee",
                         subtitle: _isFeesActivated
@@ -342,6 +349,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                         icon: Icons.account_balance_wallet_rounded,
                         color: Colors.green.shade600,
                         isLocked: !_isFeesActivated,
+                        isDark: isDark,
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -349,12 +357,13 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                           ),
                         ).then((_) => _fetchFinanceData()),
                       ),
-                      _buildActionCard(
+                      _buildActionTile(
                         context,
                         title: "Fee Structure",
                         subtitle: "Manage pricing",
                         icon: Icons.settings_applications_rounded,
                         color: Colors.orange.shade600,
+                        isDark: isDark,
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -362,12 +371,13 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                           ),
                         ).then((_) => _fetchFinanceData()),
                       ),
-                      _buildActionCard(
+                      _buildActionTile(
                         context,
                         title: "History",
                         subtitle: "Receipt logs",
                         icon: Icons.receipt_long_rounded,
                         color: Colors.blue.shade600,
+                        isDark: isDark,
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -375,12 +385,13 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                           ),
                         ),
                       ),
-                      _buildActionCard(
+                      _buildActionTile(
                         context,
                         title: "Debtors List",
                         subtitle: "Track balances",
                         icon: Icons.person_search_rounded,
                         color: Colors.redAccent,
+                        isDark: isDark,
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -388,12 +399,13 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
                           ),
                         ),
                       ),
-                      _buildActionCard(
+                      _buildActionTile(
                         context,
-                        title: "Close Session",
-                        subtitle: "Archive & Reset",
+                        title: "Financial Archive",
+                        subtitle: "Download financial records",
                         icon: Icons.archive_rounded,
                         color: Colors.deepPurple,
+                        isDark: isDark,
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -467,17 +479,6 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: primaryColor.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.2),
-          width: 1.5,
-        ),
       ),
       child: Stack(
         children: [
@@ -594,7 +595,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
     );
   }
 
-  Widget _buildActionCard(
+  Widget _buildActionTile(
     BuildContext context, {
     required String title,
     required String subtitle,
@@ -602,118 +603,109 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
     required Color color,
     required VoidCallback onTap,
     bool isLocked = false,
+    required bool isDark,
   }) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade100,
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: isLocked ? null : onTap,
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: isLocked
-                        ? Colors.grey.withValues(alpha: 0.1)
-                        : color.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    isLocked ? Icons.lock_outline_rounded : icon,
-                    color: isLocked ? Colors.grey : color,
-                    size: 28,
-                  ),
+    return InkWell(
+      onTap: isLocked ? null : onTap,
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 8,
+            ),
+            leading: CircleAvatar(
+              radius: 24,
+              backgroundColor: isLocked
+                  ? Colors.grey.withValues(alpha: 0.1)
+                  : color.withValues(alpha: 0.12),
+              child: Icon(
+                isLocked ? Icons.lock_outline_rounded : icon,
+                color: isLocked ? Colors.grey : color,
+                size: 24,
+              ),
+            ),
+            title: Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: textColor,
+              ),
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                subtitle,
+                style: TextStyle(
+                  color: isDark ? Colors.white70 : Colors.grey.shade500,
+                  fontSize: 13,
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: textColor,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: isDark ? Colors.white54 : Colors.grey.shade500,
-                    fontSize: 10,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            trailing: Icon(
+              Icons.chevron_right_rounded,
+              size: 24,
+              color: Colors.grey.shade400,
             ),
           ),
-        ),
+          Padding(
+            padding: const EdgeInsets.only(left: 88, right: 24),
+            child: Divider(
+              height: 1,
+              color: isDark ? Colors.white10 : Colors.grey.shade200,
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildSetupWarning(bool isDark) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 25),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.orange.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.orange.withValues(alpha: 0.3),
-          width: 1.5,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.orange.withValues(alpha: 0.2),
-              shape: BoxShape.circle,
-            ),
+    return Column(
+      children: [
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 8,
+          ),
+          leading: CircleAvatar(
+            radius: 24,
+            backgroundColor: Colors.orange.withValues(alpha: 0.1),
             child: const Icon(
               Icons.info_outline_rounded,
               color: Colors.orange,
-              size: 20,
+              size: 24,
             ),
           ),
-          const SizedBox(width: 15),
-          Expanded(
+          title: const Text(
+            "Setup Required",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 4),
             child: Text(
               "Bursary inactive. Add items to the Fee Structure to begin receiving payments.",
               style: TextStyle(
                 fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white70 : Colors.black87,
+                color: isDark ? Colors.white70 : Colors.grey.shade600,
               ),
             ),
           ),
-        ],
-      ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 88, right: 24),
+          child: Divider(
+            height: 1,
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
+        const SizedBox(height: 15),
+      ],
     );
   }
 }

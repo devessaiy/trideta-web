@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
@@ -69,7 +70,70 @@ class _EndOfTermProceedingsScreenState extends State<EndOfTermProceedingsScreen>
     }
   }
 
-  // 🚨 ADDED: Explicit Confirm Dialog before Execution
+  // 🚨 FINANCIAL UTILS
+  String _standardizeClass(String val) {
+    String v = val.replaceAll(' ', '').toLowerCase();
+    v = v
+        .replaceAll('one', '1')
+        .replaceAll('two', '2')
+        .replaceAll('three', '3');
+    v = v
+        .replaceAll('four', '4')
+        .replaceAll('five', '5')
+        .replaceAll('six', '6');
+    v = v
+        .replaceAll('seven', '7')
+        .replaceAll('eight', '8')
+        .replaceAll('nine', '9');
+    return v;
+  }
+
+  bool _doesItApply(
+    dynamic columnData,
+    String studentData, {
+    bool isCategory = false,
+  }) {
+    String cleanStudentData = isCategory
+        ? studentData.replaceAll(' ', '').toLowerCase()
+        : _standardizeClass(studentData);
+    if (isCategory &&
+        (cleanStudentData.isEmpty || cleanStudentData == 'notfound')) {
+      cleanStudentData = 'regular';
+    }
+    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound') {
+      return false;
+    }
+    if (columnData == null) return true;
+
+    if (columnData is String && columnData.startsWith('[')) {
+      try {
+        List<dynamic> parsedList = jsonDecode(columnData);
+        if (parsedList.isEmpty) return true;
+        for (var item in parsedList) {
+          String cleanItem = isCategory
+              ? item.toString().replaceAll(' ', '').toLowerCase()
+              : _standardizeClass(item.toString());
+          if (cleanItem == 'all' || cleanItem == cleanStudentData) return true;
+        }
+        return false;
+      } catch (e) {
+        // Fallback
+      }
+    }
+
+    String colStr = isCategory
+        ? columnData.toString().replaceAll(' ', '').toLowerCase()
+        : _standardizeClass(columnData.toString());
+    if (colStr.isEmpty ||
+        colStr == 'all' ||
+        colStr == '[]' ||
+        colStr == '["all"]') {
+      return true;
+    }
+    return colStr.contains(cleanStudentData);
+  }
+
+  // 🚨 ADVANCEMENT ENGINE
   Future<void> _advanceTerm() async {
     if (!_confirmCheck || _nextTerm == 'End of Year' || _schoolId == null) {
       return;
@@ -139,6 +203,96 @@ class _EndOfTermProceedingsScreenState extends State<EndOfTermProceedingsScreen>
     setState(() => _isAdvancing = true);
 
     try {
+      // =======================================================================
+      // 🚨 FINANCIAL ROLLOVER ENGINE
+      // Converts any unpaid fees for the closing term into perpetual wallet debt.
+      // =======================================================================
+      final studentsData = await _supabase
+          .from('students')
+          .select('id, class_level, class_id, category, wallet_balance')
+          .eq('school_id', _schoolId!);
+      final feesData = await _supabase
+          .from('fee_structures')
+          .select()
+          .eq('school_id', _schoolId!)
+          .eq('academic_session', _currentSession);
+      final txData = await _supabase
+          .from('transactions')
+          .select('student_id, fee_id, category, amount, academic_term')
+          .eq('school_id', _schoolId!)
+          .eq('academic_session', _currentSession);
+
+      var currentTermFees = feesData.where((f) {
+        String fTerm = (f['academic_term'] ?? 'All Terms').toString();
+        // Prevent double locking "All Terms" fees. Only lock them at the end of 1st Term.
+        if (fTerm == 'All Terms') return _currentTerm == '1st Term';
+        return fTerm == _currentTerm;
+      }).toList();
+
+      List<Map<String, dynamic>> financialUpdates = [];
+
+      for (var student in studentsData) {
+        double wBal = (student['wallet_balance'] ?? 0).toDouble();
+        double totalUnpaid = 0.0;
+
+        for (var fee in currentTermFees) {
+          bool classMatch = false;
+          final List<dynamic>? classIdsList = fee['applicable_class_ids'];
+          if (classIdsList != null &&
+              classIdsList.isNotEmpty &&
+              student['class_id'] != null) {
+            classMatch = classIdsList.contains(student['class_id'].toString());
+          } else {
+            classMatch = _doesItApply(
+              fee['applicable_classes'],
+              student['class_level'].toString(),
+            );
+          }
+
+          if (classMatch &&
+              _doesItApply(
+                fee['applicable_categories'],
+                student['category'].toString(),
+                isCategory: true,
+              )) {
+            double expected = (fee['amount'] ?? 0).toDouble();
+            double paid = 0.0;
+            for (var tx in txData) {
+              String txTerm = (tx['academic_term'] ?? 'All Terms').toString();
+              if (txTerm == _currentTerm || txTerm == 'All Terms') {
+                if (tx['student_id'].toString() == student['id'].toString() &&
+                    (tx['fee_id'].toString() == fee['id'].toString() ||
+                        tx['category'].toString().toLowerCase().trim() ==
+                            fee['fee_name'].toString().toLowerCase().trim())) {
+                  paid += (tx['amount'] ?? 0).toDouble();
+                }
+              }
+            }
+            double rem = expected - paid;
+            if (rem > 0) totalUnpaid += rem;
+          }
+        }
+
+        if (totalUnpaid > 0) {
+          // 🚨 FLAWLESS MATH: Handles positive, negative, and zero balances natively!
+          financialUpdates.add({
+            'id': student['id'],
+            'wallet_balance': wBal - totalUnpaid,
+          });
+        }
+      }
+
+      // Safe batch update for wallets
+      for (var update in financialUpdates) {
+        await _supabase
+            .from('students')
+            .update({'wallet_balance': update['wallet_balance']})
+            .eq('id', update['id']);
+      }
+
+      // =======================================================================
+      // 🚨 ADVANCE THE CALENDAR
+      // =======================================================================
       await _supabase
           .from('schools')
           .update({'current_term': _nextTerm})
@@ -155,7 +309,9 @@ class _EndOfTermProceedingsScreenState extends State<EndOfTermProceedingsScreen>
     } catch (e) {
       if (mounted) {
         setState(() => _isAdvancing = false);
-        showAuthErrorDialog("Failed to advance term. Error: $e");
+        showAuthErrorDialog(
+          "Failed to advance term. Please check your connection.",
+        );
       }
     }
   }
@@ -317,7 +473,7 @@ class _EndOfTermProceedingsScreenState extends State<EndOfTermProceedingsScreen>
                             ),
                             _buildChecklistItem(
                               "Financial Rollover",
-                              "Safely carries over all Perpetual Wallet credits and arrears into the new term.",
+                              "Safely carries over all unpaid current-term debts and credits into the perpetual wallets.",
                               Icons.account_balance_wallet_rounded,
                               Colors.orange,
                             ),

@@ -20,7 +20,10 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
   // Stores the complete class data mapped to the Global Calendar
   List<Map<String, dynamic>> _schoolClassesData = [];
 
+  // 🚨 ENGINE SWAP: State variables for Fees (No Streams)
+  List<Map<String, dynamic>> _fees = [];
   bool _isLoading = true;
+  bool _hasError = false;
   String _userRole = 'bursar';
 
   // Anti-Clutter Dashboard Filters
@@ -33,17 +36,21 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
     _loadSchoolConfiguration();
   }
 
-  // 🚨 INFINITE SESSION GENERATOR
   List<String> _generateDynamicSessions() {
     int currentYear = DateTime.now().year;
     List<String> sessions = [];
-    for (int y = 2023; y <= currentYear + 2; y++) {
+    for (int y = 2023; y <= currentYear + 10; y++) {
       sessions.add("$y/${y + 1}");
+    }
+    if (!sessions.contains(_filterSession) && _filterSession.isNotEmpty) {
+      sessions.add(_filterSession);
+      sessions.sort();
     }
     return sessions;
   }
 
   Future<void> _loadSchoolConfiguration() async {
+    if (mounted) setState(() => _isLoading = true);
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) return;
@@ -58,7 +65,6 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
       _userRole = profile['role']?.toString().toLowerCase() ?? 'bursar';
 
       if (_schoolId != null) {
-        // Fetch global fallback
         final schoolData = await _supabase
             .from('schools')
             .select('current_session, current_term')
@@ -74,11 +80,6 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
 
           _filterSession = globalSession;
           _filterTerm = globalTerm;
-
-          final dynamicSessions = _generateDynamicSessions();
-          if (!dynamicSessions.contains(_filterSession)) {
-            _filterSession = dynamicSessions.last;
-          }
         }
 
         final classesData = await _supabase
@@ -94,18 +95,55 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                   return {
                     'id': c['id'].toString(),
                     'name': c['name'].toString(),
-                    'current_session': globalSession, // Locked to global
-                    'current_term': globalTerm, // Locked to global
+                    'current_session': globalSession,
+                    'current_term': globalTerm,
                   };
                 })
                 .toList();
-
-            _isLoading = false;
           });
         }
+
+        await _fetchFees(); // 🚨 Fetch the fees using the new standard fetch call
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted)
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+    }
+  }
+
+  // 🚨 STABLE FETCH ENGINE FOR FEES
+  Future<void> _fetchFees() async {
+    if (_schoolId == null) return;
+    try {
+      final query = _supabase
+          .from('fee_structures')
+          .select()
+          .eq('school_id', _schoolId!)
+          .eq('academic_session', _filterSession);
+
+      // Apply term filter unless it is 'All Terms'
+      final rawFees = _filterTerm == "All Terms"
+          ? await query
+          : await query.eq('academic_term', _filterTerm);
+
+      if (mounted) {
+        setState(() {
+          _fees = List<Map<String, dynamic>>.from(rawFees);
+          _isLoading = false;
+          _hasError = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Fees Fetch Error: $e");
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+      }
     }
   }
 
@@ -114,13 +152,12 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
   }
 
   // ===========================================================================
-  // 🚨 SMART DELETION & WALLET REFUND ENGINE
+  // 🚨 SMART DELETION & WALLET REFUND ENGINE (UNTOUCHED)
   // ===========================================================================
   Future<void> _deleteFee(String id, String feeName) async {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
 
-    // 0 = Cancel, 1 = Force Delete, 2 = Refund & Delete
     int? action = await showDialog<int>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -217,7 +254,6 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
 
     try {
       if (action == 2) {
-        // 🚨 PERPETUAL WALLET REFUND LOGIC ENFORCED
         final txs = await _supabase
             .from('transactions')
             .select('student_id, amount')
@@ -257,6 +293,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
               ? "'$feeName' has been deleted and payments were safely credited to the students' wallets."
               : "'$feeName' has been force-deleted without refunds.",
         );
+        _fetchFees(); // Refresh after delete
       }
     } catch (e) {
       if (mounted) {
@@ -275,177 +312,60 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
     Color primaryColor = Theme.of(context).primaryColor;
 
-    // 🚨 RBAC ENFORCEMENT
     bool isAdmin = _userRole == 'admin';
 
-    Widget mainContent = _isLoading
-        ? Center(child: TridetaLoader(color: primaryColor))
-        : RefreshIndicator(
-            onRefresh: _handleRefresh,
-            color: primaryColor,
-            child: Column(
+    Widget mainContent = RefreshIndicator(
+      onRefresh: _handleRefresh,
+      color: primaryColor,
+      child: _isLoading && _fees.isEmpty
+          ? Center(child: TridetaLoader(color: primaryColor))
+          : _hasError && _fees.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 16,
-                  ),
-                  decoration: BoxDecoration(
-                    color: cardColor,
-                    border: Border(
-                      bottom: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: _filterSession,
-                          dropdownColor: cardColor,
-                          decoration: InputDecoration(
-                            labelText: "Session",
-                            labelStyle: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade500,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          items: _generateDynamicSessions()
-                              .map(
-                                (e) => DropdownMenuItem(
-                                  value: e,
-                                  child: Text(
-                                    e,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (val) =>
-                              setState(() => _filterSession = val!),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: _filterTerm,
-                          dropdownColor: cardColor,
-                          decoration: InputDecoration(
-                            labelText: "Term",
-                            labelStyle: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade500,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          items:
-                              ["1st Term", "2nd Term", "3rd Term", "All Terms"]
-                                  .map(
-                                    (e) => DropdownMenuItem(
-                                      value: e,
-                                      child: Text(
-                                        e,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                          onChanged: (val) =>
-                              setState(() => _filterTerm = val!),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                Expanded(
-                  child: StreamBuilder<List<Map<String, dynamic>>>(
-                    stream: _filterTerm == "All Terms"
-                        ? _supabase
-                              .from('fee_structures')
-                              .stream(primaryKey: ['id'])
-                              .eq('school_id', _schoolId!)
-                              .eq('academic_session', _filterSession)
-                        : _supabase
-                              .from('fee_structures')
-                              .stream(primaryKey: ['id'])
-                              .eq('school_id', _schoolId!)
-                              .eq('academic_session', _filterSession)
-                              .eq('academic_term', _filterTerm),
-                    builder: (context, snapshot) {
-                      if (snapshot.hasError) {
-                        return const Center(child: Text("Connection error."));
-                      }
-                      if (!snapshot.hasData) {
-                        return Center(
-                          child: TridetaLoader(color: primaryColor),
-                        );
-                      }
-
-                      final fees = snapshot.data!;
-
-                      if (fees.isEmpty) {
-                        return ListView(
-                          children: [
-                            SizedBox(
-                              height: MediaQuery.of(context).size.height * 0.2,
-                            ),
-                            _buildEmptyState(isDark),
-                          ],
-                        );
-                      }
-
-                      return ListView.builder(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 20,
-                        ),
-                        itemCount: fees.length,
-                        itemBuilder: (context, index) => _buildFeeRuleCard(
-                          fees[index],
-                          cardColor,
-                          textColor,
-                          isDark,
-                          primaryColor,
-                          isAdmin,
-                        ),
-                      );
-                    },
-                  ),
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.5,
+                  child: const Center(child: Text("Connection error.")),
                 ),
               ],
+            )
+          : _fees.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.4,
+                  child: _buildEmptyState(isDark),
+                ),
+              ],
+            )
+          : ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(
+                vertical: 8,
+                horizontal: 0,
+              ), // Removed horizontal padding for edge-to-edge
+              itemCount: _fees.length,
+              itemBuilder: (context, index) => _CollapsibleFeeRuleTile(
+                rule: _fees[index],
+                textColor: textColor,
+                isDark: isDark,
+                primaryColor: primaryColor,
+                isAdmin: isAdmin,
+                onEdit: (rule) => _showAddFeeModal(primaryColor, rule),
+                onDelete: (id, name) => _deleteFee(id, name),
+              ),
             ),
-          );
+    );
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
         title: Text(
-          isAdmin ? "Manage Fee Structure" : "View Fee Structure",
+          isAdmin ? "Fee Structure" : "View Fee Structure",
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         backgroundColor: bgColor,
@@ -483,277 +403,17 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
         },
       ),
       floatingActionButton: isAdmin
-          ? FloatingActionButton.extended(
+          ? FloatingActionButton(
               backgroundColor: primaryColor,
               elevation: 4,
               onPressed: () => _showAddFeeModal(primaryColor, null),
-              icon: const Icon(Icons.add_task_rounded, color: Colors.white),
-              label: const Text(
-                "ADD NEW RULE",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
+              child: const Icon(
+                Icons.add_rounded,
+                color: Colors.white,
+                size: 28,
               ),
             )
           : null,
-    );
-  }
-
-  Widget _buildFeeRuleCard(
-    Map<String, dynamic> rule,
-    Color cardColor,
-    Color textColor,
-    bool isDark,
-    Color primaryColor,
-    bool isAdmin,
-  ) {
-    String displaySession = rule['academic_session'] ?? 'Unknown Session';
-    String displayTerm = rule['academic_term'] ?? 'All Terms';
-
-    // 🚨 Safe parsing for JSON arrays retrieved from the DB
-    List<dynamic> parsedClasses = [];
-    List<dynamic> parsedCategories = [];
-
-    try {
-      parsedClasses = rule['applicable_classes'] is String
-          ? jsonDecode(rule['applicable_classes'])
-          : (rule['applicable_classes'] ?? []);
-
-      parsedCategories = rule['applicable_categories'] is String
-          ? jsonDecode(rule['applicable_categories'])
-          : (rule['applicable_categories'] ?? []);
-    } catch (e) {
-      // Fallback if formatting is weird
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: primaryColor.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.account_balance_wallet_rounded,
-                    color: primaryColor,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        rule['fee_name'] ?? 'Fee Item',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 18,
-                          color: textColor,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.history_edu_rounded,
-                            size: 14,
-                            color: Colors.grey.shade500,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            "$displaySession • $displayTerm",
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.green.withValues(alpha: 0.2),
-                    ),
-                  ),
-                  child: Text(
-                    "₦${rule['amount']}",
-                    style: TextStyle(
-                      color: Colors.green.shade700,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          Divider(
-            height: 1,
-            color: isDark ? Colors.white10 : Colors.grey.shade100,
-          ),
-
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "TARGET DEMOGRAPHIC",
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.grey.shade400,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          ...parsedClasses.map(
-                            (c) => _buildMiniChip(
-                              c.toString(),
-                              primaryColor,
-                              isDark,
-                            ),
-                          ),
-                          ...parsedCategories.map(
-                            (c) => _buildMiniChip(
-                              c.toString(),
-                              Colors.orange,
-                              isDark,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                if (isAdmin) ...[
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildActionButton(
-                        Icons.edit_rounded,
-                        primaryColor,
-                        () => _showAddFeeModal(primaryColor, rule),
-                      ),
-                      const SizedBox(width: 8),
-                      _buildActionButton(
-                        Icons.delete_outline_rounded,
-                        Colors.redAccent,
-                        () => _deleteFee(
-                          rule['id'].toString(),
-                          rule['fee_name'] ?? 'Fee',
-                        ),
-                      ),
-                    ],
-                  ),
-                ] else ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text(
-                      "READ ONLY",
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.grey,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton(IconData icon, Color color, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(icon, size: 20, color: color),
-      ),
-    );
-  }
-
-  Widget _buildMiniChip(String label, Color color, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.5,
-        ),
-      ),
     );
   }
 
@@ -775,6 +435,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
                 ? "'$name' rule has been updated successfully."
                 : "'$name' rule has been added to the structure.",
           );
+          _fetchFees(); // Refresh list after saving
         },
       ),
     );
@@ -801,7 +462,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
           ),
           const SizedBox(height: 20),
           const Text(
-            "No fee rules found for this Term.",
+            "No fee rules found.",
             style: TextStyle(
               color: Colors.grey,
               fontSize: 16,
@@ -814,8 +475,254 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
   }
 }
 
+// 🚨 UI FIX: Rebuilt rule tile as a Stateful Collapsible Component
+class _CollapsibleFeeRuleTile extends StatefulWidget {
+  final Map<String, dynamic> rule;
+  final Color textColor;
+  final bool isDark;
+  final Color primaryColor;
+  final bool isAdmin;
+  final Function(Map<String, dynamic>) onEdit;
+  final Function(String, String) onDelete;
+
+  const _CollapsibleFeeRuleTile({
+    required this.rule,
+    required this.textColor,
+    required this.isDark,
+    required this.primaryColor,
+    required this.isAdmin,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  State<_CollapsibleFeeRuleTile> createState() =>
+      _CollapsibleFeeRuleTileState();
+}
+
+class _CollapsibleFeeRuleTileState extends State<_CollapsibleFeeRuleTile> {
+  bool _isExpanded = false;
+
+  Widget _buildMiniChip(String label, Color color, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String displaySession =
+        widget.rule['academic_session'] ?? 'Unknown Session';
+    String displayTerm = widget.rule['academic_term'] ?? 'All Terms';
+
+    List<dynamic> parsedClasses = [];
+    List<dynamic> parsedCategories = [];
+
+    try {
+      parsedClasses = widget.rule['applicable_classes'] is String
+          ? jsonDecode(widget.rule['applicable_classes'])
+          : (widget.rule['applicable_classes'] ?? []);
+
+      parsedCategories = widget.rule['applicable_categories'] is String
+          ? jsonDecode(widget.rule['applicable_categories'])
+          : (widget.rule['applicable_categories'] ?? []);
+    } catch (e) {
+      // Fallback
+    }
+
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              setState(() => _isExpanded = !_isExpanded);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: widget.primaryColor.withValues(
+                      alpha: 0.12,
+                    ),
+                    child: Icon(
+                      Icons.account_balance_wallet_rounded,
+                      color: widget.primaryColor,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                widget.rule['fee_name'] ?? 'Fee Item',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                  color: widget.textColor,
+                                  letterSpacing: -0.5,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              "₦${widget.rule['amount']}",
+                              style: TextStyle(
+                                color: Colors.green.shade600,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Text(
+                              "$displaySession • $displayTerm",
+                              style: TextStyle(
+                                color: widget.isDark
+                                    ? Colors.white54
+                                    : Colors.grey.shade600,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Spacer(),
+                            Icon(
+                              _isExpanded
+                                  ? Icons.keyboard_arrow_up_rounded
+                                  : Icons.keyboard_arrow_down_rounded,
+                              color: Colors.grey.shade400,
+                            ),
+                          ],
+                        ),
+                        AnimatedCrossFade(
+                          duration: const Duration(milliseconds: 300),
+                          crossFadeState: _isExpanded
+                              ? CrossFadeState.showSecond
+                              : CrossFadeState.showFirst,
+                          firstChild: const SizedBox(
+                            width: double.infinity,
+                            height: 0,
+                          ),
+                          secondChild: Padding(
+                            padding: const EdgeInsets.only(top: 16),
+                            child: Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                ...parsedClasses.map(
+                                  (c) => _buildMiniChip(
+                                    c.toString(),
+                                    widget.primaryColor,
+                                    widget.isDark,
+                                  ),
+                                ),
+                                ...parsedCategories.map(
+                                  (c) => _buildMiniChip(
+                                    c.toString(),
+                                    Colors.orange,
+                                    widget.isDark,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (widget.isAdmin) ...[
+                    const SizedBox(width: 8),
+                    PopupMenuButton<String>(
+                      icon: Icon(
+                        Icons.more_vert_rounded,
+                        color: Colors.grey.shade400,
+                      ),
+                      onSelected: (val) {
+                        if (val == 'edit') {
+                          widget.onEdit(widget.rule);
+                        } else if (val == 'delete') {
+                          widget.onDelete(
+                            widget.rule['id'].toString(),
+                            widget.rule['fee_name'] ?? 'Fee',
+                          );
+                        }
+                      },
+                      itemBuilder: (ctx) => [
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit_rounded, size: 18),
+                              SizedBox(width: 10),
+                              Text("Edit"),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.delete_outline_rounded,
+                                size: 18,
+                                color: Colors.red,
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                "Delete",
+                                style: TextStyle(color: Colors.red),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 88, right: 24),
+          child: Divider(
+            height: 1,
+            color: widget.isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 // ============================================================================
-// 🚨 ADD/EDIT FEE FORM
+// 🚨 ADD/EDIT FEE FORM (UNTOUCHED)
 // ============================================================================
 class AddFeeForm extends StatefulWidget {
   final String schoolId;
@@ -866,12 +773,6 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
       _selectedSession = widget.initialData!['academic_session'] ?? '2025/2026';
       _selectedTerm = widget.initialData!['academic_term'] ?? '1st Term';
 
-      final dynamicSessions = _generateDynamicSessions();
-      if (!dynamicSessions.contains(_selectedSession)) {
-        _selectedSession = dynamicSessions.last;
-      }
-
-      // Safely decode JSON strings from DB initialization
       try {
         var rawClasses = widget.initialData!['applicable_classes'];
         List<dynamic> initialClasses = rawClasses is String
@@ -898,8 +799,12 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
   List<String> _generateDynamicSessions() {
     int currentYear = DateTime.now().year;
     List<String> sessions = [];
-    for (int y = 2023; y <= currentYear + 2; y++) {
+    for (int y = 2023; y <= currentYear + 10; y++) {
       sessions.add("$y/${y + 1}");
+    }
+    if (!sessions.contains(_selectedSession) && _selectedSession.isNotEmpty) {
+      sessions.add(_selectedSession);
+      sessions.sort();
     }
     return sessions;
   }
@@ -942,7 +847,6 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
         }
       }
 
-      // 🚨 FIX: Removed jsonEncode. Supabase perfectly handles raw Dart Lists for Postgres array/jsonb fields!
       final payload = {
         'school_id': widget.schoolId,
         'fee_name': feeName,
@@ -977,7 +881,7 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color modalColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color pColor = widget.primaryColor;
 
     bool isEdit = widget.initialData != null;
@@ -990,7 +894,7 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
         top: 20,
       ),
       decoration: BoxDecoration(
-        color: cardColor,
+        color: modalColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
       ),
       child: SingleChildScrollView(
@@ -1021,7 +925,7 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     initialValue: _selectedSession,
-                    dropdownColor: cardColor,
+                    dropdownColor: modalColor,
                     decoration: _inputStyle(
                       "Session",
                       Icons.history_edu_rounded,
@@ -1048,7 +952,7 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     initialValue: _selectedTerm,
-                    dropdownColor: cardColor,
+                    dropdownColor: modalColor,
                     decoration: _inputStyle(
                       "Term",
                       Icons.calendar_month_rounded,
@@ -1188,14 +1092,10 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
           selectedColor: activeColor.withValues(alpha: 0.1),
           backgroundColor: isDark
               ? Colors.white.withValues(alpha: 0.05)
-              : Colors.grey.shade50,
+              : Colors.grey.shade100,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(
-              color: isSelected
-                  ? activeColor.withValues(alpha: 0.5)
-                  : (isDark ? Colors.white10 : Colors.grey.shade300),
-            ),
+            side: BorderSide.none,
           ),
           onSelected: (val) => setState(
             () => val ? selectedList.add(item) : selectedList.remove(item),
@@ -1213,20 +1113,19 @@ class _AddFeeFormState extends State<AddFeeForm> with AuthErrorHandler {
   ) {
     return InputDecoration(
       labelText: label,
+      labelStyle: TextStyle(color: Colors.grey.shade500, fontSize: 14),
       prefixIcon: Icon(icon, color: pColor, size: 20),
       filled: true,
       fillColor: isDark
-          ? Colors.white.withValues(alpha: 0.03)
-          : Colors.grey.shade50,
+          ? Colors.white.withValues(alpha: 0.05)
+          : Colors.grey.shade100,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide.none,
       ),
-      enabledBorder: OutlineInputBorder(
+      focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
+        borderSide: BorderSide(color: pColor.withValues(alpha: 0.5), width: 2),
       ),
     );
   }

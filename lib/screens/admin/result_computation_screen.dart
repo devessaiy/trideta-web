@@ -145,6 +145,10 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           school['current_session'] ?? "$currentYr/${currentYr + 1}";
       _globalTerm = school['current_term'] ?? _terms[0];
 
+      if (!_sessions.contains(_globalSession)) {
+        _sessions.add(_globalSession!);
+      }
+
       List<Map<String, dynamic>> fetchedClasses = [];
 
       final allClasses = await _supabase
@@ -271,7 +275,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     });
 
     try {
-      // 1. Fetch valid students for this exact new Class ID (Strict RBAC Enforced)
       final studentsData = await _supabase
           .from('students')
           .select('id, first_name, last_name, admission_no')
@@ -287,10 +290,6 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
       Map<String, Map<String, dynamic>> existingScoreMap = {};
 
       if (validStudentIds.isNotEmpty) {
-        // 2. 🚨 THE GHOST BUSTER 🚨
-        // We do NOT filter by class_id or subject_id here.
-        // We filter by EXACTLY what the database's unique constraint checks:
-        // student_id (safely filtered above), academic_session, term, and subject_name.
         final existingScoresData = await _supabase
             .from('exam_scores')
             .select(
@@ -376,9 +375,8 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           'student_id': s.id,
           'academic_session': _selectedSession,
           'term': _selectedTerm,
-          'class_id': _selectedClassId, // Safely heals broken relational links!
-          'subject_id':
-              _selectedSubjectId, // Safely heals broken relational links!
+          'class_id': _selectedClassId, 
+          'subject_id': _selectedSubjectId, 
           'class_level': _selectedClassName,
           'subject_name': _selectedSubjectName,
           'ca_attendance': s.caAttendance,
@@ -432,267 +430,271 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color primaryColor = Theme.of(context).primaryColor;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
 
-    return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        title: const Text(
-          "Result Computation",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-        centerTitle: true,
-        elevation: 0,
-      ),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: cardColor,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: Column(
+    Widget mainContent = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 🚨 Dynamic Island / Notch Safe Header
+        SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 10, top: 16, bottom: 16, right: 24),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildDropdown(
-                        hint: "Session",
-                        value: _selectedSession,
-                        items: _sessions,
-                        isDark: isDark,
-                        primaryColor: primaryColor,
-                        onChanged:
-                            _userRole == 'admin' || _userRole == 'principal'
-                            ? (val) {
-                                setState(() {
-                                  _selectedSession = val;
-                                  _fetchStudentsAndScores();
-                                });
-                              }
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _buildDropdown(
-                        hint: "Term",
-                        value: _selectedTerm,
-                        items: _terms,
-                        isDark: isDark,
-                        primaryColor: primaryColor,
-                        onChanged:
-                            _userRole == 'admin' || _userRole == 'principal'
-                            ? (val) {
-                                setState(() {
-                                  _selectedTerm = val;
-                                  _fetchStudentsAndScores();
-                                });
-                              }
-                            : null,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildClassDropdown(
-                        hint: "Select Class",
-                        value: _selectedClassId,
-                        items: _activeClasses,
-                        isDark: isDark,
-                        primaryColor: primaryColor,
-                        onChanged: (val) {
-                          if (val != null) {
-                            final cls = _activeClasses.firstWhere(
-                              (c) => c['id'].toString() == val,
-                            );
-                            setState(() {
-                              _selectedClassId = val;
-                              _selectedClassName = cls['name'];
-
-                              _selectedSession = _globalSession;
-                              _selectedTerm = _globalTerm;
-                            });
-                            _fetchSubjectsForClass(val);
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _buildSubjectDropdown(
-                        hint: "Select Subject",
-                        value: _selectedSubjectId,
-                        items: _classSubjects,
-                        isDark: isDark,
-                        primaryColor: primaryColor,
-                        onChanged: (val) {
-                          if (val != null) {
-                            final subName = _classSubjects.firstWhere(
-                              (s) => s['id'].toString() == val,
-                            )['subject_name'];
-                            setState(() {
-                              _selectedSubjectId = val;
-                              _selectedSubjectName = subName;
-                            });
-                            _fetchStudentsAndScores();
-                          }
-                        },
-                      ),
-                    ),
-                  ],
+                BackButton(color: textColor),
+                const SizedBox(width: 4),
+                Text(
+                  "Result Computation",
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: textColor,
+                    letterSpacing: -0.5,
+                  ),
                 ),
               ],
             ),
           ),
+        ),
 
-          Expanded(
-            child: _isLoading
-                ? Center(child: TridetaLoader(color: primaryColor))
-                : _selectedClassId == null || _selectedSubjectId == null
-                ? const Center(
-                    child: Text(
-                      "Select a class and subject to begin grading.",
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  )
-                : _students.isEmpty
-                ? const Center(
-                    child: Text(
-                      "No students found in this class.",
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _students.length,
-                    itemBuilder: (ctx, i) {
-                      return _buildStudentGradeCard(
-                        _students[i],
-                        i,
-                        isDark,
-                        primaryColor,
-                      );
-                    },
-                  ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          decoration: BoxDecoration(
+            color: cardColor,
+            border: Border(
+              bottom: BorderSide(
+                color: isDark ? Colors.white10 : Colors.grey.shade200,
+                width: 1,
+              ),
+            ),
           ),
-        ],
-      ),
-      bottomNavigationBar: _students.isNotEmpty
-          ? Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardColor,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, -5),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildInfoField(
+                      "Academic Session",
+                      _selectedSession ?? "--",
+                      isDark,
+                      primaryColor,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildInfoField(
+                      "Current Term",
+                      _selectedTerm ?? "--",
+                      isDark,
+                      primaryColor,
+                    ),
                   ),
                 ],
               ),
-              child: SafeArea(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildClassDropdown(
+                      hint: "Select Class",
+                      value: _selectedClassId,
+                      items: _activeClasses,
+                      isDark: isDark,
+                      primaryColor: primaryColor,
+                      onChanged: (val) {
+                        if (val != null) {
+                          final cls = _activeClasses.firstWhere(
+                            (c) => c['id'].toString() == val,
+                          );
+                          setState(() {
+                            _selectedClassId = val;
+                            _selectedClassName = cls['name'];
+                            _selectedSession = _globalSession;
+                            _selectedTerm = _globalTerm;
+                          });
+                          _fetchSubjectsForClass(val);
+                        }
+                      },
                     ),
                   ),
-                  onPressed: _isSaving ? null : _saveAllScores,
-                  child: _isSaving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: TridetaLoader(color: Colors.white),
-                        )
-                      : const Text(
-                          "SAVE SCORES",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildSubjectDropdown(
+                      hint: "Select Subject",
+                      value: _selectedSubjectId,
+                      items: _classSubjects,
+                      isDark: isDark,
+                      primaryColor: primaryColor,
+                      onChanged: (val) {
+                        if (val != null) {
+                          final subName = _classSubjects.firstWhere(
+                            (s) => s['id'].toString() == val,
+                          )['subject_name'];
+                          setState(() {
+                            _selectedSubjectId = val;
+                            _selectedSubjectName = subName;
+                          });
+                          _fetchStudentsAndScores();
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        Expanded(
+          child: _isLoading
+              ? Center(child: TridetaLoader(color: primaryColor))
+              : _selectedClassId == null || _selectedSubjectId == null
+              ? const Center(
+                  child: Text(
+                    "Select a class and subject to begin grading.",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                )
+              : _students.isEmpty
+              ? const Center(
+                  child: Text(
+                    "No students found in this class.",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                )
+              : ListView.separated(
+                  padding: EdgeInsets.zero,
+                  itemCount: _students.length,
+                  separatorBuilder: (ctx, i) => Divider(
+                    height: 1,
+                    color: isDark ? Colors.white10 : Colors.grey.shade200,
+                  ),
+                  itemBuilder: (ctx, i) {
+                    return _buildStudentGradeCard(
+                      _students[i],
+                      i,
+                      isDark,
+                      primaryColor,
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+
+    return Scaffold(
+      backgroundColor: bgColor,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth > 800) {
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    border: Border.symmetric(
+                      vertical: BorderSide(
+                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                      ),
+                    ),
+                  ),
+                  child: mainContent,
                 ),
               ),
+            );
+          } else {
+            return mainContent;
+          }
+        },
+      ),
+      bottomNavigationBar: _students.isNotEmpty
+          ? Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 800),
+                  child: Container(
+                    width: MediaQuery.of(context).size.width > 800 
+                        ? 800 
+                        : MediaQuery.of(context).size.width,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      border: Border(
+                        top: BorderSide(
+                          color: isDark ? Colors.white10 : Colors.grey.shade200,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    child: SafeArea(
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 55,
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: primaryColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: _isSaving ? null : _saveAllScores,
+                          child: _isSaving
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: TridetaLoader(color: Colors.white),
+                                )
+                              : const Text(
+                                  "SAVE SCORES",
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                    letterSpacing: 1.0,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             )
           : null,
     );
   }
 
-  Widget _buildDropdown({
-    required String hint,
-    required String? value,
-    required List<String> items,
-    required bool isDark,
-    required Color primaryColor,
-    required Function(String?)? onChanged,
-  }) {
-    bool isLocked = onChanged == null;
-    return Container(
-      decoration: BoxDecoration(
-        color: isLocked
-            ? (isDark ? Colors.white.withValues(alpha: 0.02) : Colors.grey[200])
-            : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50]),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade300,
-        ),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          isExpanded: true,
-          value: value,
-          hint: Padding(
-            padding: const EdgeInsets.only(left: 10),
-            child: Text(
-              hint,
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
-            ),
+  Widget _buildInfoField(
+    String label,
+    String value,
+    bool isDark,
+    Color primaryColor,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey.shade500,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
           ),
-          icon: Padding(
-            padding: const EdgeInsets.only(right: 10),
-            child: Icon(
-              isLocked ? Icons.lock_outline : Icons.arrow_drop_down,
-              color: isLocked ? Colors.grey : primaryColor,
-              size: isLocked ? 16 : 24,
-            ),
-          ),
-          items: items
-              .map(
-                (e) => DropdownMenuItem(
-                  value: e,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 10),
-                    child: Text(
-                      e,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: isLocked ? Colors.grey : null,
-                      ),
-                    ),
-                  ),
-                ),
-              )
-              .toList(),
-          onChanged: onChanged,
-          dropdownColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         ),
-      ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w900,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+      ],
     );
   }
 
@@ -846,135 +848,126 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     final ctrlExm = ctrls[3];
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "${index + 1}. ${s.name.toUpperCase()}",
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+      color: isDark ? const Color(0xFF121212) : Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "${index + 1}. ${s.name.toUpperCase()}",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        s.admissionNo,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey,
-                        ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      s.admissionNo,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _getGradeColor(s.grade).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        "${s.total.toStringAsFixed(1)} ",
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text(
-                        "(${s.grade})",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: _getGradeColor(s.grade),
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
-                  ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
                 ),
-              ],
-            ),
-            const SizedBox(height: 15),
+                decoration: BoxDecoration(
+                  color: _getGradeColor(s.grade).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      "${s.total.toStringAsFixed(1)} ",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    Text(
+                      "(${s.grade})",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _getGradeColor(s.grade),
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 15),
 
-            Row(
-              children: [
-                Expanded(
-                  child: _buildScoreInput(
-                    label: "Att (5)",
-                    ctrl: ctrlAtt,
-                    focusNode: nodes[0],
-                    maxVal: 5,
-                    isDark: isDark,
-                    onChanged: (val) {
-                      setState(() => s.caAttendance = val);
-                    },
-                  ),
+          Row(
+            children: [
+              Expanded(
+                child: _buildScoreInput(
+                  label: "Att (5)",
+                  ctrl: ctrlAtt,
+                  focusNode: nodes[0],
+                  maxVal: 5,
+                  isDark: isDark,
+                  onChanged: (val) {
+                    setState(() => s.caAttendance = val);
+                  },
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildScoreInput(
-                    label: "Ass (10)",
-                    ctrl: ctrlAss,
-                    focusNode: nodes[1],
-                    maxVal: 10,
-                    isDark: isDark,
-                    onChanged: (val) {
-                      setState(() => s.caAssignment = val);
-                    },
-                  ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildScoreInput(
+                  label: "Ass (10)",
+                  ctrl: ctrlAss,
+                  focusNode: nodes[1],
+                  maxVal: 10,
+                  isDark: isDark,
+                  onChanged: (val) {
+                    setState(() => s.caAssignment = val);
+                  },
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildScoreInput(
-                    label: "Mid (25)",
-                    ctrl: ctrlMid,
-                    focusNode: nodes[2],
-                    maxVal: 25,
-                    isDark: isDark,
-                    onChanged: (val) {
-                      setState(() => s.caMidterm = val);
-                    },
-                  ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildScoreInput(
+                  label: "Mid (25)",
+                  ctrl: ctrlMid,
+                  focusNode: nodes[2],
+                  maxVal: 25,
+                  isDark: isDark,
+                  onChanged: (val) {
+                    setState(() => s.caMidterm = val);
+                  },
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 2,
-                  child: _buildScoreInput(
-                    label: "Exam (60)",
-                    ctrl: ctrlExm,
-                    focusNode: nodes[3],
-                    maxVal: 60,
-                    isDark: isDark,
-                    onChanged: (val) {
-                      setState(() => s.examScore = val);
-                    },
-                  ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: _buildScoreInput(
+                  label: "Exam (60)",
+                  ctrl: ctrlExm,
+                  focusNode: nodes[3],
+                  maxVal: 60,
+                  isDark: isDark,
+                  onChanged: (val) {
+                    setState(() => s.examScore = val);
+                  },
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1009,10 +1002,10 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
             style: const TextStyle(fontWeight: FontWeight.bold),
             decoration: InputDecoration(
               filled: true,
-              fillColor: isDark ? Colors.black26 : Colors.grey[100],
+              fillColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
               contentPadding: EdgeInsets.zero,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide.none,
               ),
             ),

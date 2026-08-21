@@ -83,6 +83,11 @@ class _ReportCardScreenState extends State<ReportCardScreen>
           school['current_session'] ?? "$currentYr/${currentYr + 1}";
       _globalTerm = school['current_term'] ?? _terms[0];
 
+      // 🚨 PREVENT CRASH: Ensure the dynamically fetched session is injected into the list
+      if (!_sessions.contains(_globalSession)) {
+        _sessions.add(_globalSession!);
+      }
+
       List<String> fetchedClasses = [];
       _classNameToIdMap.clear();
 
@@ -294,7 +299,6 @@ class _ReportCardScreenState extends State<ReportCardScreen>
           );
           String fileName = '${safeName}_ReportCard.pdf';
 
-          // 🚨 THE FIX: Web holds the file in RAM; Mobile saves to disk
           if (kIsWeb) {
             generatedPdfFiles.add(
               XFile.fromData(
@@ -312,7 +316,6 @@ class _ReportCardScreenState extends State<ReportCardScreen>
       }
 
       if (generatedPdfFiles.isNotEmpty) {
-        // Share/Download mechanism handles Web Blobs perfectly
         await Share.shareXFiles(
           generatedPdfFiles,
           text: '$_selectedClass Report Cards - $_selectedTerm',
@@ -342,65 +345,67 @@ class _ReportCardScreenState extends State<ReportCardScreen>
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color primaryColor = Theme.of(context).primaryColor;
-
-    bool isAdmin = _userRole == 'admin' || _userRole == 'principal';
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
 
     Widget mainContent = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // 🚨 Dynamic Island / Notch Safe Header
+        SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 10, top: 16, bottom: 16, right: 24),
+            child: Row(
+              children: [
+                BackButton(color: textColor),
+                const SizedBox(width: 4),
+                Text(
+                  "Report Cards",
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: textColor,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
         Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
           decoration: BoxDecoration(
             color: cardColor,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 5),
+            border: Border(
+              bottom: BorderSide(
+                color: isDark ? Colors.white10 : Colors.grey.shade200,
+                width: 1,
               ),
-            ],
+            ),
           ),
           child: Column(
             children: [
               Row(
                 children: [
                   Expanded(
-                    child: _buildFilterDropdown(
-                      "Session",
-                      _sessions,
-                      _selectedSession,
-                      isAdmin
-                          ? (val) {
-                              setState(() {
-                                _selectedSession = val;
-                                _students.clear();
-                              });
-                            }
-                          : null,
+                    child: _buildInfoField(
+                      "Academic Session",
+                      _selectedSession ?? "--",
                       isDark,
-                      primaryColor,
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: _buildFilterDropdown(
-                      "Term",
-                      _terms,
-                      _selectedTerm,
-                      isAdmin
-                          ? (val) {
-                              setState(() {
-                                _selectedTerm = val;
-                                _students.clear();
-                              });
-                            }
-                          : null,
+                    child: _buildInfoField(
+                      "Current Term",
+                      _selectedTerm ?? "--",
                       isDark,
-                      primaryColor,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 15),
+              const SizedBox(height: 20),
               _buildFilterDropdown(
                 "Select Class",
                 _activeClasses,
@@ -435,9 +440,13 @@ class _ReportCardScreenState extends State<ReportCardScreen>
                     style: TextStyle(color: Colors.grey),
                   ),
                 )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
+              : ListView.separated(
+                  padding: EdgeInsets.zero,
                   itemCount: _students.length,
+                  separatorBuilder: (ctx, i) => Divider(
+                    height: 1,
+                    color: isDark ? Colors.white10 : Colors.grey.shade200,
+                  ),
                   itemBuilder: (context, index) {
                     return _buildStudentCard(
                       _students[index],
@@ -453,16 +462,6 @@ class _ReportCardScreenState extends State<ReportCardScreen>
 
     return Scaffold(
       backgroundColor: bgColor,
-      appBar: AppBar(
-        title: const Text(
-          "Report Cards",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-        centerTitle: true,
-        elevation: 0,
-      ),
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 800) {
@@ -472,14 +471,9 @@ class _ReportCardScreenState extends State<ReportCardScreen>
                 child: Container(
                   decoration: BoxDecoration(
                     color: bgColor,
-                    border: Border(
-                      left: BorderSide(
+                    border: Border.symmetric(
+                      vertical: BorderSide(
                         color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
-                      ),
-                      right: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
                       ),
                     ),
                   ),
@@ -492,26 +486,91 @@ class _ReportCardScreenState extends State<ReportCardScreen>
           }
         },
       ),
-      floatingActionButton: _students.isNotEmpty && _selectedClass != null
-          ? FloatingActionButton.extended(
-              backgroundColor: primaryColor,
-              onPressed: _isBulkGenerating ? null : _bulkDownloadClassReports,
-              icon: _isBulkGenerating
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: TridetaLoader(color: Colors.white),
-                    )
-                  : const Icon(Icons.inventory_2_rounded, color: Colors.white),
-              label: Text(
-                _isBulkGenerating ? "PACKING FILES..." : "BULK DOWNLOAD",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
+      bottomNavigationBar: _students.isNotEmpty && _selectedClass != null
+          ? Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 800),
+                  child: Container(
+                    width: MediaQuery.of(context).size.width > 800 
+                        ? 800 
+                        : MediaQuery.of(context).size.width,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      border: Border(
+                        top: BorderSide(
+                          color: isDark ? Colors.white10 : Colors.grey.shade200,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    child: SafeArea(
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 55,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: primaryColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: _isBulkGenerating ? null : _bulkDownloadClassReports,
+                          icon: _isBulkGenerating
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: TridetaLoader(color: Colors.white),
+                                )
+                              : const Icon(Icons.inventory_2_rounded, color: Colors.white),
+                          label: Text(
+                            _isBulkGenerating ? "PACKING FILES..." : "BULK DOWNLOAD",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             )
           : null,
+    );
+  }
+
+  Widget _buildInfoField(
+    String label,
+    String value,
+    bool isDark,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey.shade500,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w900,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+      ],
     );
   }
 
@@ -530,16 +589,9 @@ class _ReportCardScreenState extends State<ReportCardScreen>
         .trim();
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
-      ),
+      color: isDark ? const Color(0xFF121212) : Colors.white,
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         leading: CircleAvatar(
           backgroundColor: hasResult
               ? primaryColor.withValues(alpha: 0.1)
@@ -587,13 +639,12 @@ class _ReportCardScreenState extends State<ReportCardScreen>
     bool isDark,
     Color primaryColor,
   ) {
-    bool isLocked = onChanged == null;
+    if (items.isEmpty) return const SizedBox.shrink();
+
     return Container(
       decoration: BoxDecoration(
-        color: isLocked
-            ? (isDark ? Colors.white.withValues(alpha: 0.02) : Colors.grey[200])
-            : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50]),
-        borderRadius: BorderRadius.circular(12),
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[50],
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDark ? Colors.white10 : Colors.grey.shade300,
         ),
@@ -603,32 +654,27 @@ class _ReportCardScreenState extends State<ReportCardScreen>
           isExpanded: true,
           value: value,
           hint: Padding(
-            padding: const EdgeInsets.only(left: 12),
+            padding: const EdgeInsets.only(left: 10),
             child: Text(
               hint,
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
             ),
           ),
           icon: Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Icon(
-              isLocked ? Icons.lock_outline : Icons.arrow_drop_down,
-              color: isLocked ? Colors.grey : primaryColor,
-              size: isLocked ? 16 : 24,
-            ),
+            padding: const EdgeInsets.only(right: 10),
+            child: Icon(Icons.arrow_drop_down, color: primaryColor),
           ),
           items: items
               .map(
                 (e) => DropdownMenuItem(
                   value: e,
                   child: Padding(
-                    padding: const EdgeInsets.only(left: 12),
+                    padding: const EdgeInsets.only(left: 10),
                     child: Text(
                       e,
-                      style: TextStyle(
-                        fontSize: 13,
+                      style: const TextStyle(
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: isLocked ? Colors.grey : null,
                       ),
                     ),
                   ),

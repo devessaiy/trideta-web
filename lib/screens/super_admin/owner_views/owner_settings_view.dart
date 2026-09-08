@@ -41,9 +41,6 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
     }
   }
 
-  // ============================================================================
-  // 🚨 THEME SELECTION POPUP LOGIC
-  // ============================================================================
   void _showThemeSelectionPopup(SharedPreferences prefs) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color primaryColor = Theme.of(context).primaryColor;
@@ -126,7 +123,6 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
       },
     );
   }
-  // ============================================================================
 
   Future<void> _toggleBiometrics(bool value) async {
     if (!value) {
@@ -310,29 +306,40 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
 
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 25),
+        padding: const EdgeInsets.only(
+          top: 25,
+          bottom: 120,
+        ), // 🚨 Clearance for Nav Bar
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              "Master Console Settings",
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.5,
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                "Master Console Settings",
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.5,
+                ),
               ),
             ),
             const SizedBox(height: 30),
 
-            const Text(
-              "App Customization",
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                "App Customization",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
               ),
             ),
             const SizedBox(height: 10),
+
+            // 🚨 UI FIX: Flat Edge-to-Edge List Tiles
             _buildTile(
               isDark,
               Icons.brightness_6,
@@ -341,7 +348,7 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
               primaryColor,
               () async {
                 final prefs = await SharedPreferences.getInstance();
-                _showThemeSelectionPopup(prefs); // 🚨 TRIGGERS THE POPUP NOW
+                _showThemeSelectionPopup(prefs);
               },
             ),
             _buildTile(
@@ -362,12 +369,15 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
             ),
             const SizedBox(height: 30),
 
-            const Text(
-              "Security Settings",
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                "Security Settings",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
               ),
             ),
             const SizedBox(height: 10),
@@ -380,62 +390,76 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
               _showPasswordModal,
             ),
             if (_canCheckBiometrics) ...[
-              const SizedBox(height: 10),
-              Container(
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(
-                    color: isDark ? Colors.white10 : Colors.grey.shade200,
-                  ),
-                ),
-                child: SwitchListTile(
-                  title: const Text(
-                    "Biometric Login",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: const Text(
-                    "Use fingerprint or face to login",
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  secondary: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
+              Column(
+                children: [
+                  Material(
+                    color: Colors.transparent,
+                    child: SwitchListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 8,
+                      ),
+                      title: const Text(
+                        "Biometric Login",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: const Text(
+                        "Use fingerprint or face to login",
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      secondary: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.fingerprint,
+                          color: Colors.green,
+                        ),
+                      ),
+                      activeThumbColor: primaryColor,
+                      value: _isBiometricEnabled,
+                      onChanged: _toggleBiometrics,
                     ),
-                    child: const Icon(Icons.fingerprint, color: Colors.green),
                   ),
-                  activeThumbColor: primaryColor,
-                  value: _isBiometricEnabled,
-                  onChanged: _toggleBiometrics,
-                ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 88, right: 24),
+                    child: Divider(
+                      height: 1,
+                      color: isDark ? Colors.white10 : Colors.grey.shade200,
+                    ),
+                  ),
+                ],
               ),
             ],
             const SizedBox(height: 40),
 
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
-                  foregroundColor: Colors.redAccent,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    side: BorderSide(
-                      color: Colors.redAccent.withValues(alpha: 0.3),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
+                    foregroundColor: Colors.redAccent,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      side: BorderSide(
+                        color: Colors.redAccent.withValues(alpha: 0.3),
+                      ),
                     ),
                   ),
-                ),
-                onPressed: _handleLogout,
-                icon: const Icon(Icons.logout),
-                label: const Text(
-                  "TERMINATE SESSION",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.2,
+                  onPressed: _handleLogout,
+                  icon: const Icon(Icons.logout),
+                  label: const Text(
+                    "TERMINATE SESSION",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
                   ),
                 ),
               ),
@@ -454,32 +478,43 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
     Color color,
     VoidCallback onTap,
   ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
-      ),
-      child: ListTile(
-        onTap: onTap,
-        leading: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            shape: BoxShape.circle,
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 8,
+            ),
+            onTap: onTap,
+            leading: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color),
+            ),
+            title: Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            subtitle: Text(
+              subtitle,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
           ),
-          child: Icon(icon, color: color),
         ),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(
-          subtitle,
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
+        Padding(
+          padding: const EdgeInsets.only(left: 88, right: 24),
+          child: Divider(
+            height: 1,
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
         ),
-        trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-      ),
+      ],
     );
   }
 }

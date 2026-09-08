@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "trideta-school-app-2026"
+  },
+  "targets": {
+    "skynex-solutions": {
+      "hosting": {
+        "trideta": [
+          "trideta-web-portal"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

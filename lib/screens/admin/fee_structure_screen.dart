@@ -106,11 +106,12 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
         await _fetchFees(); // 🚨 Fetch the fees using the new standard fetch call
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _isLoading = false;
           _hasError = true;
         });
+      }
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:trideta_v2/services/app_activity_logger.dart'; // 🚨 INJECTED LOGGER
 
 class MasterBroadsheetScreen extends StatefulWidget {
   const MasterBroadsheetScreen({super.key});
@@ -78,7 +79,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
           school['current_session'] ?? "$currentYr/${currentYr + 1}";
       _globalTerm = school['current_term'] ?? _terms[0];
 
-      // 🚨 PREVENT CRASH: Ensure the dynamically fetched session is injected into the list
       if (!_sessions.contains(_globalSession)) {
         _sessions.add(_globalSession!);
       }
@@ -326,16 +326,25 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
           await _supabase
               .from('term_results')
               .update({
-                'class_id': _classNameToIdMap[_selectedClass], 
-                'class_level': _selectedClass, 
+                'class_id': _classNameToIdMap[_selectedClass],
+                'class_level': _selectedClass,
                 'total_score': stData['Total'],
                 'average_score': stData['Average'],
                 'position': position,
                 'position_suffix': _getOrdinalSuffix(position),
                 'updated_at': DateTime.now().toIso8601String(),
               })
-              .eq('id', existing['id']); 
+              .eq('id', existing['id']);
         }
+      }
+
+      // 🚨 INJECTED LOGGER
+      if (_schoolId != null) {
+        AppActivityLogger.log(
+          schoolId: _schoolId!,
+          module: 'academics',
+          action: 'compute_broadsheet',
+        );
       }
 
       if (mounted) {
@@ -412,11 +421,15 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
     Widget mainContent = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 🚨 Dynamic Island / Notch Safe Header
         SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.only(left: 10, top: 16, bottom: 16, right: 24),
+            padding: const EdgeInsets.only(
+              left: 10,
+              top: 16,
+              bottom: 16,
+              right: 24,
+            ),
             child: Row(
               children: [
                 BackButton(color: textColor),
@@ -504,7 +517,6 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
       backgroundColor: bgColor,
       body: LayoutBuilder(
         builder: (context, constraints) {
-          // 🚨 Master Broadsheets get a wider 1200px max width for desktop tables
           if (constraints.maxWidth > 1000) {
             return Center(
               child: ConstrainedBox(
@@ -534,10 +546,13 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 1200),
                   child: Container(
-                    width: MediaQuery.of(context).size.width > 1200 
-                        ? 1200 
+                    width: MediaQuery.of(context).size.width > 1200
+                        ? 1200
                         : MediaQuery.of(context).size.width,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 16,
+                    ),
                     decoration: BoxDecoration(
                       color: cardColor,
                       border: Border(
@@ -558,14 +573,19 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          onPressed: _isComputing ? null : _computeAndSaveMasterBroadsheet,
+                          onPressed: _isComputing
+                              ? null
+                              : _computeAndSaveMasterBroadsheet,
                           icon: _isComputing
                               ? const SizedBox(
                                   height: 20,
                                   width: 20,
                                   child: TridetaLoader(color: Colors.white),
                                 )
-                              : const Icon(Icons.calculate, color: Colors.white),
+                              : const Icon(
+                                  Icons.calculate,
+                                  color: Colors.white,
+                                ),
                           label: Text(
                             _isComputing ? "COMPUTING..." : "COMPUTE & PUBLISH",
                             style: const TextStyle(
@@ -748,11 +768,7 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
     );
   }
 
-  Widget _buildInfoField(
-    String label,
-    String value,
-    bool isDark,
-  ) {
+  Widget _buildInfoField(String label, String value, bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

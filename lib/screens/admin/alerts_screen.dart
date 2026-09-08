@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 
 import 'package:trideta_v2/utils/subscription_guard.dart';
+import 'package:trideta_v2/services/app_activity_logger.dart'; // 🚨 INJECTED LOGGER
 
 class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key});
@@ -88,7 +89,7 @@ class _AlertsScreenState extends State<AlertsScreen>
         _currentTerm = school['current_term'] ?? "1st Term";
 
         await _checkFinancialHealth();
-        await _fetchAlerts(); // 🚨 New standard fetch call
+        await _fetchAlerts();
       }
     } catch (e) {
       debugPrint("Init Error: $e");
@@ -98,7 +99,6 @@ class _AlertsScreenState extends State<AlertsScreen>
     }
   }
 
-  // 🚨 STABLE FETCH ENGINE FOR ALERTS
   Future<void> _fetchAlerts() async {
     if (_schoolId == null) return;
     try {
@@ -487,6 +487,15 @@ class _AlertsScreenState extends State<AlertsScreen>
         'type': 'fee_urgent',
       });
 
+      // 🚨 INJECTED LOGGER
+      if (_schoolId != null) {
+        AppActivityLogger.log(
+          schoolId: _schoolId!,
+          module: 'finance',
+          action: 'broadcast_debtor_alert',
+        );
+      }
+
       if (sendSms) await Future.delayed(const Duration(seconds: 2));
 
       if (mounted) {
@@ -681,6 +690,15 @@ class _AlertsScreenState extends State<AlertsScreen>
                                 'type': selectedAudience,
                               });
 
+                              // 🚨 INJECTED LOGGER
+                              if (_schoolId != null) {
+                                AppActivityLogger.log(
+                                  schoolId: _schoolId!,
+                                  module: 'communication',
+                                  action: 'create_alert',
+                                );
+                              }
+
                               if (context.mounted) {
                                 Navigator.pop(context);
                                 showSuccessDialog(
@@ -806,7 +824,6 @@ class _AlertsScreenState extends State<AlertsScreen>
               ),
               tabs: const [
                 Tab(text: "ALERTS", iconMargin: EdgeInsets.zero),
-                // 🚨 UI REPLACEMENT: "RECEIPTS" changed to "SOCIAL"
                 Tab(text: "SOCIAL", iconMargin: EdgeInsets.zero),
               ],
             ),
@@ -1021,7 +1038,6 @@ class _AlertsScreenState extends State<AlertsScreen>
     );
   }
 
-  // 🚨 UI REPLACEMENT: Static List rendering instead of a StreamBuilder
   Widget _buildAlertsTab(bool isDark, Color primaryColor) {
     return RefreshIndicator(
       onRefresh: _handleRefresh,
@@ -1082,7 +1098,6 @@ class _AlertsScreenState extends State<AlertsScreen>
     );
   }
 
-  // 🚨 NEW: Beautiful placeholder screen for the upcoming Social module
   Widget _buildSocialFeedsPlaceholderTab(bool isDark, Color primaryColor) {
     return Center(
       child: Padding(

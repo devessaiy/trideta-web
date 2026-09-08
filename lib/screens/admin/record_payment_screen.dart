@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 
 import 'package:trideta_v2/screens/admin/receipt_view_screen.dart';
+import 'package:trideta_v2/services/app_activity_logger.dart'; // 🚨 INJECTED LOGGER
 
 class RecordPaymentScreen extends StatefulWidget {
   const RecordPaymentScreen({super.key});
@@ -182,11 +183,11 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
               _globalTerm == 'All Terms') {
             String txFeeId = (tx['fee_id'] ?? '').toString();
             String txCategory = (tx['category'] ?? '').toString();
-            
-            // 🚨 CRITICAL BUG FIX: Smart, forgiving string match prevents fake debts!
+
             if (txFeeId.isNotEmpty && txFeeId == feeId) {
               paidAmt += (tx['amount'] ?? 0).toDouble();
-            } else if (txCategory.toLowerCase().trim() == feeName.toLowerCase().trim()) {
+            } else if (txCategory.toLowerCase().trim() ==
+                feeName.toLowerCase().trim()) {
               paidAmt += (tx['amount'] ?? 0).toDouble();
             }
           }
@@ -388,6 +389,15 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
             .eq('id', _selectedStudent!['id']);
       }
 
+      // 🚨 INJECTED LOGGER
+      if (_schoolId != null) {
+        AppActivityLogger.log(
+          schoolId: _schoolId!,
+          module: 'finance',
+          action: 'record_payment',
+        );
+      }
+
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -430,8 +440,6 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-
-    // 🚨 UI FIX: Pure Material Matte Backgrounds
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
     Color primaryColor = Theme.of(context).primaryColor;
@@ -444,9 +452,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
     }
 
     Widget mainContent = SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(
-        vertical: 30,
-      ), 
+      padding: const EdgeInsets.symmetric(vertical: 30),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -532,7 +538,6 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
               ),
               const SizedBox(height: 8),
 
-              // 🚨 UI FIX: Flat ListTiles
               Column(
                 children: _activeClasses.map((c) {
                   return Column(
@@ -589,7 +594,6 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
               child: _buildLabel("PAYMENT DETAILS", isDark, primaryColor),
             ),
 
-            // 🚨 UI FIX: Stripped the shadowed container. Inputs sit cleanly on background
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Column(
@@ -898,7 +902,6 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
     );
   }
 
-  // 🚨 UI FIX: Borderless, highly-rounded modern inputs
   InputDecoration _inputStyle(
     String label,
     IconData icon,
@@ -973,8 +976,6 @@ class _ClassRosterSheetState extends State<_ClassRosterSheet> {
   @override
   Widget build(BuildContext context) {
     Color textColor = widget.isDark ? Colors.white : const Color(0xFF1A1A2E);
-
-    // 🚨 UI FIX: Pure Material Matte Backgrounds
     Color bgColor = widget.isDark
         ? const Color(0xFF121212)
         : const Color(0xFFF8FAFC);
@@ -1021,7 +1022,6 @@ class _ClassRosterSheetState extends State<_ClassRosterSheet> {
                       style: TextStyle(color: Colors.grey.shade500),
                     ),
                   )
-                // 🚨 UI FIX: Removed heavy container borders to yield flat indented ListTiles
                 : ListView.builder(
                     shrinkWrap: true,
                     padding: const EdgeInsets.symmetric(vertical: 10),

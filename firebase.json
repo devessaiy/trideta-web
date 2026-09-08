@@ -1,1 +1,37 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"trideta-school-app-2026","appId":"1:774050799627:android:5e5673fe917ccde75d270e","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"trideta-school-app-2026","configurations":{"android":"1:774050799627:android:5e5673fe917ccde75d270e","web":"1:774050799627:web:c0f876f565d231b85d270e","windows":"1:774050799627:web:5f0f0c96687e8a275d270e"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "trideta-school-app-2026",
+          "appId": "1:774050799627:android:5e5673fe917ccde75d270e",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "trideta-school-app-2026",
+          "configurations": {
+            "android": "1:774050799627:android:5e5673fe917ccde75d270e",
+            "web": "1:774050799627:web:c0f876f565d231b85d270e",
+            "windows": "1:774050799627:web:5f0f0c96687e8a275d270e"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

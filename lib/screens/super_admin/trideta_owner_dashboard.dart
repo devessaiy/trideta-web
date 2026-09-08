@@ -5,7 +5,6 @@ import 'package:trideta_v2/screens/super_admin/owner_views/owner_metrics_view.da
 import 'package:trideta_v2/screens/super_admin/owner_views/owner_schools_view.dart';
 import 'package:trideta_v2/screens/super_admin/owner_views/owner_profiles_view.dart';
 import 'package:trideta_v2/screens/super_admin/owner_views/owner_social_view.dart';
-import 'package:trideta_v2/screens/super_admin/owner_views/owner_settings_view.dart';
 
 class TridetaOwnerDashboard extends StatefulWidget {
   const TridetaOwnerDashboard({super.key});
@@ -46,12 +45,12 @@ class _TridetaOwnerDashboardState extends State<TridetaOwnerDashboard> {
     Color navBarColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color primaryColor = Theme.of(context).primaryColor;
 
+    // 🚨 UI FIX: Exactly 4 modules! Settings removed.
     final List<Widget> pages = [
       OwnerMetricsView(onNavigate: _onItemTapped),
       OwnerSchoolsManagementView(),
       OwnerProfilesManagementView(),
       OwnerSocialModerationView(),
-      OwnerSettingsView(), // 🚨 NEW MODULAR SETTINGS VIEW
     ];
 
     return LayoutBuilder(
@@ -113,14 +112,6 @@ class _TridetaOwnerDashboardState extends State<TridetaOwnerDashboard> {
                         3,
                         primaryColor,
                       ),
-                      const Spacer(),
-                      _buildDesktopNavItem(
-                        Icons.settings_rounded,
-                        "Settings & Security",
-                        4,
-                        primaryColor,
-                      ),
-                      const SizedBox(height: 20),
                     ],
                   ),
                 ),
@@ -139,6 +130,7 @@ class _TridetaOwnerDashboardState extends State<TridetaOwnerDashboard> {
         }
 
         return Scaffold(
+          extendBody: true,
           backgroundColor: bgColor,
           body: PageView(
             controller: _pageController,
@@ -146,44 +138,61 @@ class _TridetaOwnerDashboardState extends State<TridetaOwnerDashboard> {
             onPageChanged: (index) => setState(() => _selectedIndex = index),
             children: pages,
           ),
-          bottomNavigationBar: BottomNavigationBar(
-            backgroundColor: navBarColor,
-            type: BottomNavigationBarType.fixed,
-            currentIndex: _selectedIndex,
-            selectedItemColor: primaryColor,
-            unselectedItemColor: Colors.grey.shade500,
-            showUnselectedLabels: true,
-            selectedLabelStyle: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 11,
+          bottomNavigationBar: SafeArea(
+            child: Container(
+              margin: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
+              decoration: BoxDecoration(
+                color: navBarColor,
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(30),
+                child: BottomNavigationBar(
+                  backgroundColor: navBarColor,
+                  elevation: 0,
+                  type: BottomNavigationBarType.fixed,
+                  currentIndex: _selectedIndex,
+                  selectedItemColor: primaryColor,
+                  unselectedItemColor: Colors.grey.shade500,
+                  showUnselectedLabels: true,
+                  selectedLabelStyle: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                  unselectedLabelStyle: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 10,
+                  ),
+                  onTap: _onItemTapped,
+                  // 🚨 UI FIX: Exactly 4 bottom tabs.
+                  items: const [
+                    BottomNavigationBarItem(
+                      icon: Icon(Icons.dashboard_rounded),
+                      label: "Home",
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Icon(Icons.domain_rounded),
+                      label: "Schools",
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Icon(Icons.people_alt_rounded),
+                      label: "Users",
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Icon(Icons.forum_rounded),
+                      label: "Social",
+                    ),
+                  ],
+                ),
+              ),
             ),
-            unselectedLabelStyle: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 10,
-            ),
-            onTap: _onItemTapped,
-            items: const [
-              BottomNavigationBarItem(
-                icon: Icon(Icons.dashboard_rounded),
-                label: "Home",
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.domain_rounded),
-                label: "Schools",
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.people_alt_rounded),
-                label: "Users",
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.forum_rounded),
-                label: "Social",
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.settings_rounded),
-                label: "Settings",
-              ),
-            ],
           ),
         );
       },

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trideta_v2/services/auth_service.dart';
 import 'package:trideta_v2/services/biometric_service.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/services/app_activity_logger.dart'; // 🚨 INJECTED LOGGER
 
 // --- SCREENS ---
 import 'package:trideta_v2/dashboard.dart';
@@ -492,6 +493,15 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
       final String role = (profile['role'] ?? 'parent')
           .toString()
           .toLowerCase();
+
+      // 🚨 INJECTED LOGGER LOGIC
+      if (profile['school_id'] != null) {
+        AppActivityLogger.log(
+          schoolId: profile['school_id'].toString(),
+          module: 'auth',
+          action: 'login',
+        );
+      }
 
       if (role == 'parent') {
         appColorNotifier.value = const Color(0xFF007ACC);

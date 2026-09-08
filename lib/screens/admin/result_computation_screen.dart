@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:trideta_v2/utils/subscription_guard.dart';
+import 'package:trideta_v2/services/app_activity_logger.dart'; // 🚨 INJECTED LOGGER
 
 // --- MODELS --- //
 class StudentScore {
@@ -375,8 +376,8 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           'student_id': s.id,
           'academic_session': _selectedSession,
           'term': _selectedTerm,
-          'class_id': _selectedClassId, 
-          'subject_id': _selectedSubjectId, 
+          'class_id': _selectedClassId,
+          'subject_id': _selectedSubjectId,
           'class_level': _selectedClassName,
           'subject_name': _selectedSubjectName,
           'ca_attendance': s.caAttendance,
@@ -408,6 +409,15 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
         }
       }
 
+      // 🚨 INJECTED LOGGER
+      if (_schoolId != null) {
+        AppActivityLogger.log(
+          schoolId: _schoolId!,
+          module: 'academics',
+          action: 'save_subject_scores',
+        );
+      }
+
       if (mounted) {
         showSuccessDialog(
           "Success",
@@ -435,11 +445,15 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     Widget mainContent = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 🚨 Dynamic Island / Notch Safe Header
         SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.only(left: 10, top: 16, bottom: 16, right: 24),
+            padding: const EdgeInsets.only(
+              left: 10,
+              top: 16,
+              bottom: 16,
+              right: 24,
+            ),
             child: Row(
               children: [
                 BackButton(color: textColor),
@@ -616,10 +630,13 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 800),
                   child: Container(
-                    width: MediaQuery.of(context).size.width > 800 
-                        ? 800 
+                    width: MediaQuery.of(context).size.width > 800
+                        ? 800
                         : MediaQuery.of(context).size.width,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 16,
+                    ),
                     decoration: BoxDecoration(
                       color: cardColor,
                       border: Border(
@@ -869,10 +886,7 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
                     const SizedBox(height: 2),
                     Text(
                       s.admissionNo,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey,
-                      ),
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
                     ),
                   ],
                 ),
@@ -1002,7 +1016,9 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
             style: const TextStyle(fontWeight: FontWeight.bold),
             decoration: InputDecoration(
               filled: true,
-              fillColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
+              fillColor: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.grey.shade100,
               contentPadding: EdgeInsets.zero,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),

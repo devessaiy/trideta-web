@@ -256,8 +256,9 @@ class _DebtorsListScreenState extends State<DebtorsListScreen>
         (cleanStudentData.isEmpty || cleanStudentData == 'notfound')) {
       cleanStudentData = 'regular';
     }
-    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound')
+    if (cleanStudentData.isEmpty || cleanStudentData == 'notfound') {
       return false;
+    }
     if (columnData == null) return true;
 
     if (columnData is List) {

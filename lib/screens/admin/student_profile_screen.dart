@@ -1,27 +1,24 @@
 import 'dart:convert';
-import 'package:intl/intl.dart';
-import 'package:trideta_v2/utils/auth_error_handler.dart';
-import 'package:trideta_v2/widgets/trideta_loader.dart';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-
-import 'package:pdf/pdf.dart' show PdfColor, PdfColors, PdfPageFormat;
+import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart' show PdfColors, PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-
-import 'package:http/http.dart' as http;
-import 'dart:ui' as ui;
 import 'package:pro_image_editor/pro_image_editor.dart';
-
-import 'package:trideta_v2/screens/admin/components/student_profile/profile_hero_header.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/screens/admin/components/student_profile/parent_security_dialogs.dart';
 import 'package:trideta_v2/screens/admin/components/student_profile/profile_academic_tab.dart';
-import 'package:trideta_v2/screens/admin/components/student_profile/profile_records_tab.dart';
 import 'package:trideta_v2/screens/admin/components/student_profile/profile_edit_form.dart';
+import 'package:trideta_v2/screens/admin/components/student_profile/profile_hero_header.dart';
+import 'package:trideta_v2/screens/admin/components/student_profile/profile_records_tab.dart';
+import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ParentSecurityCard extends StatelessWidget {
   final bool isCheckingStatus;
@@ -167,6 +164,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
 
   bool _isEditing = false;
   bool _isSaving = false;
+  // ignore: unused_field
   bool _isInteractingWithSystem = false;
 
   final _firstNameController = TextEditingController();

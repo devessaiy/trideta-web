@@ -34,6 +34,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
 
   // 🚨 DP EDITOR STATE
   String? _currentImagePath;
+  // ignore: unused_field
   bool _isInteractingWithSystem = false;
   XFile? _pickedFile;
   Uint8List? _webImage;

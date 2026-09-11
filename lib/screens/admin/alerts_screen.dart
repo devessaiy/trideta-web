@@ -903,6 +903,7 @@ class _AlertsScreenState extends State<AlertsScreen>
       );
     }
 
+    // ignore: unused_local_variable
     Color cardColor;
     Color textColor;
     IconData icon;

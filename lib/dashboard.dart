@@ -35,6 +35,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late PageController _pageController;
 
   int _selectedIndex = 0;
+  // ignore: unused_field
   bool _isLoading = true;
 
   // --- SCHOOL DATA STATE ---
@@ -43,6 +44,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _currentSession = "Loading...";
 
   // --- ADMIN DATA STATE ---
+  // ignore: unused_field
   String _adminName = "Loading...";
   Map<String, dynamic>? _latestAlert;
 

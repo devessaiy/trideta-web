@@ -52,6 +52,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
   final ImagePicker _picker = ImagePicker();
 
   List<String> _activeClasses = [];
+  // ignore: unused_field
   List<Map<String, dynamic>> _allClassesData = [];
   final Map<String, String> _classNameToIdMap = {};
 

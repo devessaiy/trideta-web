@@ -250,6 +250,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
     );
   }
 
+  // ignore: unused_element
   Future<void> _handleDeleteSchool(BuildContext context) async {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
 

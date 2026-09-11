@@ -36,6 +36,7 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
     _loadSchoolConfiguration();
   }
 
+  // ignore: unused_element
   List<String> _generateDynamicSessions() {
     int currentYear = DateTime.now().year;
     List<String> sessions = [];

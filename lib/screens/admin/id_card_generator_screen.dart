@@ -273,6 +273,7 @@ class _IdCardGeneratorScreenState extends State<IdCardGeneratorScreen>
     );
   }
 
+  // ignore: unused_element
   void _generateBulkIdCards() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(

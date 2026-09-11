@@ -38,6 +38,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   bool _isSelecting = false;
   final Set<String> _selectedStudentIds = {};
 
+  // ignore: unused_field
   String _userEmail = "Admin";
 
   @override

@@ -231,6 +231,7 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
                 'manage-user-auth',
                 body: {'action': 'delete', 'email': email},
               )
+              // ignore: invalid_return_type_for_catch_error
               .catchError((_) => null),
         );
       }

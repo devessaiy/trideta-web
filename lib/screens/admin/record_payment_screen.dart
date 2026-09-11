@@ -20,6 +20,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
   final _supabase = Supabase.instance.client;
 
   bool _isLoading = true;
+  // ignore: unused_field
   bool _hasFees = false;
   String? _schoolId;
 

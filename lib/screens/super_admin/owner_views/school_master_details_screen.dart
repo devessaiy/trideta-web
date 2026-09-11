@@ -724,7 +724,7 @@ class _SchoolRegistrationScreenState extends State<SchoolRegistrationScreen>
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color textColor = isDark ? Colors.white : Colors.black87;
-    Color hintColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+    Color _ = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
 
     showModalBottomSheet(
       context: context,

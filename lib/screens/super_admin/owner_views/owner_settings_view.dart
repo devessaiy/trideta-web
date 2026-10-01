@@ -142,11 +142,14 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
   }
 
   void _showBiometricPasswordPrompt() {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color textColor = isDark ? Colors.white : Colors.black87;
     final passCtrl = TextEditingController();
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         title: Text(
           "Verify Password",
@@ -158,15 +161,18 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               "Enter your password to securely encrypt it on this device for Biometric login.",
+              style: TextStyle(color: textColor),
             ),
             const SizedBox(height: 15),
             TextField(
               controller: passCtrl,
               obscureText: true,
+              style: TextStyle(color: textColor),
               decoration: InputDecoration(
                 labelText: "Current Password",
+                labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.grey.shade700),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -210,10 +216,13 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
   }
 
   void _showPasswordModal() {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color textColor = isDark ? Colors.white : Colors.black87;
     final passCtrl = TextEditingController();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         title: Text(
           "Change Password",
@@ -225,15 +234,18 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               "Enter your new password below. You will be signed out of other devices.",
+              style: TextStyle(color: textColor),
             ),
             const SizedBox(height: 15),
             TextField(
               controller: passCtrl,
               obscureText: true,
+              style: TextStyle(color: textColor),
               decoration: InputDecoration(
                 labelText: "New Password",
+                labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.grey.shade700),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -302,169 +314,181 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
     Color primaryColor = Theme.of(context).primaryColor;
 
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.only(
-          top: 25,
-          bottom: 120,
-        ), // 🚨 Clearance for Nav Bar
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24),
-              child: Text(
-                "Master Console Settings",
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.5,
+    return Scaffold(
+      backgroundColor: bgColor,
+      appBar: AppBar(
+        backgroundColor: bgColor,
+        foregroundColor: textColor,
+        elevation: 0,
+        title: const Text("Settings", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        centerTitle: true,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.only(top: 10, bottom: 60),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  "Master Console Settings",
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                    color: textColor,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 30),
+              const SizedBox(height: 30),
 
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24),
-              child: Text(
-                "App Customization",
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  "App Customization",
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade500,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
+              const SizedBox(height: 10),
 
-            // 🚨 UI FIX: Flat Edge-to-Edge List Tiles
-            _buildTile(
-              isDark,
-              Icons.brightness_6,
-              "App Theme",
-              "Light, Dark, or System",
-              primaryColor,
-              () async {
-                final prefs = await SharedPreferences.getInstance();
-                _showThemeSelectionPopup(prefs);
-              },
-            ),
-            _buildTile(
-              isDark,
-              Icons.color_lens,
-              "Brand Color",
-              "Change primary accent color",
-              primaryColor,
-              () {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (ctx) =>
-                      ColorPickerSheet(currentColor: primaryColor),
-                );
-              },
-            ),
-            const SizedBox(height: 30),
+              _buildTile(
+                isDark,
+                textColor,
+                Icons.brightness_6,
+                "App Theme",
+                "Light, Dark, or System",
+                primaryColor,
+                () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  _showThemeSelectionPopup(prefs);
+                },
+              ),
+              _buildTile(
+                isDark,
+                textColor,
+                Icons.color_lens,
+                "Brand Color",
+                "Change primary accent color",
+                primaryColor,
+                () {
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (ctx) =>
+                        ColorPickerSheet(currentColor: primaryColor),
+                  );
+                },
+              ),
+              const SizedBox(height: 30),
 
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24),
-              child: Text(
-                "Security Settings",
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  "Security Settings",
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade500,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            _buildTile(
-              isDark,
-              Icons.lock_reset,
-              "Change Password",
-              "Update master admin password",
-              Colors.brown,
-              _showPasswordModal,
-            ),
-            if (_canCheckBiometrics) ...[
-              Column(
-                children: [
-                  Material(
-                    color: Colors.transparent,
-                    child: SwitchListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 8,
-                      ),
-                      title: const Text(
-                        "Biometric Login",
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: const Text(
-                        "Use fingerprint or face to login",
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                      secondary: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
+              const SizedBox(height: 10),
+              _buildTile(
+                isDark,
+                textColor,
+                Icons.lock_reset,
+                "Change Password",
+                "Update master admin password",
+                Colors.brown,
+                _showPasswordModal,
+              ),
+              if (_canCheckBiometrics) ...[
+                Column(
+                  children: [
+                    Material(
+                      color: Colors.transparent,
+                      child: SwitchListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 8,
                         ),
-                        child: const Icon(
-                          Icons.fingerprint,
-                          color: Colors.green,
+                        title: Text(
+                          "Biometric Login",
+                          style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
+                        ),
+                        subtitle: Text(
+                          "Use fingerprint or face to login",
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                        ),
+                        secondary: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.fingerprint,
+                            color: Colors.green,
+                          ),
+                        ),
+                        activeThumbColor: primaryColor,
+                        value: _isBiometricEnabled,
+                        onChanged: _toggleBiometrics,
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 88, right: 24),
+                      child: Divider(
+                        height: 1,
+                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 40),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 55,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
+                      foregroundColor: Colors.redAccent,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        side: BorderSide(
+                          color: Colors.redAccent.withValues(alpha: 0.3),
                         ),
                       ),
-                      activeThumbColor: primaryColor,
-                      value: _isBiometricEnabled,
-                      onChanged: _toggleBiometrics,
+                    ),
+                    onPressed: _handleLogout,
+                    icon: const Icon(Icons.logout),
+                    label: const Text(
+                      "TERMINATE SESSION",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 88, right: 24),
-                    child: Divider(
-                      height: 1,
-                      color: isDark ? Colors.white10 : Colors.grey.shade200,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ],
-            const SizedBox(height: 40),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
-                    foregroundColor: Colors.redAccent,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      side: BorderSide(
-                        color: Colors.redAccent.withValues(alpha: 0.3),
-                      ),
-                    ),
-                  ),
-                  onPressed: _handleLogout,
-                  icon: const Icon(Icons.logout),
-                  label: const Text(
-                    "TERMINATE SESSION",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -472,6 +496,7 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
 
   Widget _buildTile(
     bool isDark,
+    Color textColor,
     IconData icon,
     String title,
     String subtitle,
@@ -498,13 +523,13 @@ class _OwnerSettingsViewState extends State<OwnerSettingsView>
             ),
             title: Text(
               title,
-              style: const TextStyle(fontWeight: FontWeight.bold),
+              style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
             ),
             subtitle: Text(
               subtitle,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
             ),
-            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+            trailing: Icon(Icons.chevron_right, color: Colors.grey.shade500),
           ),
         ),
         Padding(

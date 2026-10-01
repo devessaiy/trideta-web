@@ -19,7 +19,7 @@ class AuthService {
     }
   }
 
-  // 2. REGISTER NEW SCHOOL (Strict Debug Mode)
+  // 2. REGISTER NEW SCHOOL (via atomic register_school RPC)
   Future<String?> registerSchool({
     required String schoolName,
     required String email,
@@ -39,29 +39,14 @@ class AuthService {
         return "Registration Failed: Supabase returned no user.";
       }
 
-      final userId = authResponse.user!.id;
-
-      // B. Create School (Database Insert)
+      // B. Create School + Admin Profile atomically (single RPC call)
       try {
-        final schoolData = await _supabase
-            .from('schools')
-            .insert({
-              'name': schoolName,
-              'acronym': _generateAcronym(schoolName),
-              'address': address ?? "",
-              'is_configured': false, // Explicitly set to false initially
-            })
-            .select()
-            .single();
-
-        final schoolId = schoolData['id'];
-
-        // C. Link Profile (🚨 THE ULTIMATE FIX: Using your SQL Database Function)
         await _supabase.rpc(
-          'create_admin_profile',
+          'register_school',
           params: {
-            'new_id': userId,
-            'new_school_id': schoolId,
+            'new_school_name': schoolName,
+            'new_acronym': _generateAcronym(schoolName),
+            'new_address': address ?? "",
             'new_full_name': ownerName ?? "Admin",
             'new_email': email,
             'new_phone': phone,

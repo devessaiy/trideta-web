@@ -8,7 +8,7 @@ class ParentHomeTab extends StatelessWidget {
   final List<Map<String, dynamic>> myChildren;
   final List<Map<String, dynamic>> alerts;
   final bool showAlertBrief;
-  final VoidCallback onRefresh;
+  final Future<void> Function() onRefresh;
   final Function(int) onNavigate;
   final Function() onDismissAlert;
 
@@ -56,7 +56,7 @@ class ParentHomeTab extends StatelessWidget {
         color: bgColor,
         child: RefreshIndicator(
           color: primaryColor,
-          onRefresh: () async => onRefresh(),
+          onRefresh: onRefresh,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
@@ -509,6 +509,7 @@ class ParentHomeTab extends StatelessWidget {
           }
 
           return ListTile(
+            tileColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 20,
               vertical: 12,

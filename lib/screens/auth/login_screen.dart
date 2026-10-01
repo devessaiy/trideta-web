@@ -36,6 +36,10 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   int _currentStep = 0; // 0 = Email Step, 1 = Password Step
   bool _obscurePassword = true;
 
+  // 🚨 SESSION RESUME: true while we silently check an existing persisted
+  // session and route straight to the right dashboard, skipping the form.
+  bool _isResumingSession = false;
+
   final _authService = AuthService();
   final _biometricService = BiometricService();
   final _supabase = Supabase.instance.client;
@@ -48,9 +52,25 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
     super.initState();
     _checkBiometrics();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkAndShowThemePopup();
-    });
+    final existingSession = _supabase.auth.currentSession;
+
+    if (existingSession != null) {
+      // A session already exists - skip the form and silently resume,
+      // reusing the exact same routing/suspension/termination checks
+      // that a fresh login already goes through.
+      _isResumingSession = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await _checkAndNavigate();
+        // Still here means navigation didn't happen (suspended, terminated,
+        // or an error) - fall back to the normal login form instead of
+        // leaving the user stuck on a spinner.
+        if (mounted) setState(() => _isResumingSession = false);
+      });
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _checkAndShowThemePopup();
+      });
+    }
   }
 
   @override
@@ -677,6 +697,16 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF4F6F9);
     Color primaryColor = Theme.of(context).primaryColor;
+
+    // 🚨 SESSION RESUME: a valid session already exists, so skip the login
+    // form entirely while _checkAndNavigate() (triggered in initState) routes
+    // to the right dashboard.
+    if (_isResumingSession) {
+      return Scaffold(
+        backgroundColor: bgColor,
+        body: Center(child: CircularProgressIndicator(color: primaryColor)),
+      );
+    }
 
     return Scaffold(
       backgroundColor: bgColor,

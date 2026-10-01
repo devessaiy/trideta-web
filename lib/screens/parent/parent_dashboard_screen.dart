@@ -88,8 +88,8 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
         .replaceAll('six', '6');
   }
 
-  Future<void> _fetchParentData() async {
-    setState(() => _isLoading = true);
+  Future<void> _fetchParentData({bool silent = false}) async {
+    if (!silent) setState(() => _isLoading = true);
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) return;
@@ -112,7 +112,8 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
       _myChildren = List<Map<String, dynamic>>.from(childrenData);
 
       if (_myChildren.isNotEmpty) {
-        _primarySession = _myChildren[0]['schools']['current_session'] ?? "N/A";
+        _primarySession =
+            _myChildren[0]['schools']?['current_session'] ?? "N/A";
         if (_myChildren[0]['parent_name'] != null &&
             _myChildren[0]['parent_name'].toString().isNotEmpty) {
           _parentName = _myChildren[0]['parent_name'];
@@ -271,7 +272,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
         myChildren: _myChildren,
         alerts: _alerts,
         showAlertBrief: _showAlertBrief,
-        onRefresh: _fetchParentData,
+        onRefresh: () => _fetchParentData(silent: true),
         onNavigate: (i) => setState(() => _currentIndex = i),
         onDismissAlert: () => setState(() => _showAlertBrief = false),
       ),
@@ -288,7 +289,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
         myChildren: _myChildren,
         alerts: _alerts,
         showAlertBrief: _showAlertBrief,
-        onRefresh: _fetchParentData,
+        onRefresh: () => _fetchParentData(silent: true),
         onNavigate: (i) => setState(() => _currentIndex = i),
         onDismissAlert: () => setState(() => _showAlertBrief = false),
       ),
@@ -368,7 +369,6 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
             selectedIndex: _currentIndex,
             onDestinationSelected: (i) {
               setState(() => _currentIndex = i);
-              if (i == 0) _fetchParentData();
             },
             backgroundColor: navBarColor,
             indicatorColor: primaryColor.withValues(alpha: 0.1),
@@ -423,7 +423,6 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
       selectedTileColor: primaryColor.withValues(alpha: 0.1),
       onTap: () {
         setState(() => _currentIndex = index);
-        if (index == 0) _fetchParentData();
       },
     );
   }

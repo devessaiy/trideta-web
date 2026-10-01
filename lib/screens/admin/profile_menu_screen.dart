@@ -657,7 +657,9 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                 color: Colors.blueGrey,
                 isDark: isDark,
                 onTap: () async {
-                  final Uri url = Uri.parse('https://trideta.com/help');
+                  final Uri url = Uri.parse(
+                    'https://www.youtube.com/@SkynexOfficial',
+                  );
                   if (!await launchUrl(url)) {
                     debugPrint('Could not launch $url');
                   }
@@ -679,7 +681,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                 isDark: isDark,
                 onTap: () async {
                   final Uri url = Uri.parse(
-                    'https://trideta.vercel.app/terms.html',
+                    'https://skynex.com.ng/trideta-terms',
                   );
                   launchUrl(url);
                 },
@@ -691,7 +693,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                 isDark: isDark,
                 onTap: () async {
                   final Uri url = Uri.parse(
-                    'https://trideta.vercel.app/privacy-policy.html',
+                    'https://skynex.com.ng/trideta-privacy-policy',
                   );
                   launchUrl(url);
                 },

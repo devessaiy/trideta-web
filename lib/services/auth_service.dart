@@ -79,14 +79,17 @@ class AuthService {
 
       final schoolId = profile['school_id'];
 
-      // Check 'is_configured' flag in Schools table
+      // A school is set up when either flag says so ('setup_completed' is the
+      // one the setup wizard writes). This lets admins go straight to the
+      // dashboard instead of passing through the setup wizard every login.
       final school = await _supabase
           .from('schools')
-          .select('is_configured')
+          .select('is_configured, setup_completed')
           .eq('id', schoolId)
           .single();
 
-      return school['is_configured'] ?? false;
+      return school['is_configured'] == true ||
+          school['setup_completed'] == true;
     } catch (e) {
       print("Error checking config: $e");
       return false; // Default to false (force setup if unsure)

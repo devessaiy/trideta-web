@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/main.dart';
 // 🚨 IMPORT YOUR LOGIN SCREEN SO WE CAN NAVIGATE THERE!
 import 'package:trideta_v2/screens/auth/login_screen.dart';
+import 'package:trideta_v2/screens/shared/about_trideta_screen.dart';
 
 class ParentProfileTab extends StatefulWidget {
   final String parentName;
@@ -236,6 +237,24 @@ class _ParentProfileTabState extends State<ParentProfileTab> {
                         ],
                       ),
                     ),
+                  ),
+
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.info_outline_rounded),
+                    title: const Text(
+                      "About Trideta",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const AboutTridetaScreen(),
+                        ),
+                      );
+                    },
                   ),
 
                   const SizedBox(height: 40),

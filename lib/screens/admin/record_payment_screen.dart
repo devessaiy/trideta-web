@@ -1,4 +1,6 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/utils/resilient_request.dart';
+import 'package:trideta_v2/services/offline_queue.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -41,6 +43,13 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
   String? _selectedCategory;
   String _paymentMethod = "Cash";
   bool _isProcessing = false;
+
+  // Same payment details = same request id. If the connection drops and the
+  // user taps again, the database recognises the request and never records
+  // the payment twice.
+  String? _pendingFingerprint;
+  String? _pendingRequestId;
+  String? _pendingReceiptNo;
 
   @override
   void initState() {
@@ -335,6 +344,102 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
     });
   }
 
+  /// Saves the payment (and the wallet change for arrears) in ONE database
+  /// step, so it either fully succeeds or does not happen at all.
+  Future<Map<String, dynamic>> _saveTransaction(
+    Map<String, dynamic> payload,
+    bool isArrears,
+  ) async {
+    try {
+      final result = await retryIdempotent(
+        () async => await _supabase.rpc(
+          'record_payment',
+          params: {'p_payload': payload, 'p_is_arrears': isArrears},
+        ),
+      );
+      return Map<String, dynamic>.from(result as Map);
+    } on PostgrestException catch (e) {
+      // If the database function has not been installed yet, fall back to
+      // the old behaviour so nobody is blocked while we roll this out.
+      final functionMissing =
+          e.code == 'PGRST202' ||
+          e.message.contains('Could not find the function');
+      if (!functionMissing) rethrow;
+    }
+
+    final legacy = Map<String, dynamic>.of(payload)..remove('request_id');
+    final txn = await _supabase
+        .from('transactions')
+        .insert(legacy)
+        .select()
+        .single();
+    if (isArrears) {
+      final studentData = await _supabase
+          .from('students')
+          .select('wallet_balance')
+          .eq('id', payload['student_id'])
+          .single();
+      double currentBalance = (studentData['wallet_balance'] ?? 0).toDouble();
+      await _supabase
+          .from('students')
+          .update({'wallet_balance': currentBalance + payload['amount']})
+          .eq('id', payload['student_id']);
+    }
+    return txn;
+  }
+
+  static const String _pendingKey = 'pending_payments';
+  static const Duration _pendingWindow = Duration(hours: 24);
+
+  /// Same payment details within 24 hours = same request id and receipt
+  /// number, even if the bursar left this screen or closed the app after a
+  /// failed attempt. Returns true when an earlier attempt is being reused.
+  Future<bool> _loadPendingPayment(String fingerprint) async {
+    final raw = await LocalCache.get(_pendingKey);
+    final store = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : <String, dynamic>{};
+    final now = DateTime.now();
+    store.removeWhere((_, v) {
+      final created = v is Map ? DateTime.tryParse('${v['createdAt']}') : null;
+      return created == null || now.difference(created) > _pendingWindow;
+    });
+
+    final entry = store[fingerprint];
+    final reused = entry is Map;
+    if (entry is Map) {
+      _pendingRequestId = entry['requestId'].toString();
+      _pendingReceiptNo = entry['receiptNo'].toString();
+    } else {
+      _pendingRequestId = newRequestId();
+      _pendingReceiptNo =
+          "REC-${now.millisecondsSinceEpoch.toString().substring(5)}";
+      store[fingerprint] = {
+        'requestId': _pendingRequestId,
+        'receiptNo': _pendingReceiptNo,
+        'createdAt': now.toIso8601String(),
+      };
+    }
+    _pendingFingerprint = fingerprint;
+    await LocalCache.put(_pendingKey, store);
+    return reused;
+  }
+
+  Future<void> _clearPendingPayment() async {
+    final fp = _pendingFingerprint;
+    if (fp != null) {
+      final raw = await LocalCache.get(_pendingKey);
+      if (raw is Map) {
+        final store = Map<String, dynamic>.from(raw);
+        store.remove(fp);
+        await LocalCache.put(_pendingKey, store);
+      }
+    }
+    _pendingFingerprint = null;
+    _pendingRequestId = null;
+    _pendingReceiptNo = null;
+  }
+
   Future<void> _processPayment() async {
     if (_selectedStudent == null ||
         _selectedCategory == null ||
@@ -354,41 +459,57 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
     bool isArrears = selectedFeeOption['is_arrears'] ?? false;
     String? targetFeeId = isArrears ? null : selectedFeeOption['fee_id'];
 
+    final fingerprint =
+        "${_selectedStudent!['id']}|$_selectedCategory|$inputAmount|$_paymentMethod|$_globalSession|$_globalTerm";
+    final reused = await _loadPendingPayment(fingerprint);
+
     setState(() => _isProcessing = true);
     try {
-      final txnData = await _supabase
-          .from('transactions')
-          .insert({
-            'school_id': _schoolId,
-            'student_id': _selectedStudent!['id'],
-            'fee_id': targetFeeId,
-            'student_name':
-                "${_selectedStudent!['first_name']} ${_selectedStudent!['last_name']}",
-            'amount': inputAmount,
-            'category': _selectedCategory,
-            'title': _selectedCategory,
-            'payment_method': _paymentMethod,
-            'academic_session': _globalSession,
-            'academic_term': _globalTerm,
-            'receipt_no':
-                "REC-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}",
-          })
-          .select()
-          .single();
+      Map<String, dynamic>? txnData;
+      bool alreadyRecorded = false;
 
-      if (isArrears) {
-        final studentData = await _supabase
-            .from('students')
-            .select('wallet_balance')
-            .eq('id', _selectedStudent!['id'])
-            .single();
-        double currentBalance = (studentData['wallet_balance'] ?? 0).toDouble();
-        double newBalance = currentBalance + inputAmount;
-        await _supabase
-            .from('students')
-            .update({'wallet_balance': newBalance})
-            .eq('id', _selectedStudent!['id']);
+      // This exact payment was tried before and we never saw it finish. Check
+      // whether it actually reached the server, so it is never recorded twice.
+      if (reused) {
+        try {
+          final existing = await retryRead(
+            () async => await _supabase
+                .from('transactions')
+                .select()
+                .eq('request_id', _pendingRequestId!)
+                .maybeSingle(),
+            maxAttempts: 2,
+            timeout: const Duration(seconds: 12),
+          );
+          if (existing != null) {
+            txnData = Map<String, dynamic>.from(existing);
+            alreadyRecorded = true;
+          }
+        } catch (_) {
+          // Could not check: carry on and save normally. The database still
+          // refuses a second copy of the same request.
+        }
       }
+
+      txnData ??= await _saveTransaction({
+        'school_id': _schoolId,
+        'student_id': _selectedStudent!['id'],
+        'fee_id': targetFeeId,
+        'student_name':
+            "${_selectedStudent!['first_name']} ${_selectedStudent!['last_name']}",
+        'amount': inputAmount,
+        'category': _selectedCategory,
+        'title': _selectedCategory,
+        'payment_method': _paymentMethod,
+        'academic_session': _globalSession,
+        'academic_term': _globalTerm,
+        'receipt_no': _pendingReceiptNo,
+        'request_id': _pendingRequestId,
+      }, isArrears);
+
+      // Saved: the next payment gets a fresh request id.
+      await _clearPendingPayment();
+      final Map<String, dynamic> receiptData = txnData;
 
       // 🚨 INJECTED LOGGER
       if (_schoolId != null) {
@@ -400,17 +521,28 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen>
       }
 
       if (mounted) {
+        if (alreadyRecorded) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "This payment was already recorded earlier. Showing the existing receipt. No second payment was created.",
+              ),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 6),
+            ),
+          );
+        }
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => ReceiptViewScreen(transactionData: txnData),
+            builder: (_) => ReceiptViewScreen(transactionData: receiptData),
           ),
         );
       }
     } catch (e) {
       setState(() => _isProcessing = false);
       showAuthErrorDialog(
-        "Payment processing failed. Please check your connection and try again.",
+        "We couldn't confirm this payment. Please check your connection and tap again. It will not be recorded twice.",
       );
     }
   }

@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/screens/shared/about_trideta_screen.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -696,6 +697,21 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                     'https://skynex.com.ng/trideta-privacy-policy',
                   );
                   launchUrl(url);
+                },
+              ),
+              _buildSettingsItem(
+                title: "About Trideta",
+                subtitle: "Version, features and Skynex",
+                icon: Icons.info_outline_rounded,
+                color: Colors.teal,
+                isDark: isDark,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AboutTridetaScreen(),
+                    ),
+                  );
                 },
               ),
               const SizedBox(height: 30),

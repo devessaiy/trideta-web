@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:local_auth/local_auth.dart';
+import 'package:trideta_v2/utils/lock_gate.dart';
+import 'package:trideta_v2/services/offline_queue.dart';
+import 'package:trideta_v2/screens/admin/curriculum_docs_screen.dart';
+import 'package:trideta_v2/screens/admin/lesson_note_review_screen.dart';
+import 'package:trideta_v2/widgets/sync_status_banner.dart';
+import 'package:trideta_v2/utils/resilient_request.dart';
 
 // MODULAR UI IMPORTS
 import 'package:trideta_v2/widgets/admin_bottom_nav_bar.dart';
@@ -30,7 +35,6 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final _supabase = Supabase.instance.client;
-  final LocalAuthentication _localAuth = LocalAuthentication();
 
   late PageController _pageController;
 
@@ -52,6 +56,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _selectedIndex);
+    OfflineQueue.instance.start();
     _fetchSchoolData();
   }
 
@@ -61,33 +66,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  Future<bool> _authenticateAdmin(String reason) async {
-    try {
-      final bool canAuthenticateWithBiometrics =
-          await _localAuth.canCheckBiometrics;
-      final bool canAuthenticate =
-          canAuthenticateWithBiometrics || await _localAuth.isDeviceSupported();
-
-      if (!canAuthenticate) return true;
-
-      return await _localAuth.authenticate(localizedReason: reason);
-    } catch (e) {
-      debugPrint("Local auth error: $e");
-      return true;
-    }
-  }
+  // Lock-screen gate: true only if the user really unlocked their phone.
+  Future<bool> _authenticateAdmin(String reason) =>
+      requireDeviceLock(context, reason);
 
   Future<void> _fetchSchoolData() async {
-    setState(() => _isLoading = true);
+    final cacheKey = 'dash:admin:${_supabase.auth.currentUser?.id}';
+
+    // Show the last saved copy at once, then refresh from the server below.
+    final cached = await LocalCache.get(cacheKey);
+    if (cached is Map && mounted) {
+      setState(() {
+        _adminName = (cached['adminName'] ?? "Admin").toString();
+        _schoolName = (cached['schoolName'] ?? "My School").toString();
+        _schoolLogoUrl = cached['schoolLogoUrl']?.toString();
+        _currentSession = (cached['currentSession'] ?? "Not Set").toString();
+        final la = cached['latestAlert'];
+        _latestAlert = la is Map ? Map<String, dynamic>.from(la) : null;
+        _isLoading = false;
+      });
+    } else {
+      setState(() => _isLoading = true);
+    }
+
     try {
       final user = _supabase.auth.currentUser;
-      if (user == null) return;
+      if (user == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
 
-      final profile = await _supabase
-          .from('profiles')
-          .select('full_name, school_id')
-          .eq('id', user.id)
-          .single();
+      final profile = await retryRead(
+        () async => await _supabase
+            .from('profiles')
+            .select('full_name, school_id')
+            .eq('id', user.id)
+            .single(),
+      );
 
       final schoolId = profile['school_id'];
 
@@ -97,33 +112,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
         });
       }
 
-      final school = await _supabase
-          .from('schools')
-          .select()
-          .eq('id', schoolId)
-          .single();
+      // Load the school and the latest alert at the same time.
+      final schoolFuture = retryRead(
+        () async => await _supabase
+            .from('schools')
+            .select('name, logo_url, current_session')
+            .eq('id', schoolId)
+            .single(),
+      );
 
-      try {
-        final alertRes = await _supabase
-            .from('alerts')
-            .select()
-            .eq('school_id', schoolId)
-            .order('created_at', ascending: false)
-            .limit(1)
-            .maybeSingle();
-        if (mounted) _latestAlert = alertRes;
-      } catch (_) {}
+      bool alertLoaded = false;
+      Map<String, dynamic>? alertRes;
+      final alertFuture = () async {
+        try {
+          alertRes = await retryRead(
+            () async => await _supabase
+                .from('alerts')
+                .select()
+                .eq('school_id', schoolId)
+                .order('created_at', ascending: false)
+                .limit(1)
+                .maybeSingle(),
+          );
+          alertLoaded = true;
+        } catch (_) {}
+      }();
+
+      final school = await schoolFuture;
+      await alertFuture;
+      if (mounted && alertLoaded) _latestAlert = alertRes;
 
       if (mounted) {
         setState(() {
           _schoolName = school['name'] ?? "My School";
+          // The logo address changes whenever a new logo is uploaded, so it
+          // can be cached safely (no need to re-download on every refresh).
           _schoolLogoUrl = school['logo_url'];
-          if (_schoolLogoUrl != null) {
-            _schoolLogoUrl =
-                "$_schoolLogoUrl?t=${DateTime.now().millisecondsSinceEpoch}";
-          }
           _currentSession = school['current_session'] ?? "Not Set";
           _isLoading = false;
+        });
+
+        // Keep a saved copy for the next start (works with no internet).
+        await LocalCache.put(cacheKey, {
+          'adminName': _adminName,
+          'schoolName': _schoolName,
+          'schoolLogoUrl': _schoolLogoUrl,
+          'currentSession': _currentSession,
+          'latestAlert': _latestAlert,
         });
       }
     } catch (e) {
@@ -296,6 +331,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const SyncStatusBanner(),
               _buildAdminHeader(textColor, subTextColor, primaryColor),
               const SizedBox(height: 30),
 
@@ -428,6 +464,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     );
                   }
                 },
+              ),
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.folder_copy_rounded,
+                color: Colors.indigo.shade500,
+                title: "Curriculum Documents",
+                subtitle: "Send syllabus & scheme of work to teachers",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const CurriculumDocsScreen(),
+                  ),
+                ),
+              ),
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.fact_check_rounded,
+                color: Colors.green.shade600,
+                title: "Lesson Note Approvals",
+                subtitle: "Review lesson notes sent by teachers",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const LessonNoteReviewScreen(),
+                  ),
+                ),
               ),
               _buildModuleTile(
                 isDark: isDark,

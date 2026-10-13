@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:trideta_v2/services/read_through.dart';
+import 'package:trideta_v2/utils/resilient_request.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:trideta_v2/utils/subscription_guard.dart';
+import 'package:trideta_v2/services/offline_queue.dart';
+import 'package:trideta_v2/widgets/sync_status_banner.dart';
 import 'package:trideta_v2/services/app_activity_logger.dart'; // 🚨 INJECTED LOGGER
 
 // --- MODELS --- //
@@ -94,6 +98,7 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
   void initState() {
     super.initState();
     _sessions = _generateDynamicSessions();
+    OfflineQueue.instance.start();
     _fetchInitialData();
   }
 
@@ -127,19 +132,26 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
       if (user == null) return;
       _userId = user.id;
 
-      final profile = await _supabase
-          .from('profiles')
-          .select('school_id, role')
-          .eq('id', user.id)
-          .single();
+      final profile = await readThrough(
+        '350688ab|profiles|${user.id}',
+        () async => await _supabase
+            .from('profiles')
+            .select('school_id, role')
+            .eq('id', user.id)
+            .single(),
+        fresh: const Duration(minutes: 10),
+      );
       _schoolId = profile['school_id'];
       _userRole = profile['role']?.toString().toLowerCase() ?? 'teacher';
 
-      final school = await _supabase
-          .from('schools')
-          .select('current_session, current_term')
-          .eq('id', _schoolId!)
-          .single();
+      final school = await readThrough(
+        'b6eeb681|schools|${_schoolId!}',
+        () async => await _supabase
+            .from('schools')
+            .select('current_session, current_term')
+            .eq('id', _schoolId!)
+            .single(),
+      );
 
       int currentYr = DateTime.now().year;
       _globalSession =
@@ -152,19 +164,27 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
 
       List<Map<String, dynamic>> fetchedClasses = [];
 
-      final allClasses = await _supabase
-          .from('classes')
-          .select('id, name')
-          .eq('school_id', _schoolId!)
-          .order('list_order', ascending: true);
+      final allClasses = await readThrough(
+        'a623c3c2|classes|${_schoolId!}',
+        () async => await _supabase
+            .from('classes')
+            .select('id, name')
+            .eq('school_id', _schoolId!)
+            .order('list_order', ascending: true),
+        fresh: const Duration(minutes: 2),
+      );
 
       if (_userRole == 'admin' || _userRole == 'principal') {
         fetchedClasses = List<Map<String, dynamic>>.from(allClasses);
       } else {
-        final assignments = await _supabase
-            .from('staff_assignments')
-            .select('class_assigned')
-            .eq('staff_id', user.id);
+        final assignments = await readThrough(
+          'dab6aead|staff_assignments|${user.id}',
+          () async => await _supabase
+              .from('staff_assignments')
+              .select('class_assigned')
+              .eq('staff_id', user.id),
+          fresh: const Duration(minutes: 2),
+        );
 
         final Set<String> assignedClasses = {};
         for (var a in assignments) {
@@ -211,20 +231,28 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     try {
       List<Map<String, dynamic>> subjects = [];
 
-      final allSubjects = await _supabase
-          .from('class_subjects')
-          .select('id, subject_name')
-          .eq('school_id', _schoolId!)
-          .eq('class_id', classId)
-          .order('subject_name');
+      final allSubjects = await readThrough(
+        '6389e4f8|class_subjects|${_schoolId!}|$classId',
+        () async => await _supabase
+            .from('class_subjects')
+            .select('id, subject_name')
+            .eq('school_id', _schoolId!)
+            .eq('class_id', classId)
+            .order('subject_name'),
+        fresh: const Duration(minutes: 2),
+      );
 
       if (_userRole == 'admin' || _userRole == 'principal') {
         subjects = List<Map<String, dynamic>>.from(allSubjects);
       } else {
-        final assignments = await _supabase
-            .from('staff_assignments')
-            .select('class_assigned, subject_assigned')
-            .eq('staff_id', _userId!);
+        final assignments = await readThrough(
+          '170af377|staff_assignments|${_userId!}',
+          () async => await _supabase
+              .from('staff_assignments')
+              .select('class_assigned, subject_assigned')
+              .eq('staff_id', _userId!),
+          fresh: const Duration(minutes: 2),
+        );
 
         final Set<String> assignedSubjects = {};
         bool isFormMasterForThisClass = false;
@@ -266,6 +294,55 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     }
   }
 
+  Map<String, dynamic> _scoreToJson(StudentScore s) => {
+    'id': s.id,
+    'name': s.name,
+    'admissionNo': s.admissionNo,
+    'resultId': s.resultId,
+    'ca1': s.caAttendance,
+    'ca2': s.caAssignment,
+    'ca3': s.caMidterm,
+    'exam': s.examScore,
+  };
+
+  StudentScore _scoreFromJson(Map<String, dynamic> j) => StudentScore(
+    id: j['id'].toString(),
+    name: (j['name'] ?? '').toString(),
+    admissionNo: (j['admissionNo'] ?? 'N/A').toString(),
+    resultId: j['resultId']?.toString(),
+    caAttendance: (j['ca1'] as num?)?.toDouble() ?? 0,
+    caAssignment: (j['ca2'] as num?)?.toDouble() ?? 0,
+    caMidterm: (j['ca3'] as num?)?.toDouble() ?? 0,
+    examScore: (j['exam'] as num?)?.toDouble() ?? 0,
+  );
+
+  /// Shows scores that are saved on the phone but not yet uploaded on top of
+  /// the server copy, so the latest entries are never hidden.
+  Future<void> _applyQueuedScores(List<StudentScore> list) async {
+    await OfflineQueue.instance.ready();
+    final byStudent = {for (final s in list) s.id: s};
+    for (final r in OfflineQueue.instance.queuedRows('exam_scores')) {
+      if (r['academic_session'] != _selectedSession ||
+          r['term'] != _selectedTerm ||
+          r['subject_name'] != _selectedSubjectName) {
+        continue;
+      }
+      final s = byStudent[r['student_id'].toString()];
+      if (s == null) continue;
+      s.resultId = r['id']?.toString();
+      s.caAttendance =
+          double.tryParse(r['ca_attendance']?.toString() ?? '') ??
+          s.caAttendance;
+      s.caAssignment =
+          double.tryParse(r['ca_assignment']?.toString() ?? '') ??
+          s.caAssignment;
+      s.caMidterm =
+          double.tryParse(r['ca_midterm']?.toString() ?? '') ?? s.caMidterm;
+      s.examScore =
+          double.tryParse(r['exam_score']?.toString() ?? '') ?? s.examScore;
+    }
+  }
+
   Future<void> _fetchStudentsAndScores() async {
     if (_selectedClassId == null || _selectedSubjectId == null) return;
 
@@ -275,14 +352,21 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
       _controllers.clear();
     });
 
+    final cacheKey =
+        'scores:$_schoolId:$_selectedClassId:$_selectedSubjectName:$_selectedSession:$_selectedTerm';
+
     try {
-      final studentsData = await _supabase
-          .from('students')
-          .select('id, first_name, last_name, admission_no')
-          .eq('school_id', _schoolId!)
-          .eq('class_id', _selectedClassId!)
-          .eq('is_active', true)
-          .order('first_name');
+      final studentsData = await retryRead(
+        () async => await _supabase
+            .from('students')
+            .select('id, first_name, last_name, admission_no')
+            .eq('school_id', _schoolId!)
+            .eq('class_id', _selectedClassId!)
+            .eq('is_active', true)
+            .order('first_name'),
+        maxAttempts: 2,
+        timeout: const Duration(seconds: 15),
+      );
 
       List<String> validStudentIds = studentsData
           .map((s) => s['id'].toString())
@@ -291,16 +375,20 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
       Map<String, Map<String, dynamic>> existingScoreMap = {};
 
       if (validStudentIds.isNotEmpty) {
-        final existingScoresData = await _supabase
-            .from('exam_scores')
-            .select(
-              'id, student_id, ca_attendance, ca_assignment, ca_midterm, exam_score',
-            )
-            .eq('school_id', _schoolId!)
-            .inFilter('student_id', validStudentIds)
-            .eq('academic_session', _selectedSession!)
-            .eq('term', _selectedTerm!)
-            .eq('subject_name', _selectedSubjectName!);
+        final existingScoresData = await retryRead(
+          () async => await _supabase
+              .from('exam_scores')
+              .select(
+                'id, student_id, ca_attendance, ca_assignment, ca_midterm, exam_score',
+              )
+              .eq('school_id', _schoolId!)
+              .inFilter('student_id', validStudentIds)
+              .eq('academic_session', _selectedSession!)
+              .eq('term', _selectedTerm!)
+              .eq('subject_name', _selectedSubjectName!),
+          maxAttempts: 2,
+          timeout: const Duration(seconds: 15),
+        );
 
         for (var score in existingScoresData) {
           existingScoreMap[score['student_id'].toString()] = score;
@@ -338,6 +426,11 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
         );
       }
 
+      // Keep a copy of this list on the phone (as the server has it), then
+      // show any unsent entries on top.
+      await LocalCache.put(cacheKey, combinedList.map(_scoreToJson).toList());
+      await _applyQueuedScores(combinedList);
+
       if (mounted) {
         setState(() {
           _students = combinedList;
@@ -345,6 +438,29 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
         });
       }
     } catch (e) {
+      // No internet: reopen the last copy saved on this phone, if any.
+      final cached = await LocalCache.get(cacheKey);
+      if (cached is List && cached.isNotEmpty) {
+        final list = cached
+            .map((j) => _scoreFromJson(Map<String, dynamic>.from(j as Map)))
+            .toList();
+        await _applyQueuedScores(list);
+        if (mounted) {
+          setState(() {
+            _students = list;
+            _isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "You are offline. Showing the last saved list. Scores you enter will upload when you are back online.",
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
       if (mounted) {
         setState(() => _isLoading = false);
         showAuthErrorDialog("Failed to load student list.");
@@ -367,11 +483,16 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
     setState(() => _isSaving = true);
 
     try {
-      List<Map<String, dynamic>> toInsert = [];
-      List<Map<String, dynamic>> toUpdate = [];
+      final List<Map<String, dynamic>> allRows = [];
 
       for (var s in _students) {
-        final Map<String, dynamic> rowData = {
+        // Existing rows keep their id. New rows get an id now and keep it
+        // even if this save fails, so tapping Save again can never create
+        // a second copy of the same score.
+        s.resultId ??= newRequestId();
+
+        allRows.add({
+          'id': s.resultId,
           'school_id': _schoolId,
           'student_id': s.id,
           'academic_session': _selectedSession,
@@ -389,28 +510,41 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           'remark': s.remark,
           'recorded_by': _supabase.auth.currentUser!.id,
           'updated_at': DateTime.now().toIso8601String(),
-        };
-
-        if (s.resultId != null) {
-          rowData['id'] = s.resultId;
-          toUpdate.add(rowData);
-        } else {
-          toInsert.add(rowData);
-        }
+        });
       }
 
-      if (toInsert.isNotEmpty) {
-        await _supabase.from('exam_scores').insert(toInsert);
-      }
-
-      if (toUpdate.isNotEmpty) {
-        for (var row in toUpdate) {
-          await _supabase.from('exam_scores').update(row).eq('id', row['id']);
-        }
+      // ONE request for every row: either all the scores are saved or none
+      // are, and repeating it after a bad connection is harmless.
+      bool queued = false;
+      try {
+        await retryIdempotent(
+          () async => await _supabase
+              .from('exam_scores')
+              .upsert(allRows, onConflict: 'id'),
+          maxAttempts: 2,
+          timeout: const Duration(seconds: 20),
+        );
+        // This save is newer than anything still waiting on the phone.
+        await OfflineQueue.instance.dropSuperseded(
+          table: 'exam_scores',
+          savedRows: allRows,
+          keyOf: (r) => r['id'].toString(),
+        );
+      } catch (e) {
+        if (!isTransientError(e)) rethrow;
+        // No usable internet: keep it safely on the phone and upload later.
+        await OfflineQueue.instance.enqueueUpsert(
+          label:
+              'Scores - $_selectedClassName, $_selectedSubjectName ($_selectedSession, $_selectedTerm)',
+          table: 'exam_scores',
+          onConflict: 'id',
+          rows: allRows,
+        );
+        queued = true;
       }
 
       // 🚨 INJECTED LOGGER
-      if (_schoolId != null) {
+      if (!queued && _schoolId != null) {
         AppActivityLogger.log(
           schoolId: _schoolId!,
           module: 'academics',
@@ -420,8 +554,10 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
 
       if (mounted) {
         showSuccessDialog(
-          "Success",
-          "All scores for $_selectedClassName - $_selectedSubjectName have been saved securely.",
+          queued ? "Saved on this phone" : "Success",
+          queued
+              ? "There is no usable internet right now. The scores for $_selectedClassName - $_selectedSubjectName are saved on this phone and will upload automatically."
+              : "All scores for $_selectedClassName - $_selectedSubjectName have been saved securely.",
         );
         await _fetchStudentsAndScores();
       }
@@ -560,6 +696,10 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
           ),
         ),
 
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: SyncStatusBanner(),
+        ),
         Expanded(
           child: _isLoading
               ? Center(child: TridetaLoader(color: primaryColor))

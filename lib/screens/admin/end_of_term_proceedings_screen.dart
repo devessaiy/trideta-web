@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:trideta_v2/services/holiday_gate.dart';
+import 'package:trideta_v2/utils/resilient_request.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +20,7 @@ class _EndOfTermProceedingsScreenState extends State<EndOfTermProceedingsScreen>
 
   bool _isLoading = true;
   bool _isAdvancing = false;
+  HolidayGate? _gate;
   bool _confirmCheck = false;
 
   String? _schoolId;
@@ -45,12 +48,15 @@ class _EndOfTermProceedingsScreenState extends State<EndOfTermProceedingsScreen>
 
       final school = await _supabase
           .from('schools')
-          .select('current_session, current_term')
+          .select(
+              'current_session, current_term, is_on_holiday, holiday_resumes_on, holiday_gate_enabled',
+            )
           .eq('id', _schoolId!)
           .single();
 
       _currentSession = school['current_session'] ?? "";
       _currentTerm = school['current_term'] ?? "1st Term";
+      _gate = HolidayGate.fromSchool(school);
 
       // Calculate the next term
       if (_currentTerm == '1st Term') {
@@ -207,20 +213,30 @@ class _EndOfTermProceedingsScreenState extends State<EndOfTermProceedingsScreen>
       // 🚨 FINANCIAL ROLLOVER ENGINE
       // Converts any unpaid fees for the closing term into perpetual wallet debt.
       // =======================================================================
-      final studentsData = await _supabase
-          .from('students')
-          .select('id, class_level, class_id, category, wallet_balance')
-          .eq('school_id', _schoolId!);
-      final feesData = await _supabase
-          .from('fee_structures')
-          .select()
-          .eq('school_id', _schoolId!)
-          .eq('academic_session', _currentSession);
-      final txData = await _supabase
-          .from('transactions')
-          .select('student_id, fee_id, category, amount, academic_term')
-          .eq('school_id', _schoolId!)
-          .eq('academic_session', _currentSession);
+      // Fresh figures from the server (never a saved copy: this is money).
+      final studentsData = await retryRead(
+        () async => await _supabase
+            .from('students')
+            .select('id, class_level, class_id, category, wallet_balance')
+            .eq('school_id', _schoolId!),
+        timeout: const Duration(seconds: 30),
+      );
+      final feesData = await retryRead(
+        () async => await _supabase
+            .from('fee_structures')
+            .select()
+            .eq('school_id', _schoolId!)
+            .eq('academic_session', _currentSession),
+        timeout: const Duration(seconds: 30),
+      );
+      final txData = await retryRead(
+        () async => await _supabase
+            .from('transactions')
+            .select('student_id, fee_id, category, amount, academic_term')
+            .eq('school_id', _schoolId!)
+            .eq('academic_session', _currentSession),
+        timeout: const Duration(seconds: 30),
+      );
 
       var currentTermFees = feesData.where((f) {
         String fTerm = (f['academic_term'] ?? 'All Terms').toString();
@@ -229,10 +245,10 @@ class _EndOfTermProceedingsScreenState extends State<EndOfTermProceedingsScreen>
         return fTerm == _currentTerm;
       }).toList();
 
-      List<Map<String, dynamic>> financialUpdates = [];
+      // What each student owes for the closing term.
+      final List<Map<String, dynamic>> debits = [];
 
       for (var student in studentsData) {
-        double wBal = (student['wallet_balance'] ?? 0).toDouble();
         double totalUnpaid = 0.0;
 
         for (var fee in currentTermFees) {
@@ -274,35 +290,42 @@ class _EndOfTermProceedingsScreenState extends State<EndOfTermProceedingsScreen>
         }
 
         if (totalUnpaid > 0) {
-          // 🚨 FLAWLESS MATH: Handles positive, negative, and zero balances natively!
-          financialUpdates.add({
-            'id': student['id'],
-            'wallet_balance': wBal - totalUnpaid,
+          debits.add({
+            'student_id': student['id'],
+            'amount': (totalUnpaid * 100).round() / 100,
           });
         }
       }
 
-      // Safe batch update for wallets
-      for (var update in financialUpdates) {
-        await _supabase
-            .from('students')
-            .update({'wallet_balance': update['wallet_balance']})
-            .eq('id', update['id']);
-      }
-
       // =======================================================================
-      // 🚨 ADVANCE THE CALENDAR
+      // 🚨 ONE ALL-OR-NOTHING STEP
+      // The wallet debits and the new term are saved together by the database.
+      // If the connection drops, nothing changes. Running it again after a
+      // success changes nothing either, so nobody is charged twice.
       // =======================================================================
-      await _supabase
-          .from('schools')
-          .update({'current_term': _nextTerm})
-          .eq('id', _schoolId!);
+      final result = await retryIdempotent(
+        () async => await _supabase.rpc(
+          'apply_term_rollover',
+          params: {
+            'p_school_id': _schoolId,
+            'p_session': _currentSession,
+            'p_from_term': _currentTerm,
+            'p_next_term': _nextTerm,
+            'p_debits': debits,
+          },
+        ),
+        timeout: const Duration(seconds: 45),
+      );
+      final bool alreadyAdvanced =
+          result is Map && result['status'] == 'already_advanced';
 
       if (mounted) {
         setState(() => _isAdvancing = false);
         showSuccessDialog(
           "Term Advanced Successfully",
-          "The school is now operating in the $_nextTerm of $_currentSession. Attendance, Grades, and Broadsheets have been reset for the new term. Financial wallets have successfully carried over.",
+          alreadyAdvanced
+              ? "The school had already moved to the next term, so nothing was changed and nobody was charged twice."
+              : "The school is now operating in the $_nextTerm of $_currentSession. Attendance, Grades, and Broadsheets have been reset for the new term. Financial wallets have successfully carried over.",
           onOkay: () => Navigator.pop(context),
         );
       }
@@ -310,7 +333,8 @@ class _EndOfTermProceedingsScreenState extends State<EndOfTermProceedingsScreen>
       if (mounted) {
         setState(() => _isAdvancing = false);
         showAuthErrorDialog(
-          "Failed to advance term. Please check your connection.",
+          friendlyHolidayError(e) ??
+              "Failed to advance term. Nothing was changed. Please check your connection and try again.",
         );
       }
     }
@@ -512,6 +536,8 @@ class _EndOfTermProceedingsScreenState extends State<EndOfTermProceedingsScreen>
                             ),
 
                             const SizedBox(height: 24),
+                            if (_gate != null && !_gate!.canRun)
+                              HolidayGateBanner(gate: _gate!),
                             SizedBox(
                               width: double.infinity,
                               height: 55,
@@ -522,7 +548,10 @@ class _EndOfTermProceedingsScreenState extends State<EndOfTermProceedingsScreen>
                                     borderRadius: BorderRadius.circular(16),
                                   ),
                                 ),
-                                onPressed: (!_confirmCheck || _isAdvancing)
+                                onPressed:
+                                    (!_confirmCheck ||
+                                        _isAdvancing ||
+                                        !(_gate?.canRun ?? true))
                                     ? null
                                     : _advanceTerm,
                                 icon: _isAdvancing

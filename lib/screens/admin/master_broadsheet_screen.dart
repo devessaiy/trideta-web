@@ -1,8 +1,11 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/services/holiday_gate.dart';
+import 'package:trideta_v2/services/read_through.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/services/app_activity_logger.dart'; // 🚨 INJECTED LOGGER
+import 'package:trideta_v2/utils/resilient_request.dart';
 
 class MasterBroadsheetScreen extends StatefulWidget {
   const MasterBroadsheetScreen({super.key});
@@ -17,6 +20,13 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
 
   bool _isLoading = true;
   bool _isComputing = false;
+
+  // School holiday control (admin only)
+  bool _onHoliday = false;
+  DateTime? _resumesOn;
+  bool _holidayBusy = false;
+  int _classesWithStudents = 0;
+  int _classesPublished = 0;
   String? _schoolId;
   String _userRole = 'teacher';
 
@@ -59,20 +69,27 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
       final user = _supabase.auth.currentUser;
       if (user == null) return;
 
-      final profile = await _supabase
-          .from('profiles')
-          .select('school_id, role')
-          .eq('id', user.id)
-          .single();
+      final profile = await readThrough(
+        '350688ab|profiles|${user.id}',
+        () async => await _supabase
+            .from('profiles')
+            .select('school_id, role')
+            .eq('id', user.id)
+            .single(),
+        fresh: const Duration(minutes: 10),
+      );
 
       _schoolId = profile['school_id'];
       _userRole = profile['role']?.toString().toLowerCase() ?? 'teacher';
 
-      final school = await _supabase
-          .from('schools')
-          .select('current_session, current_term')
-          .eq('id', _schoolId!)
-          .single();
+      final school = await readThrough(
+        'b6eeb681|schools|${_schoolId!}',
+        () async => await _supabase
+            .from('schools')
+            .select('current_session, current_term')
+            .eq('id', _schoolId!)
+            .single(),
+      );
 
       int currentYr = DateTime.now().year;
       _globalSession =
@@ -87,30 +104,42 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
       _classNameToIdMap.clear();
 
       if (_userRole == 'admin' || _userRole == 'principal') {
-        final classesData = await _supabase
-            .from('classes')
-            .select('id, name, list_order')
-            .eq('school_id', _schoolId!)
-            .order('list_order', ascending: true);
+        final classesData = await readThrough(
+          '6a9467c4|classes|${_schoolId!}',
+          () async => await _supabase
+              .from('classes')
+              .select('id, name, list_order')
+              .eq('school_id', _schoolId!)
+              .order('list_order', ascending: true),
+          fresh: const Duration(minutes: 2),
+        );
         for (var c in classesData) {
           String cName = c['name'].toString();
           _classNameToIdMap[cName] = c['id'].toString();
           fetchedClasses.add(cName);
         }
       } else {
-        final assignments = await _supabase
-            .from('staff_assignments')
-            .select('class_id')
-            .eq('staff_id', user.id);
+        final assignments = await readThrough(
+          'f97a3639|staff_assignments|${user.id}',
+          () async => await _supabase
+              .from('staff_assignments')
+              .select('class_id')
+              .eq('staff_id', user.id),
+          fresh: const Duration(minutes: 2),
+        );
         final Set<String> uniqueIds = {};
         for (var a in assignments) {
           if (a['class_id'] != null) uniqueIds.add(a['class_id'].toString());
         }
         if (uniqueIds.isNotEmpty) {
-          final freshClasses = await _supabase
-              .from('classes')
-              .select('id, name')
-              .inFilter('id', uniqueIds.toList());
+          final freshClasses = await readThrough(
+            '4977419b|classes|${uniqueIds.toList()}',
+            () async => await _supabase
+                .from('classes')
+                .select('id, name')
+                .inFilter('id', uniqueIds.toList()),
+            fresh: const Duration(minutes: 2),
+          );
           for (var c in freshClasses) {
             String cName = c['name'].toString();
             _classNameToIdMap[cName] = c['id'].toString();
@@ -127,6 +156,7 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
           _activeClasses = fetchedClasses;
           _isLoading = false;
         });
+        _loadHolidayStatus();
       }
     } catch (e) {
       if (mounted) {
@@ -151,25 +181,31 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
 
   Future<void> _fetchBroadsheetData() async {
     try {
-      final studentsData = await _supabase
-          .from('students')
-          .select('id, first_name, last_name, admission_no')
-          .eq('school_id', _schoolId!)
-          .eq('class_id', _classNameToIdMap[_selectedClass]!)
-          .order('first_name', ascending: true);
+      final studentsData = await readThrough(
+        '8411e4aa|students|${_schoolId!}|${_classNameToIdMap[_selectedClass]!}',
+        () async => await _supabase
+            .from('students')
+            .select('id, first_name, last_name, admission_no')
+            .eq('school_id', _schoolId!)
+            .eq('class_id', _classNameToIdMap[_selectedClass]!)
+            .order('first_name', ascending: true),
+      );
 
       if (studentsData.isEmpty) {
         if (mounted) setState(() => _isLoading = false);
         return;
       }
 
-      final scoresData = await _supabase
-          .from('exam_scores')
-          .select('student_id, subject_name, total_score')
-          .eq('school_id', _schoolId!)
-          .eq('academic_session', _selectedSession!)
-          .eq('term', _selectedTerm!)
-          .eq('class_id', _classNameToIdMap[_selectedClass]!);
+      final scoresData = await readThrough(
+        'a6aa6aff|exam_scores|${_schoolId!}|${_selectedSession!}|${_selectedTerm!}|${_classNameToIdMap[_selectedClass]!}',
+        () async => await _supabase
+            .from('exam_scores')
+            .select('student_id, subject_name, total_score')
+            .eq('school_id', _schoolId!)
+            .eq('academic_session', _selectedSession!)
+            .eq('term', _selectedTerm!)
+            .eq('class_id', _classNameToIdMap[_selectedClass]!),
+      );
 
       Set<String> uniqueSubjects = {};
       for (var score in scoresData) {
@@ -180,15 +216,18 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
       List<String> subjectList = uniqueSubjects.toList();
       subjectList.sort();
 
-      final termResultsData = await _supabase
-          .from('term_results')
-          .select(
-            'student_id, total_score, average_score, position, position_suffix',
-          )
-          .eq('school_id', _schoolId!)
-          .eq('academic_session', _selectedSession!)
-          .eq('term', _selectedTerm!)
-          .eq('class_id', _classNameToIdMap[_selectedClass]!);
+      final termResultsData = await readThrough(
+        '98e8374d|term_results|${_schoolId!}|${_selectedSession!}|${_selectedTerm!}|${_classNameToIdMap[_selectedClass]!}',
+        () async => await _supabase
+            .from('term_results')
+            .select(
+              'student_id, total_score, average_score, position, position_suffix',
+            )
+            .eq('school_id', _schoolId!)
+            .eq('academic_session', _selectedSession!)
+            .eq('term', _selectedTerm!)
+            .eq('class_id', _classNameToIdMap[_selectedClass]!),
+      );
 
       Map<String, dynamic> existingResults = {
         for (var item in termResultsData) item['student_id'].toString(): item,
@@ -296,47 +335,34 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
         nextRank++;
       }
 
-      for (String sId in rankedStudentIds) {
-        var stData = _broadsheetData[sId]!;
-        int position = int.parse(stData['Position']);
-
-        final existing = await _supabase
-            .from('term_results')
-            .select('id')
-            .eq('student_id', sId)
-            .eq('academic_session', _selectedSession!)
-            .eq('term', _selectedTerm!)
-            .maybeSingle();
-
-        if (existing == null) {
-          await _supabase.from('term_results').insert({
+      // ONE request for every student: all results are published together or
+      // not at all, and repeating it is harmless (one row per student, session
+      // and term). Principal remarks already saved are left untouched.
+      final String stamp = DateTime.now().toIso8601String();
+      final List<Map<String, dynamic>> rows = [
+        for (final sId in rankedStudentIds)
+          {
             'school_id': _schoolId,
             'student_id': sId,
             'academic_session': _selectedSession,
             'term': _selectedTerm,
             'class_id': _classNameToIdMap[_selectedClass],
             'class_level': _selectedClass,
-            'total_score': stData['Total'],
-            'average_score': stData['Average'],
-            'position': position,
-            'position_suffix': _getOrdinalSuffix(position),
-            'updated_at': DateTime.now().toIso8601String(),
-          });
-        } else {
-          await _supabase
-              .from('term_results')
-              .update({
-                'class_id': _classNameToIdMap[_selectedClass],
-                'class_level': _selectedClass,
-                'total_score': stData['Total'],
-                'average_score': stData['Average'],
-                'position': position,
-                'position_suffix': _getOrdinalSuffix(position),
-                'updated_at': DateTime.now().toIso8601String(),
-              })
-              .eq('id', existing['id']);
-        }
-      }
+            'total_score': _broadsheetData[sId]!['Total'],
+            'average_score': _broadsheetData[sId]!['Average'],
+            'position': int.parse(_broadsheetData[sId]!['Position']),
+            'position_suffix': _getOrdinalSuffix(
+              int.parse(_broadsheetData[sId]!['Position']),
+            ),
+            'updated_at': stamp,
+          },
+      ];
+      await retryIdempotent(
+        () async => await _supabase
+            .from('term_results')
+            .upsert(rows, onConflict: 'student_id, academic_session, term'),
+        timeout: const Duration(seconds: 30),
+      );
 
       // 🚨 INJECTED LOGGER
       if (_schoolId != null) {
@@ -355,6 +381,7 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
           ),
         );
         await _generateBroadsheet();
+        _loadHolidayStatus();
       }
     } catch (e) {
       if (mounted) {
@@ -363,6 +390,272 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
     } finally {
       if (mounted) setState(() => _isComputing = false);
     }
+  }
+
+  // ===========================================================================
+  // SCHOOL HOLIDAY (declared by the admin once every class has been published)
+  // ===========================================================================
+  Future<void> _loadHolidayStatus() async {
+    if (_userRole != 'admin' || _schoolId == null) return;
+    try {
+      final school = await retryRead(
+        () async => await _supabase
+            .from('schools')
+            .select('is_on_holiday, holiday_resumes_on')
+            .eq('id', _schoolId!)
+            .single(),
+        maxAttempts: 2,
+        timeout: const Duration(seconds: 12),
+      );
+
+      final students = await retryRead(
+        () async => await _supabase
+            .from('students')
+            .select('class_id')
+            .eq('school_id', _schoolId!)
+            .eq('is_active', true),
+        maxAttempts: 2,
+        timeout: const Duration(seconds: 15),
+      );
+      final published = await retryRead(
+        () async => await _supabase
+            .from('term_results')
+            .select('class_id')
+            .eq('school_id', _schoolId!)
+            .eq('academic_session', _globalSession!)
+            .eq('term', _globalTerm!),
+        maxAttempts: 2,
+        timeout: const Duration(seconds: 15),
+      );
+
+      final withStudents = <String>{
+        for (final s in students)
+          if (s['class_id'] != null) s['class_id'].toString(),
+      };
+      final publishedIds = <String>{
+        for (final r in published)
+          if (r['class_id'] != null) r['class_id'].toString(),
+      };
+
+      if (mounted) {
+        setState(() {
+          _onHoliday = school['is_on_holiday'] == true;
+          _resumesOn = school['holiday_resumes_on'] == null
+              ? null
+              : DateTime.tryParse(school['holiday_resumes_on'].toString());
+          _classesWithStudents = withStudents.length;
+          _classesPublished = withStudents.intersection(publishedIds).length;
+        });
+      }
+    } catch (e) {
+      debugPrint("Holiday status load failed: $e");
+    }
+  }
+
+  Future<DateTime?> _pickResumptionDate({DateTime? current}) {
+    final today = HolidayGate.todayInNigeria;
+    final first = today.add(const Duration(days: 1));
+    final initial = (current != null && !current.isBefore(first))
+        ? current
+        : today.add(const Duration(days: 14));
+    return showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: first,
+      lastDate: today.add(const Duration(days: 400)),
+      helpText: 'RESUMPTION DATE',
+    );
+  }
+
+  Future<void> _setHoliday(bool onHoliday) async {
+    DateTime? date;
+    if (onHoliday) {
+      // The admin says when the school resumes. End of Term / End of Year can
+      // only be run on or after that date.
+      date = await _pickResumptionDate();
+      if (date == null || !mounted) return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(onHoliday ? "Declare school holiday?" : "Cancel holiday?"),
+        content: Text(
+          onHoliday
+              ? "The school will be on holiday until ${HolidayGate.formatDate(date!)}. Teachers cannot record attendance. On that date, run End of Term or End of Year to move the school to the new term and reopen attendance. Results can still be viewed and edited."
+              : "Attendance will open again for teachers right away. Use this only if the holiday was declared by mistake.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Back"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(onHoliday ? "Declare holiday" : "Cancel holiday"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await _saveHoliday(
+      {
+        'is_on_holiday': onHoliday,
+        'holiday_started_at': onHoliday
+            ? DateTime.now().toUtc().toIso8601String()
+            : null,
+        'holiday_resumes_on': date == null ? null : HolidayGate.isoDate(date),
+        'holiday_last_reminder_on': null,
+      },
+      onHoliday
+          ? "School is now on holiday until ${HolidayGate.formatDate(date!)}."
+          : "Holiday cancelled. Attendance is open again.",
+    );
+  }
+
+  Future<void> _changeResumptionDate() async {
+    final date = await _pickResumptionDate(current: _resumesOn);
+    if (date == null || !mounted) return;
+    await _saveHoliday({
+      'holiday_resumes_on': HolidayGate.isoDate(date),
+      'holiday_last_reminder_on': null,
+    }, "Resumption date changed to ${HolidayGate.formatDate(date)}.");
+  }
+
+  Future<void> _saveHoliday(
+    Map<String, dynamic> changes,
+    String successMessage,
+  ) async {
+    setState(() => _holidayBusy = true);
+    try {
+      await retryIdempotent(
+        () async => await _supabase
+            .from('schools')
+            .update(changes)
+            .eq('id', _schoolId!),
+        maxAttempts: 2,
+      );
+      await _loadHolidayStatus();
+      if (mounted) {
+        setState(() => _holidayBusy = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(successMessage),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _holidayBusy = false);
+        showAuthErrorDialog(
+          "Could not update the holiday status. Please check your connection and try again.",
+        );
+      }
+    }
+  }
+
+  Widget _buildHolidayCard(bool isDark, Color primaryColor) {
+    final allPublished =
+        _classesWithStudents > 0 && _classesPublished >= _classesWithStudents;
+
+    Color accent;
+    IconData icon;
+    String title;
+    String body;
+    Widget? action;
+
+    if (_onHoliday) {
+      accent = Colors.orange.shade700;
+      icon = Icons.beach_access_rounded;
+      title = _resumesOn == null
+          ? "School is on holiday"
+          : "On holiday until ${HolidayGate.formatDate(_resumesOn!)}";
+      body = _resumesOn == null
+          ? "Set the date the school resumes. End of Term / End of Year can only be run on that date."
+          : "Attendance is closed. On the resumption date, run End of Term or End of Year. That moves the school to the new term and reopens attendance.";
+      action = Wrap(
+        alignment: WrapAlignment.end,
+        children: [
+          TextButton(
+            onPressed: _holidayBusy ? null : _changeResumptionDate,
+            child: Text(_resumesOn == null ? "Set date" : "Change date"),
+          ),
+          TextButton(
+            onPressed: _holidayBusy ? null : () => _setHoliday(false),
+            child: const Text("Cancel holiday"),
+          ),
+        ],
+      );
+    } else if (allPublished) {
+      accent = Colors.green.shade700;
+      icon = Icons.check_circle_rounded;
+      title = "All report cards are published";
+      body =
+          "$_classesPublished of $_classesWithStudents classes published. You can now declare the school on holiday and choose the resumption date.";
+      action = ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: accent,
+          foregroundColor: Colors.white,
+        ),
+        onPressed: _holidayBusy ? null : () => _setHoliday(true),
+        icon: const Icon(Icons.beach_access_rounded, size: 18),
+        label: const Text("Declare School Holiday"),
+      );
+    } else {
+      accent = Colors.grey.shade600;
+      icon = Icons.hourglass_empty_rounded;
+      title = "Holiday not available yet";
+      body = _classesWithStudents == 0
+          ? "There are no classes with students yet."
+          : "Publish results for every class to unlock the holiday option ($_classesPublished of $_classesWithStudents classes published this term).";
+    }
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: accent, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: accent,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            body,
+            style: TextStyle(
+              fontSize: 12.5,
+              height: 1.4,
+              color: isDark ? Colors.white70 : Colors.grey.shade700,
+            ),
+          ),
+          if (action != null) ...[
+            const SizedBox(height: 8),
+            Align(alignment: Alignment.centerRight, child: action),
+          ],
+        ],
+      ),
+    );
   }
 
   String _getOrdinalSuffix(int number) {
@@ -447,6 +740,8 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
             ),
           ),
         ),
+
+        if (_userRole == 'admin') _buildHolidayCard(isDark, primaryColor),
 
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),

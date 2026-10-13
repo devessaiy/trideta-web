@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/utils/resilient_request.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -6,7 +7,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
 // 🚨 NEW: Local Authentication for Security Gates
-import 'package:local_auth/local_auth.dart';
+import 'package:trideta_v2/utils/lock_gate.dart';
+import 'package:trideta_v2/screens/shared/about_trideta_screen.dart';
+import 'package:trideta_v2/services/offline_queue.dart';
+import 'package:trideta_v2/screens/teacher/teacher_documents_screen.dart';
+import 'package:trideta_v2/widgets/sync_status_banner.dart';
 
 import 'package:trideta_v2/main.dart';
 import 'package:trideta_v2/widgets/teacher_dashboard_carousel.dart';
@@ -49,11 +54,11 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
   late String _selectedTheme;
 
   // Local Auth Instance
-  final LocalAuthentication _localAuth = LocalAuthentication();
 
   @override
   void initState() {
     super.initState();
+    OfflineQueue.instance.start();
     _fetchDashboardData();
 
     if (themeNotifier.value == ThemeMode.light) {
@@ -65,37 +70,49 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
     }
   }
 
-  // 🚨 NEW: Safe Biometric/Lockscreen Authenticator
-  Future<bool> _authenticateUser(String reason) async {
-    try {
-      final bool canAuthenticateWithBiometrics =
-          await _localAuth.canCheckBiometrics;
-      final bool canAuthenticate =
-          canAuthenticateWithBiometrics || await _localAuth.isDeviceSupported();
-
-      // If the device has no lock screen or runs on the Web, safely let them through.
-      if (!canAuthenticate) return true;
-
-      // Note: some local_auth versions may not expose AuthenticationOptions.
-      // Use the simpler API for broader compatibility.
-      return await _localAuth.authenticate(localizedReason: reason);
-    } catch (e) {
-      debugPrint("Local auth error: $e");
-      return true; // Failsafe to prevent permanent lockouts on weird devices
-    }
-  }
+  // Lock-screen gate: true only if the user really unlocked their phone.
+  Future<bool> _authenticateUser(String reason) =>
+      requireDeviceLock(context, reason);
 
   Future<void> _fetchDashboardData() async {
-    setState(() => _isLoading = true);
-    try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) return;
+    final client = Supabase.instance.client;
+    final cacheKey = 'dash:teacher:${client.auth.currentUser?.id}';
 
-      final profile = await Supabase.instance.client
-          .from('profiles')
-          .select('full_name, school_id, passport_url')
-          .eq('id', user.id)
-          .single();
+    // Show the last saved copy at once, then refresh from the server below.
+    bool shownFromCache = false;
+    final cached = await LocalCache.get(cacheKey);
+    if (cached is Map && mounted) {
+      setState(() {
+        _teacherName = (cached['teacherName'] ?? "Teacher").toString();
+        _teacherAvatar = cached['teacherAvatar']?.toString();
+        _schoolName = (cached['schoolName'] ?? "My School").toString();
+        _schoolLogoUrl = cached['schoolLogoUrl']?.toString();
+        _currentSession = (cached['currentSession'] ?? "Not Set").toString();
+        _currentTerm = (cached['currentTerm'] ?? "").toString();
+        _unreadAlertsCount = (cached['unread'] as num?)?.toInt() ?? 0;
+        final la = cached['latestAlert'];
+        _latestAlert = la is Map ? Map<String, dynamic>.from(la) : null;
+        _isLoading = false;
+      });
+      shownFromCache = true;
+    } else {
+      setState(() => _isLoading = true);
+    }
+
+    try {
+      final user = client.auth.currentUser;
+      if (user == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+
+      final profile = await retryRead(
+        () async => await client
+            .from('profiles')
+            .select('full_name, school_id, passport_url')
+            .eq('id', user.id)
+            .single(),
+      );
 
       final schoolId = profile['school_id'];
 
@@ -106,78 +123,110 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
         });
       }
 
-      final school = await Supabase.instance.client
-          .from('schools')
-          .select()
-          .eq('id', schoolId)
-          .single();
-
       final allowedAlertTypes = ['school_website', 'general', 'teacher_alert'];
 
-      try {
-        final alertRes = await Supabase.instance.client
-            .from('alerts')
-            .select()
-            .eq('school_id', schoolId)
-            .filter('type', 'in', allowedAlertTypes)
-            .order('created_at', ascending: false)
-            .limit(1)
-            .maybeSingle();
+      // Load the school, the latest alert and the unread count at the same
+      // time instead of one after another.
+      final schoolFuture = retryRead(
+        () async => await client
+            .from('schools')
+            .select('name, logo_url, current_session, current_term')
+            .eq('id', schoolId)
+            .single(),
+      );
 
-        if (mounted) _latestAlert = alertRes;
-      } catch (_) {}
+      bool latestLoaded = false;
+      Map<String, dynamic>? latestAlert;
+      final latestFuture = () async {
+        try {
+          latestAlert = await retryRead(
+            () async => await client
+                .from('alerts')
+                .select()
+                .eq('school_id', schoolId)
+                .filter('type', 'in', allowedAlertTypes)
+                .order('created_at', ascending: false)
+                .limit(1)
+                .maybeSingle(),
+          );
+          latestLoaded = true;
+        } catch (_) {}
+      }();
 
-      try {
-        final allAlertsForBadge = await Supabase.instance.client
-            .from('alerts')
-            .select('id')
-            .eq('school_id', schoolId)
-            .filter('type', 'in', allowedAlertTypes);
+      int? unread;
+      final unreadFuture = () async {
+        try {
+          final allAlertsForBadge = await retryRead(
+            () async => await client
+                .from('alerts')
+                .select('id')
+                .eq('school_id', schoolId)
+                .filter('type', 'in', allowedAlertTypes),
+          );
 
-        if (allAlertsForBadge.isNotEmpty) {
-          final alertIds = (allAlertsForBadge as List)
-              .map((a) => a['id'].toString())
-              .toList();
-          final readsData = await Supabase.instance.client
-              .from('alert_reads')
-              .select('alert_id')
-              .eq('user_id', user.id)
-              .filter('alert_id', 'in', alertIds);
+          if (allAlertsForBadge.isNotEmpty) {
+            final alertIds = (allAlertsForBadge as List)
+                .map((a) => a['id'].toString())
+                .toList();
+            final readsData = await retryRead(
+              () async => await client
+                  .from('alert_reads')
+                  .select('alert_id')
+                  .eq('user_id', user.id)
+                  .filter('alert_id', 'in', alertIds),
+            );
 
-          final readIds = (readsData as List)
-              .map((r) => r['alert_id'].toString())
-              .toSet();
-          int unread = allAlertsForBadge.length - readIds.length;
-
-          if (mounted) {
-            setState(() => _unreadAlertsCount = unread > 0 ? unread : 0);
+            final readIds = (readsData as List)
+                .map((r) => r['alert_id'].toString())
+                .toSet();
+            final count = allAlertsForBadge.length - readIds.length;
+            unread = count > 0 ? count : 0;
+          } else {
+            unread = 0;
           }
-        } else {
-          if (mounted) setState(() => _unreadAlertsCount = 0);
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }();
+
+      final school = await schoolFuture;
+      await latestFuture;
+      await unreadFuture;
 
       if (mounted) {
         setState(() {
-          _schoolName = school['name'] ?? "My School";
-          _schoolLogoUrl = school['logo_url'];
+          if (latestLoaded) _latestAlert = latestAlert;
+          final unreadNow = unread;
+          if (unreadNow != null) _unreadAlertsCount = unreadNow;
 
-          if (_schoolLogoUrl != null) {
-            _schoolLogoUrl =
-                "$_schoolLogoUrl?t=${DateTime.now().millisecondsSinceEpoch}";
-          }
+          _schoolName = school['name'] ?? "My School";
+          // The logo address changes whenever a new logo is uploaded, so it
+          // can be cached safely (no need to re-download on every refresh).
+          _schoolLogoUrl = school['logo_url'];
 
           _currentSession = school['current_session'] ?? "Not Set";
           _currentTerm = school['current_term'] ?? "";
           _isLoading = false;
         });
+
+        // Keep a saved copy for the next start (works with no internet).
+        await LocalCache.put(cacheKey, {
+          'teacherName': _teacherName,
+          'teacherAvatar': _teacherAvatar,
+          'schoolName': _schoolName,
+          'schoolLogoUrl': _schoolLogoUrl,
+          'currentSession': _currentSession,
+          'currentTerm': _currentTerm,
+          'unread': _unreadAlertsCount,
+          'latestAlert': _latestAlert,
+        });
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        showAuthErrorDialog(
-          "We couldn't load your dashboard completely. Please check your internet connection and pull down to refresh.",
-        );
+        if (!shownFromCache) {
+          showAuthErrorDialog(
+            "We couldn't load your dashboard completely. Please check your internet connection and pull down to refresh.",
+          );
+        }
       }
     }
   }
@@ -397,6 +446,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const SyncStatusBanner(),
               _buildTeacherHeader(textColor, subTextColor, primaryColor),
               const SizedBox(height: 30),
 
@@ -497,6 +547,19 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
                     );
                   }
                 },
+              ),
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.menu_book_rounded,
+                color: Colors.indigo,
+                title: "Lesson Notes & Documents",
+                subtitle: "Download the syllabus and send lesson notes",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const TeacherDocumentsScreen(),
+                  ),
+                ),
               ),
               const SizedBox(height: 20),
             ],
@@ -1007,6 +1070,44 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
                               builder: (_) => const SmartChangePasswordDialog(),
                             );
                           }
+                        },
+                      ),
+                      ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 8,
+                        ),
+                        leading: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.teal.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.info_outline_rounded,
+                            color: Colors.teal,
+                            size: 20,
+                          ),
+                        ),
+                        title: Text(
+                          "About Trideta",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: textColor,
+                          ),
+                        ),
+                        trailing: Icon(
+                          Icons.chevron_right_rounded,
+                          color: Colors.grey.shade400,
+                        ),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const AboutTridetaScreen(),
+                            ),
+                          );
                         },
                       ),
                     ],

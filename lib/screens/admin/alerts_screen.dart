@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:trideta_v2/services/read_through.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
@@ -72,18 +73,25 @@ class _AlertsScreenState extends State<AlertsScreen>
     try {
       final user = _supabase.auth.currentUser;
       if (user != null) {
-        final profile = await _supabase
-            .from('profiles')
-            .select('school_id')
-            .eq('id', user.id)
-            .single();
+        final profile = await readThrough(
+          'a851cdd3|profiles|${user.id}',
+          () async => await _supabase
+              .from('profiles')
+              .select('school_id')
+              .eq('id', user.id)
+              .single(),
+          fresh: const Duration(minutes: 10),
+        );
         _schoolId = profile['school_id'];
 
-        final school = await _supabase
-            .from('schools')
-            .select('current_session, current_term')
-            .eq('id', _schoolId!)
-            .single();
+        final school = await readThrough(
+          'b6eeb681|schools|${_schoolId!}',
+          () async => await _supabase
+              .from('schools')
+              .select('current_session, current_term')
+              .eq('id', _schoolId!)
+              .single(),
+        );
 
         _currentSession = school['current_session'] ?? "";
         _currentTerm = school['current_term'] ?? "1st Term";
@@ -102,11 +110,14 @@ class _AlertsScreenState extends State<AlertsScreen>
   Future<void> _fetchAlerts() async {
     if (_schoolId == null) return;
     try {
-      final rawAlerts = await _supabase
-          .from('alerts')
-          .select()
-          .eq('school_id', _schoolId!)
-          .order('created_at', ascending: false);
+      final rawAlerts = await readThrough(
+        'a067b476|alerts|${_schoolId!}',
+        () async => await _supabase
+            .from('alerts')
+            .select()
+            .eq('school_id', _schoolId!)
+            .order('created_at', ascending: false),
+      );
 
       List<Map<String, dynamic>> uniqueAlerts = [];
       Set<String> seen = {};

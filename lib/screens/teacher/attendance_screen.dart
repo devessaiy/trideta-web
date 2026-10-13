@@ -8,6 +8,9 @@ import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:intl/intl.dart';
 import 'package:gal/gal.dart';
+import 'package:trideta_v2/services/offline_queue.dart';
+import 'package:trideta_v2/utils/resilient_request.dart';
+import 'package:trideta_v2/widgets/sync_status_banner.dart';
 
 class AttendanceScreen extends StatefulWidget {
   final List<String> accessibleClasses;
@@ -43,11 +46,13 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   String _currentSession = "";
   String _currentTerm = "";
   List<String> _customOffDays = ['Saturday', 'Sunday']; // Default fallback
+  bool _schoolOnHoliday = false; // Declared by the admin in the Master Broadsheet
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    OfflineQueue.instance.start();
     _fetchSchoolCalendar();
   }
 
@@ -58,17 +63,48 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     super.dispose();
   }
 
+  /// Session, term and off days. Uses the copy saved on the phone if the
+  /// internet is down.
+  Future<Map<String, dynamic>> _loadCalendar() async {
+    final cacheKey = 'calendar:${widget.schoolId}';
+    try {
+      final data = await retryRead(
+        () async => await _supabase
+            .from('schools')
+            .select('current_session, current_term, off_days, is_on_holiday')
+            .eq('id', widget.schoolId)
+            .single(),
+        maxAttempts: 2,
+        timeout: const Duration(seconds: 12),
+      );
+      await LocalCache.put(cacheKey, data);
+      return data;
+    } catch (e) {
+      final cached = await LocalCache.get(cacheKey);
+      if (cached is Map) return Map<String, dynamic>.from(cached);
+      rethrow;
+    }
+  }
+
+  /// Puts changes that are saved on the phone but not yet uploaded on top of
+  /// what the server says, so the teacher always sees their latest marks.
+  Future<void> _applyQueued(Map<String, String> target, String dateStr) async {
+    await OfflineQueue.instance.ready();
+    for (final r in OfflineQueue.instance.queuedRows('attendance')) {
+      if (r['class_level'] == _selectedClass && r['date'] == dateStr) {
+        target[r['student_id'].toString()] = r['status'].toString();
+      }
+    }
+  }
+
   Future<void> _fetchSchoolCalendar() async {
     try {
-      final schoolData = await _supabase
-          .from('schools')
-          .select('current_session, current_term, off_days')
-          .eq('id', widget.schoolId)
-          .single();
+      final schoolData = await _loadCalendar();
 
       setState(() {
         _currentSession = schoolData['current_session'] ?? '';
         _currentTerm = schoolData['current_term'] ?? '';
+        _schoolOnHoliday = schoolData['is_on_holiday'] == true;
 
         // 🚨 BULLETPROOF PARSING: Defeats double-stringified Supabase inputs
         var offData = schoolData['off_days'];
@@ -114,11 +150,28 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   }
 
   bool _isOffDayOrHoliday() {
+    // The admin declared the school on holiday (term break / long vacation).
+    if (_schoolOnHoliday) return true;
+
     DateTime today = DateTime.now();
-    String weekdayName = DateFormat('EEEE').format(today); // e.g., 'Thursday'
+    // Day name from the day number, so it never depends on the phone language.
+    const dayNames = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+    final String weekdayName = dayNames[today.weekday - 1];
 
     // 1. Check Custom School Weekends (e.g., Thu/Fri for Subulussalaam)
-    if (_customOffDays.contains(weekdayName)) return true;
+    if (_customOffDays.any(
+      (d) => d.trim().toLowerCase() == weekdayName.toLowerCase(),
+    )) {
+      return true;
+    }
 
     // 2. Check Fixed Nigerian Public Holidays
     if (today.month == 1 && today.day == 1) return true; // New Year's Day
@@ -135,30 +188,41 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     if (_selectedClass == null) return;
     setState(() => _isLoading = true);
 
+    final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final rosterKey = 'roster:${widget.schoolId}:$_selectedClass';
+
     try {
-      final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final studentsRes = await retryRead(
+        () async => await _supabase
+            .from('students')
+            .select('id, first_name, last_name, admission_no, passport_url')
+            .eq('school_id', widget.schoolId)
+            .eq('class_level', _selectedClass!),
+        maxAttempts: 2,
+        timeout: const Duration(seconds: 15),
+      );
 
-      final studentsRes = await _supabase
-          .from('students')
-          .select('id, first_name, last_name, admission_no, passport_url')
-          .eq('school_id', widget.schoolId)
-          .eq('class_level', _selectedClass!)
-          .timeout(const Duration(seconds: 15));
-
-      final attendanceRes = await _supabase
-          .from('attendance')
-          .select('student_id, status')
-          .eq('class_level', _selectedClass!)
-          .eq('date', todayStr)
-          .eq('academic_session', _currentSession)
-          .eq('term', _currentTerm)
-          .timeout(const Duration(seconds: 15));
+      final attendanceRes = await retryRead(
+        () async => await _supabase
+            .from('attendance')
+            .select('student_id, status')
+            .eq('class_level', _selectedClass!)
+            .eq('date', todayStr)
+            .eq('academic_session', _currentSession)
+            .eq('term', _currentTerm),
+        maxAttempts: 2,
+        timeout: const Duration(seconds: 15),
+      );
 
       Map<String, String> existingData = {};
       for (var record in attendanceRes) {
         existingData[record['student_id'].toString()] = record['status']
             .toString();
       }
+      await _applyQueued(existingData, todayStr);
+
+      // Keep a copy of the class list on the phone for offline use.
+      await LocalCache.put(rosterKey, studentsRes);
 
       if (mounted) {
         setState(() {
@@ -168,7 +232,32 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         });
       }
     } catch (e) {
-      setState(() => _isLoading = false);
+      // No internet: use the class list saved on this phone, if there is one.
+      final cached = await LocalCache.get(rosterKey);
+      if (cached is List && cached.isNotEmpty) {
+        final existing = <String, String>{};
+        await _applyQueued(existing, todayStr);
+        if (mounted) {
+          setState(() {
+            _students = cached
+                .map((s) => Map<String, dynamic>.from(s as Map))
+                .toList();
+            _attendanceState = existing;
+            _isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "You are offline. Showing your saved class list. Attendance will upload when you are back online.",
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      if (mounted) setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -182,6 +271,15 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
   Future<void> _saveManualAttendance() async {
     if (_attendanceState.isEmpty) return;
+    if (_isOffDayOrHoliday()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Attendance is closed today."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
 
@@ -203,10 +301,38 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         });
       });
 
-      await _supabase
-          .from('attendance')
-          .upsert(upsertData, onConflict: 'student_id, date')
-          .timeout(const Duration(seconds: 15));
+      try {
+        await _supabase
+            .from('attendance')
+            .upsert(upsertData, onConflict: 'student_id, date')
+            .timeout(const Duration(seconds: 12));
+      } catch (e) {
+        if (!isTransientError(e)) rethrow;
+        // No usable internet: keep it safely on the phone and upload later.
+        await OfflineQueue.instance.enqueueUpsert(
+          label: 'Attendance - $_selectedClass ($todayStr)',
+          table: 'attendance',
+          onConflict: 'student_id, date',
+          rows: upsertData,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "No internet. Attendance is saved on this phone and will upload automatically.",
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          setState(() => _isLoading = false);
+        }
+        return;
+      }
+      await OfflineQueue.instance.dropSuperseded(
+        table: 'attendance',
+        savedRows: upsertData,
+        keyOf: (r) => '${r['student_id']}|${r['date']}',
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -264,6 +390,15 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   }
 
   Future<void> _showScannerActionPopup(Map<String, dynamic> student) async {
+    if (_isOffDayOrHoliday()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Attendance is closed today."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     if (_attendanceState.containsKey(student['id'])) {
@@ -322,19 +457,40 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                     : () async {
                         setDialogState(() => isSavingPopup = true);
                         try {
-                          await _supabase
-                              .from('attendance')
-                              .upsert({
-                                'school_id': widget.schoolId,
-                                'student_id': student['id'],
-                                'class_level': _selectedClass,
-                                'date': todayStr,
-                                'academic_session': _currentSession,
-                                'term': _currentTerm,
-                                'status': selectedStatus,
-                                'recorded_by': _supabase.auth.currentUser!.id,
-                              }, onConflict: 'student_id, date')
-                              .timeout(const Duration(seconds: 10));
+                          bool queued = false;
+                          final row = {
+                            'school_id': widget.schoolId,
+                            'student_id': student['id'],
+                            'class_level': _selectedClass,
+                            'date': todayStr,
+                            'academic_session': _currentSession,
+                            'term': _currentTerm,
+                            'status': selectedStatus,
+                            'recorded_by': _supabase.auth.currentUser!.id,
+                          };
+                          try {
+                            await _supabase
+                                .from('attendance')
+                                .upsert(row, onConflict: 'student_id, date')
+                                .timeout(const Duration(seconds: 10));
+                          } catch (e) {
+                            if (!isTransientError(e)) rethrow;
+                            await OfflineQueue.instance.enqueueUpsert(
+                              label: 'Attendance - $_selectedClass ($todayStr)',
+                              table: 'attendance',
+                              onConflict: 'student_id, date',
+                              rows: [row],
+                            );
+                            queued = true;
+                          }
+
+                          if (!queued) {
+                            await OfflineQueue.instance.dropSuperseded(
+                              table: 'attendance',
+                              savedRows: [row],
+                              keyOf: (r) => '${r['student_id']}|${r['date']}',
+                            );
+                          }
 
                           setState(
                             () => _attendanceState[student['id']] =
@@ -345,9 +501,13 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
-                                  "${student['first_name']} marked $selectedStatus",
+                                  queued
+                                      ? "${student['first_name']} marked $selectedStatus (saved on phone, will sync)"
+                                      : "${student['first_name']} marked $selectedStatus",
                                 ),
-                                backgroundColor: Colors.green,
+                                backgroundColor: queued
+                                    ? Colors.orange
+                                    : Colors.green,
                               ),
                             );
                           }
@@ -433,9 +593,9 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   ),
                 ),
                 const SizedBox(height: 24),
-                const Text(
-                  "Action Locked",
-                  style: TextStyle(
+                Text(
+                  _schoolOnHoliday ? "School on Holiday" : "Action Locked",
+                  style: const TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.w900,
                     color: Colors.black87,
@@ -443,7 +603,9 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  "Today is marked as an Off-Day or Public Holiday in your school's calendar.\n\nAttendance recording has been disabled.",
+                  _schoolOnHoliday
+                      ? "Your school is on holiday.\n\nAttendance recording is closed until the next term begins."
+                      : "Today is marked as an Off-Day or Public Holiday in your school's calendar.\n\nAttendance recording has been disabled.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16,
@@ -509,6 +671,10 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       ),
       body: Column(
         children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(12, 10, 12, 0),
+            child: SyncStatusBanner(),
+          ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             color: Colors.white,

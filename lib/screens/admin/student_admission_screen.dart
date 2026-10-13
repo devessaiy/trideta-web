@@ -1,4 +1,5 @@
 import 'package:http/http.dart' as http;
+import 'package:trideta_v2/services/read_through.dart';
 import 'package:flutter/foundation.dart'; // Lets us check kIsWeb
 import 'dart:ui' as ui; // Required to read the AI's output
 // import 'package:image_background_remover/image_background_remover.dart';
@@ -108,24 +109,35 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) return;
-      final profile = await _supabase
-          .from('profiles')
-          .select('school_id')
-          .eq('id', user.id)
-          .single();
+      final profile = await readThrough(
+        'a851cdd3|profiles|${user.id}',
+        () async => await _supabase
+            .from('profiles')
+            .select('school_id')
+            .eq('id', user.id)
+            .single(),
+        fresh: const Duration(minutes: 10),
+      );
       final sId = profile['school_id'];
       if (mounted) setState(() => _schoolId = sId);
 
-      final school = await _supabase
-          .from('schools')
-          .select('name, current_session, current_term')
-          .eq('id', sId)
-          .single();
-      final classesData = await _supabase
-          .from('classes')
-          .select('id, name') // ✅ SANITIZED: Only fetch id and name
-          .eq('school_id', sId)
-          .order('list_order', ascending: true);
+      final school = await readThrough(
+        '4befc1ae|schools|$sId',
+        () async => await _supabase
+            .from('schools')
+            .select('name, current_session, current_term')
+            .eq('id', sId)
+            .single(),
+      );
+      final classesData = await readThrough(
+        'c1a55e5a|classes|$sId',
+        () async => await _supabase
+            .from('classes')
+            .select('id, name') // ✅ SANITIZED: Only fetch id and name
+            .eq('school_id', sId)
+            .order('list_order', ascending: true),
+        fresh: const Duration(minutes: 2),
+      );
 
       if (mounted) {
         setState(() {

@@ -835,6 +835,18 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         elevation: 0,
         centerTitle: true,
         actions: [
+          // Reassign now lives at the top (icon only), so it can never be
+          // hidden under the bottom navigation bar.
+          if (_selectedStudentIds.isNotEmpty)
+            IconButton.filled(
+              onPressed: () => _showPromotionDialog(primaryColor),
+              style: IconButton.styleFrom(
+                backgroundColor: primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.move_up_rounded),
+              tooltip: "Reassign",
+            ),
           if (_isSelecting)
             IconButton(
               icon: const Icon(Icons.select_all_rounded),
@@ -882,21 +894,6 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           }
         },
       ),
-      floatingActionButton: _selectedStudentIds.isNotEmpty
-          ? FloatingActionButton.extended(
-              onPressed: () => _showPromotionDialog(primaryColor),
-              backgroundColor: primaryColor,
-              icon: const Icon(Icons.move_up_rounded, color: Colors.white),
-              label: const Text(
-                "REASSIGN",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1,
-                ),
-              ),
-            )
-          : null,
     );
   }
 }

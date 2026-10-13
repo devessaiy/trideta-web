@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // --- AUTH & SERVICES ---
 import 'package:trideta_v2/services/auth_service.dart';
 import 'package:trideta_v2/services/biometric_service.dart';
+import 'package:trideta_v2/services/session_guard.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/services/app_activity_logger.dart'; // 🚨 INJECTED LOGGER
 
@@ -60,7 +61,10 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
       // that a fresh login already goes through.
       _isResumingSession = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        await _checkAndNavigate();
+        // Fast path: open the right dashboard straight from what was saved
+        // on this phone, then re-check the account in the background.
+        final opened = await _tryFastResume();
+        if (!opened) await _checkAndNavigate();
         // Still here means navigation didn't happen (suspended, terminated,
         // or an error) - fall back to the normal login form instead of
         // leaving the user stuck on a spinner.
@@ -89,6 +93,67 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
       return;
     }
     setState(() => _currentStep = 1);
+  }
+
+  // ============================================================================
+  // ⚡ FAST RESUME: no waiting on the internet when a session already exists
+  // ============================================================================
+  Future<bool> _tryFastResume() async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) return false;
+      final snap = await SessionSnapshot.load(user.id);
+      if (snap == null || !mounted) return false;
+
+      final role = (snap['role'] ?? '').toString();
+      if (role == 'admin' && snap['isConfigured'] != true) {
+        return false; // unfinished school setup: use the normal checks
+      }
+
+      if (role == 'parent') {
+        appColorNotifier.value = const Color(0xFF007ACC);
+      } else if (snap['isOwner'] != true) {
+        String? c = snap['brandColor']?.toString();
+        if (c != null && c.isNotEmpty) {
+          try {
+            c = c.replaceAll('#', '');
+            if (c.length == 6) c = 'FF$c';
+            appColorNotifier.value = Color(int.parse(c, radix: 16));
+          } catch (_) {}
+        }
+      }
+
+      final Widget? target;
+      if (snap['isOwner'] == true || role == 'owner') {
+        target = const TridetaOwnerDashboard();
+      } else if (role == 'admin') {
+        if (snap['isAlsoParent'] == true) {
+          _showRoleSelectionDialog(true);
+          SessionGuard.revalidate();
+          return true;
+        }
+        target = const DashboardScreen(userRole: "Admin");
+      } else if (role == 'parent') {
+        target = const ParentDashboardScreen();
+      } else if (role == 'teacher') {
+        target = TeacherDashboardScreen(userRole: role);
+      } else if (role == 'bursar' || role == 'finance') {
+        target = FinanceDashboardScreen(userRole: role);
+      } else {
+        target = null;
+      }
+      if (target == null) return false;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => target!),
+      );
+      SessionGuard.revalidate(); // checks suspension / termination quietly
+      return true;
+    } catch (e) {
+      debugPrint('Fast resume skipped: $e');
+      return false;
+    }
   }
 
   Future<void> _checkAndShowThemePopup() async {
@@ -414,6 +479,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
           .eq('id', user.id)
           .maybeSingle();
       if (superAdminCheck != null) {
+        await SessionSnapshot.save(user.id, role: 'owner', isOwner: true);
         if (!mounted) return;
         setState(() => _isLoading = false);
         Navigator.pushReplacement(
@@ -541,6 +607,18 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
         }
       }
 
+      final String? brandStr = profile['schools']?['brand_color']?.toString();
+      final String? subStr = profile['schools']?['subscription_status']
+          ?.toString();
+      if (role != 'admin') {
+        await SessionSnapshot.save(
+          user.id,
+          role: role,
+          brandColor: brandStr,
+          subStatus: subStr,
+        );
+      }
+
       if (role == 'admin') {
         bool isConfigured = await _authService.isSchoolConfigured();
         final childrenRes = await _supabase
@@ -549,6 +627,14 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
             .eq('parent_email', user.email!)
             .limit(1);
         bool isAlsoParent = childrenRes.isNotEmpty;
+        await SessionSnapshot.save(
+          user.id,
+          role: role,
+          isConfigured: isConfigured,
+          isAlsoParent: isAlsoParent,
+          brandColor: brandStr,
+          subStatus: subStr,
+        );
 
         if (isAlsoParent) {
           if (mounted) _showRoleSelectionDialog(isConfigured);

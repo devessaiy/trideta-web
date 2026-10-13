@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:trideta_v2/services/holiday_gate.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -20,6 +21,7 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
   bool _isLoading = true;
   bool _isAnalyzing = false;
   bool _isExecuting = false;
+  HolidayGate? _gate;
   String? _schoolId;
 
   // Global Calendar
@@ -77,11 +79,14 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
       // Fetch Global Calendar
       final schoolData = await _supabase
           .from('schools')
-          .select('current_session, current_term')
+          .select(
+            'current_session, current_term, is_on_holiday, holiday_resumes_on, holiday_gate_enabled',
+          )
           .eq('id', _schoolId!)
           .single();
 
       _currentSession = schoolData['current_session'] ?? "2025/2026";
+      _gate = HolidayGate.fromSchool(schoolData);
       String currentTerm = schoolData['current_term'] ?? "";
       _nextSession = _calculateNextSession(_currentSession);
 
@@ -527,7 +532,8 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
       if (mounted) {
         setState(() => _isExecuting = false);
         showAuthErrorDialog(
-          "Execution failed. Connection dropped or database error.",
+          friendlyHolidayError(e) ??
+              "Execution failed. Connection dropped or database error.",
         );
       }
     }
@@ -966,6 +972,11 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                 ),
 
                 const SizedBox(height: 30),
+                if (_gate != null && !_gate!.canRun)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: HolidayGateBanner(gate: _gate!),
+                  ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: SizedBox(
@@ -978,7 +989,9 @@ class _EndOfYearProcessingScreenState extends State<EndOfYearProcessingScreen>
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      onPressed: _isExecuting ? null : _executeUnifiedTrigger,
+                      onPressed: (_isExecuting || !(_gate?.canRun ?? true))
+                          ? null
+                          : _executeUnifiedTrigger,
                       icon: _isExecuting
                           ? const SizedBox(
                               width: 16,

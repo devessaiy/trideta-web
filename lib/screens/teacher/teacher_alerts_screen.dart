@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:trideta_v2/services/read_through.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
@@ -28,22 +29,29 @@ class _TeacherAlertsScreenState extends State<TeacherAlertsScreen> {
       final user = _supabase.auth.currentUser;
       if (user == null) return;
 
-      final profile = await _supabase
-          .from('profiles')
-          .select('school_id')
-          .eq('id', user.id)
-          .single();
+      final profile = await readThrough(
+        'a851cdd3|profiles|${user.id}',
+        () async => await _supabase
+            .from('profiles')
+            .select('school_id')
+            .eq('id', user.id)
+            .single(),
+        fresh: const Duration(minutes: 10),
+      );
 
       // 🚨 MAINTAINED STRICT LOGIC: Only Teacher-relevant alerts
       final allowedAlertTypes = ['school_website', 'general', 'teacher_alert'];
 
       // 🚨 Added JOIN for school data to get Brand Color & Logos for the UI
-      final alertsData = await _supabase
-          .from('alerts')
-          .select('*, schools(id, name, logo_url, brand_color)')
-          .eq('school_id', profile['school_id'])
-          .filter('type', 'in', allowedAlertTypes)
-          .order('created_at', ascending: false);
+      final alertsData = await readThrough(
+        'e38530ae|alerts|${profile['school_id']}|$allowedAlertTypes',
+        () async => await _supabase
+            .from('alerts')
+            .select('*, schools(id, name, logo_url, brand_color)')
+            .eq('school_id', profile['school_id'])
+            .filter('type', 'in', allowedAlertTypes)
+            .order('created_at', ascending: false),
+      );
 
       // 🚨 Safe Read-Receipt Check (For the Unread Badge Integration)
       List<String> fetchedAlertIds = (alertsData as List)
@@ -52,11 +60,14 @@ class _TeacherAlertsScreenState extends State<TeacherAlertsScreen> {
       Set<String> readAlertIds = {};
 
       if (fetchedAlertIds.isNotEmpty) {
-        final readsData = await _supabase
-            .from('alert_reads')
-            .select('alert_id')
-            .eq('user_id', user.id)
-            .filter('alert_id', 'in', fetchedAlertIds);
+        final readsData = await readThrough(
+          '169a3b11|alert_reads|${user.id}|$fetchedAlertIds',
+          () async => await _supabase
+              .from('alert_reads')
+              .select('alert_id')
+              .eq('user_id', user.id)
+              .filter('alert_id', 'in', fetchedAlertIds),
+        );
 
         readAlertIds = (readsData as List)
             .map((r) => r['alert_id'].toString())

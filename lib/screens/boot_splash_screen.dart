@@ -50,10 +50,10 @@ class _BootSplashScreenState extends State<BootSplashScreen>
   }
 
   Future<void> _startBootSequence() async {
-    // Wait for BOTH the initialization logic AND a smooth 3-second display
+    // Wait for BOTH the initialization logic AND a short, smooth display
     await Future.wait([
       _initializeAllServices(),
-      Future.delayed(const Duration(seconds: 3)),
+      Future.delayed(const Duration(milliseconds: 1500)),
     ]);
 
     _navigateNext();
@@ -76,7 +76,11 @@ class _BootSplashScreenState extends State<BootSplashScreen>
     // 3. SMART NOTIFICATIONS
     final session = Supabase.instance.client.auth.currentSession;
     if (!kIsWeb || session != null) {
-      await NotificationService().initialize();
+      // Never let a slow connection hold the app on the splash screen.
+      await NotificationService().initialize().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {},
+      );
     }
 
     // ==========================================
@@ -96,14 +100,20 @@ class _BootSplashScreenState extends State<BootSplashScreen>
     // DATABASE COLOR LOGIC
     Color finalColor = const Color(0xFF007ACC); // Default Trideta Blue
 
-    if (session != null) {
+    // Use the colour saved on this phone first: no waiting on the internet.
+    final cachedColorInt = prefs.getInt('app_primary_color');
+    final bool useCachedColor = session != null && cachedColorInt != null;
+    if (useCachedColor) finalColor = Color(cachedColorInt);
+
+    if (session != null && !useCachedColor) {
       try {
         final userId = session.user.id;
         final userData = await Supabase.instance.client
             .from('profiles')
             .select('role, schools(brand_color)')
             .eq('id', userId)
-            .single();
+            .single()
+            .timeout(const Duration(seconds: 5));
 
         final role = userData['role']?.toString().toLowerCase();
 

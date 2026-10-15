@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,9 +23,6 @@ import 'package:trideta_v2/main.dart';
 // 🚨 IMPORTED REGISTRATION & RECOVERY SCREENS
 import 'package:trideta_v2/screens/auth/school_registration_screen.dart';
 import 'package:trideta_v2/screens/auth/password_recovery_screen.dart';
-
-// --- MODULAR UI IMPORTS ---
-import 'package:trideta_v2/screens/auth/components/login_branding_panel.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -776,12 +775,21 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   }
 
   // ============================================================================
-  // 🖼️ NEW UI BUILDER
+  // 🖼️ NEW UI BUILDER — presentation only. No authentication/routing logic
+  // lives below this line; every button calls the original handlers above.
   // ============================================================================
+  static const Color _brandGreen = Color(0xFF0B6B3A);
+  static const Color _brandGreenLight = Color(0xFF4CC38A);
+  static const double _desktopBreakpoint = 900;
+
+  // Welcome (landing) view vs login form. Starts on the welcome view only when
+  // there is no existing session, so the session-resume path is unaffected.
+  late bool _showWelcome = _supabase.auth.currentSession == null;
+
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF4F6F9);
+    Color bgColor = isDark ? const Color(0xFF0F1512) : const Color(0xFFF8FAF8);
     Color primaryColor = Theme.of(context).primaryColor;
 
     // 🚨 SESSION RESUME: a valid session already exists, so skip the login
@@ -794,203 +802,303 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
       );
     }
 
-    return Scaffold(
-      backgroundColor: bgColor,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth > 800) {
-            return Row(
-              children: [
-                Expanded(
-                  flex: 5,
-                  child: LoginBrandingPanel(primaryColor: primaryColor),
-                ),
-                Expanded(
-                  flex: 5,
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 480),
-                      child: SingleChildScrollView(
-                        child: _buildMainFormContent(isDark, primaryColor),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          } else {
-            return SafeArea(
-              child: Center(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20.0,
-                    vertical: 24.0,
-                  ),
-                  child: _buildMainFormContent(isDark, primaryColor),
-                ),
-              ),
-            );
-          }
-        },
+    return PopScope(
+      // System back from the login form returns to the welcome view.
+      canPop: _showWelcome,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) setState(() => _showWelcome = true);
+      },
+      child: Scaffold(
+        backgroundColor: bgColor,
+        body: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 250),
+          layoutBuilder: (current, previous) => Stack(
+            fit: StackFit.expand,
+            children: [...previous, if (current != null) current],
+          ),
+          child: KeyedSubtree(
+            key: ValueKey<bool>(_showWelcome),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth >= _desktopBreakpoint) {
+                  return _buildDesktop(isDark);
+                }
+                return _buildMobile(constraints, isDark);
+              },
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildMainFormContent(bool isDark, Color primaryColor) {
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+  // ---------------------------------------------------------------------------
+  // 📱 MOBILE + TABLET (content is capped at 480px wide and centred on tablets)
+  // ---------------------------------------------------------------------------
+  Widget _buildMobile(BoxConstraints c, bool isDark) {
+    if (_showWelcome) return _buildWelcomeMobile(c, isDark);
+    final w = c.maxWidth;
+    final compactHeight = c.maxHeight < 700;
+    final tint = isDark
+        ? _brandGreen.withValues(alpha: 0.18)
+        : const Color(0xFFE3F0E8);
+    final decorW = math.min(w * 0.62, 280.0);
+    final heroW = compactHeight ? 210.0 : 290.0;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    return Stack(
+      fit: StackFit.expand,
       children: [
-        // --- THE MODERN CARD ---
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
-          decoration: BoxDecoration(
-            color: cardColor,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: isDark
-                ? []
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 24,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Back Button (Only visible on Password Step)
-              AnimatedOpacity(
-                opacity: _currentStep == 1 ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 200),
-                child: _currentStep == 1
-                    ? Align(
-                        alignment: Alignment.centerLeft,
-                        child: InkWell(
-                          onTap: () => setState(() => _currentStep = 0),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.arrow_back,
-                                size: 18,
-                                color: isDark ? Colors.white70 : Colors.black87,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                "Back",
-                                style: TextStyle(
-                                  color: isDark
-                                      ? Colors.white70
-                                      : Colors.black87,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    : const SizedBox(
-                        height: 24,
-                      ), // Placeholder to keep height consistent
-              ),
-              const SizedBox(height: 16),
-
-              // HEADER: Building Icon & Welcome Text
-              Icon(
-                Icons.account_balance_rounded,
-                size: 54,
-                color: primaryColor,
-              ),
-              const SizedBox(height: 24),
-              Text(
-                "Welcome Back",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : const Color(0xFF111827),
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                "Sign in to your school account",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
-                ),
-              ),
-              const SizedBox(height: 40),
-
-              // ANIMATED FORM STEPS
-              AnimatedCrossFade(
-                duration: const Duration(milliseconds: 300),
-                crossFadeState: _currentStep == 0
-                    ? CrossFadeState.showFirst
-                    : CrossFadeState.showSecond,
-                firstChild: _buildEmailStepUI(isDark, primaryColor),
-                secondChild: _buildPasswordStepUI(isDark, primaryColor),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 32),
-
-        // --- BOTTOM TRUST BANNER ---
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.shield_outlined, size: 18, color: Colors.grey),
-            const SizedBox(width: 8),
-            Text(
-              "Secure • Reliable • Trusted",
-              style: TextStyle(
-                color: isDark ? Colors.grey[500] : Colors.grey[600],
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0.5,
+        // Soft corner circle (top-left)
+        Positioned(
+          top: -110,
+          left: -110,
+          child: IgnorePointer(
+            child: Container(
+              width: 280,
+              height: 280,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: tint.withValues(alpha: 0.6),
               ),
             ),
-          ],
+          ),
+        ),
+        // Books / pencils / plant decoration (bottom-right), behind the form
+        Positioned(
+          right: 0,
+          bottom: 36,
+          width: decorW,
+          child: IgnorePointer(
+            child: AspectRatio(
+              aspectRatio: 300 / 190,
+              child: CustomPaint(
+                painter: _StudyScenePainter(
+                  scene: _Scene.corner,
+                  line: (isDark ? _brandGreenLight : _brandGreen).withValues(
+                    alpha: 0.45,
+                  ),
+                  tint: tint,
+                  paper: isDark
+                      ? const Color(0xFF0F1512)
+                      : const Color(0xFFF8FAF8),
+                ),
+              ),
+            ),
+          ),
+        ),
+        SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(
+                horizontal: w < 380 ? 20.0 : 28.0,
+                vertical: 16.0,
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: SizedBox(
+                        width: heroW,
+                        child: AspectRatio(
+                          aspectRatio: 300 / 190,
+                          child: CustomPaint(
+                            painter: _StudyScenePainter(
+                              scene: _Scene.hero,
+                              line: isDark ? _brandGreenLight : _brandGreen,
+                              tint: tint,
+                              paper: isDark
+                                  ? const Color(0xFF0F1512)
+                                  : Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildForm(isDark),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       ],
     );
   }
 
-  // Helper widget to handle the clickable Sign Up text block
-  Widget _buildSignUpText(bool isDark, Color primaryColor) {
-    return Center(
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        children: [
-          Text(
-            "Don't have an account? ",
-            style: TextStyle(
-              color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
-              fontSize: 13,
+  // ---------------------------------------------------------------------------
+  // 🖥️ DESKTOP (>= 900px): illustration panel + form column
+  // ---------------------------------------------------------------------------
+  Widget _buildDesktop(bool isDark) {
+    return Row(
+      children: [
+        Expanded(flex: 5, child: _buildDesktopPanel(isDark)),
+        Expanded(
+          flex: 5,
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: _showWelcome
+                    ? _buildDesktopWelcome(isDark)
+                    : _buildForm(isDark),
+              ),
             ),
           ),
-          GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const SchoolRegistrationScreen(),
-                ),
-              );
-            },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopPanel(bool isDark) {
+    final tint = isDark
+        ? _brandGreen.withValues(alpha: 0.2)
+        : const Color(0xFFD9ECE0);
+    final ink = isDark ? Colors.white : const Color(0xFF0B1B14);
+    final muted = isDark ? Colors.grey[400]! : const Color(0xFF5F7396);
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? const [Color(0xFF13211A), Color(0xFF0F1512)]
+              : const [Color(0xFFE6F2EB), Color(0xFFF6FAF7)],
+        ),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned(
+            top: -120,
+            left: -120,
+            child: Container(
+              width: 340,
+              height: 340,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: tint.withValues(alpha: 0.55),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -150,
+            right: -130,
+            child: Container(
+              width: 380,
+              height: 380,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: tint.withValues(alpha: 0.45),
+              ),
+            ),
+          ),
+          Center(
+            child: LayoutBuilder(
+              builder: (context, pc) {
+                final illoW = math.min(pc.maxWidth * 0.72, 480.0);
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 48,
+                    vertical: 32,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 560),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: illoW,
+                          child: AspectRatio(
+                            aspectRatio: 300 / 190,
+                            child: CustomPaint(
+                              painter: _StudyScenePainter(
+                                scene: _Scene.globe,
+                                line: isDark ? _brandGreenLight : _brandGreen,
+                                tint: tint,
+                                paper: isDark
+                                    ? const Color(0xFF13211A)
+                                    : Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 40),
+                        Text(
+                          "Manage your school\nwith ease",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: illoW > 380 ? 40 : 32,
+                            fontWeight: FontWeight.w800,
+                            height: 1.15,
+                            letterSpacing: -1,
+                            color: ink,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          "Everything your school needs,\nin one place.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 18,
+                            height: 1.4,
+                            color: muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 👋 WELCOME VIEW ("Manage your school with ease")
+  // ---------------------------------------------------------------------------
+  void _continueAsGuest() {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color primaryColor = Theme.of(context).primaryColor;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Row(
+          children: [
+            Icon(Icons.info_outline, color: primaryColor),
+            const SizedBox(width: 10),
+            Text(
+              "Coming Soon",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          "Guest access is currently in progress. Please log in or register with your email to continue for now.",
+          style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
             child: Text(
-              "Sign up here!",
+              "Got it",
               style: TextStyle(
                 color: primaryColor,
                 fontWeight: FontWeight.bold,
-                fontSize: 13,
               ),
             ),
           ),
@@ -999,230 +1107,343 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
     );
   }
 
-  // --- STEP 1: EMAIL ENTRY UI ---
-  Widget _buildEmailStepUI(bool isDark, Color primaryColor) {
-    Color borderColor = isDark ? Colors.white24 : const Color(0xFFE5E7EB);
-    Color labelColor = isDark ? Colors.white : const Color(0xFF111827);
+  Widget _buildWelcomeMobile(BoxConstraints c, bool isDark) {
+    final w = c.maxWidth;
+    final compactHeight = c.maxHeight < 700;
+    final tint = isDark
+        ? _brandGreen.withValues(alpha: 0.18)
+        : const Color(0xFFE3F0E8);
+    final ink = isDark ? Colors.white : const Color(0xFF0B1B14);
+    final muted = isDark ? Colors.grey[400]! : const Color(0xFF5F7396);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Stack(
+      fit: StackFit.expand,
       children: [
-        Text(
-          "Login ID",
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            color: labelColor,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextFormField(
-          controller: _emailController,
-          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-          decoration: InputDecoration(
-            hintText: "Enter your email or username",
-            hintStyle: TextStyle(
-              color: isDark ? Colors.white38 : Colors.grey[400],
-            ),
-            prefixIcon: Icon(
-              Icons.person_outline,
-              color: isDark ? Colors.white54 : Colors.grey[500],
-            ),
-            contentPadding: const EdgeInsets.symmetric(vertical: 16),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: borderColor),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: primaryColor, width: 2),
-            ),
-          ),
-          onFieldSubmitted: (_) => _proceedToPassword(),
-        ),
-        const SizedBox(height: 24),
-
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _isLoading ? null : _proceedToPassword,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryColor,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+        Positioned(
+          top: -110,
+          left: -110,
+          child: IgnorePointer(
+            child: Container(
+              width: 280,
+              height: 280,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: tint.withValues(alpha: 0.6),
               ),
-              elevation: 0,
             ),
-            child: _isLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
-                    ),
-                  )
-                : const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        "Next",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+          ),
+        ),
+        Positioned(
+          bottom: -130,
+          right: -130,
+          child: IgnorePointer(
+            child: Container(
+              width: 280,
+              height: 280,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: tint.withValues(alpha: 0.6),
+              ),
+            ),
+          ),
+        ),
+        SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(
+                horizontal: w < 380 ? 20.0 : 28.0,
+                vertical: 16.0,
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: SizedBox(
+                        width: compactHeight ? 240 : 320,
+                        child: AspectRatio(
+                          aspectRatio: 300 / 190,
+                          child: CustomPaint(
+                            painter: _StudyScenePainter(
+                              scene: _Scene.globe,
+                              line: isDark ? _brandGreenLight : _brandGreen,
+                              tint: tint,
+                              paper: isDark
+                                  ? const Color(0xFF0F1512)
+                                  : Colors.white,
+                            ),
+                          ),
                         ),
                       ),
-                      SizedBox(width: 8),
-                      Icon(Icons.arrow_forward, size: 18),
-                    ],
-                  ),
-          ),
-        ),
-
-        const SizedBox(height: 24),
-        Row(
-          children: [
-            Expanded(child: Divider(color: borderColor)),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                "or",
-                style: TextStyle(
-                  color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
-                  fontSize: 13,
+                    ),
+                    SizedBox(height: compactHeight ? 20 : 40),
+                    Text(
+                      "Manage your school\nwith ease",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.w800,
+                        height: 1.15,
+                        letterSpacing: -1,
+                        color: ink,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      "Everything your school needs,\nin one place.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 17, height: 1.4, color: muted),
+                    ),
+                    const SizedBox(height: 32),
+                    _buildWelcomeActions(isDark),
+                  ],
                 ),
               ),
             ),
-            Expanded(child: Divider(color: borderColor)),
-          ],
+          ),
         ),
-        const SizedBox(height: 24),
-
-        // 🚨 GOOGLE & BIOMETRICS
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildSocialButton(
-              Icons.g_mobiledata_rounded,
-              "Google",
-              _loginWithGoogle,
-              isDark,
-              borderColor,
-            ),
-            if (_canCheckBiometrics) ...[
-              const SizedBox(width: 16),
-              _buildSocialButton(
-                Icons.fingerprint_rounded,
-                "Biometrics",
-                _handleBiometricLogin,
-                isDark,
-                borderColor,
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 24),
-
-        _buildSignUpText(isDark, primaryColor),
       ],
     );
   }
 
-  // --- STEP 2: PASSWORD ENTRY UI ---
-  Widget _buildPasswordStepUI(bool isDark, Color primaryColor) {
-    Color borderColor = isDark ? Colors.white24 : const Color(0xFFE5E7EB);
-    Color labelColor = isDark ? Colors.white : const Color(0xFF111827);
+  // Desktop: the left panel already carries the headline and illustration,
+  // so the right column only shows a short title plus the same actions.
+  Widget _buildDesktopWelcome(bool isDark) {
+    final ink = isDark ? Colors.white : const Color(0xFF0B1B14);
+    final muted = isDark ? Colors.grey[400]! : const Color(0xFF5F7396);
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Read-only Email display box with "Change" button
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            border: Border.all(color: borderColor),
-            borderRadius: BorderRadius.circular(12),
+        Text(
+          "Get started",
+          style: TextStyle(
+            fontSize: 38,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -1,
+            height: 1.1,
+            color: ink,
           ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.mail_outline,
-                color: isDark ? Colors.white54 : Colors.grey[500],
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _emailController.text,
-                  style: TextStyle(
-                    color: labelColor,
-                    fontWeight: FontWeight.w500,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          "Choose how you'd like to continue.",
+          style: TextStyle(fontSize: 17, color: muted),
+        ),
+        const SizedBox(height: 32),
+        _buildWelcomeActions(isDark),
+      ],
+    );
+  }
+
+  Widget _buildWelcomeActions(bool isDark) {
+    final muted = isDark ? Colors.grey[400]! : const Color(0xFF5F7396);
+    final accent = isDark ? _brandGreenLight : _brandGreen;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 🚨 GOOGLE → existing "Coming Soon" dialog
+        SizedBox(
+          height: 58,
+          child: ElevatedButton(
+            onPressed: _loginWithGoogle,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _brandGreen,
+              foregroundColor: Colors.white,
+              shape: const StadiumBorder(),
+              elevation: 0,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CustomPaint(painter: _GoogleLogoPainter()),
+                ),
+                const SizedBox(width: 12),
+                const Flexible(
+                  child: Text(
+                    "Continue with Google",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // REGISTER WITH EMAIL → same screen as the old "Sign up" link
+        SizedBox(
+          height: 56,
+          child: OutlinedButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const SchoolRegistrationScreen(),
+                ),
+              );
+            },
+            style: OutlinedButton.styleFrom(
+              backgroundColor: isDark ? Colors.transparent : Colors.white,
+              side: BorderSide(color: accent, width: 1.2),
+              shape: const StadiumBorder(),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.mail_outline_rounded, color: accent, size: 24),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    "Register with email",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: accent,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+
+        // 🚨 GUEST → "Coming Soon" dialog
+        TextButton.icon(
+          onPressed: _continueAsGuest,
+          style: TextButton.styleFrom(
+            minimumSize: const Size.fromHeight(48),
+            shape: const StadiumBorder(),
+          ),
+          icon: Icon(Icons.person_outline_rounded, color: accent),
+          label: Text(
+            "Continue as Guest",
+            style: TextStyle(
+              color: accent,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+
+        // ALREADY HAVE AN ACCOUNT? → show the login form
+        Center(
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                "Already have an account? ",
+                style: TextStyle(color: muted, fontSize: 14),
               ),
-              TextButton(
-                onPressed: () => setState(() => _currentStep = 0),
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(50, 30),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              GestureDetector(
+                onTap: () => setState(() => _showWelcome = false),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    "Log in",
+                    style: TextStyle(
+                      color: accent,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      decoration: TextDecoration.underline,
+                      decorationColor: accent,
+                    ),
+                  ),
                 ),
-                child: Text("Change", style: TextStyle(color: primaryColor)),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 24),
+      ],
+    );
+  }
 
+  // ---------------------------------------------------------------------------
+  // 🔐 THE FORM (shared by mobile, tablet and desktop — single set of
+  // controllers and handlers, no duplicated logic)
+  // ---------------------------------------------------------------------------
+  Widget _buildForm(bool isDark) {
+    final ink = isDark ? Colors.white : const Color(0xFF0B1B14);
+    final muted = isDark ? Colors.grey[400]! : const Color(0xFF5F7396);
+    final accent = isDark ? _brandGreenLight : _brandGreen;
+    final borderColor = isDark ? Colors.white24 : const Color(0xFFD3E0EF);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         Text(
-          "Password",
+          "Welcome back",
           style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            color: labelColor,
+            fontSize: 38,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -1,
+            height: 1.1,
+            color: ink,
           ),
         ),
         const SizedBox(height: 8),
-        TextFormField(
-          controller: _passwordController,
-          obscureText: _obscurePassword,
-          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-          decoration: InputDecoration(
-            hintText: "Enter your password",
-            hintStyle: TextStyle(
-              color: isDark ? Colors.white38 : Colors.grey[400],
-            ),
-            prefixIcon: Icon(
-              Icons.lock_outline,
-              color: isDark ? Colors.white54 : Colors.grey[500],
-            ),
-            suffixIcon: IconButton(
-              icon: Icon(
-                _obscurePassword
-                    ? Icons.visibility_outlined
-                    : Icons.visibility_off_outlined,
-                color: isDark ? Colors.white54 : Colors.grey[500],
-              ),
-              onPressed: () =>
-                  setState(() => _obscurePassword = !_obscurePassword),
-            ),
-            contentPadding: const EdgeInsets.symmetric(vertical: 16),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: borderColor),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: primaryColor, width: 2),
-            ),
-          ),
-          onFieldSubmitted: (_) => _handleLogin(),
+        Text(
+          "Sign in to continue to your school.",
+          style: TextStyle(fontSize: 17, color: muted),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 32),
 
-        // 🚨 ADDED NAVIGATOR FOR PASSWORD RECOVERY
+        // LOGIN ID (email or phone — same controller as before)
+        _buildPillField(
+          isDark: isDark,
+          controller: _emailController,
+          hint: "Email or phone number",
+          icon: Icons.mail_outline_rounded,
+          action: TextInputAction.next,
+          onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+        ),
+        const SizedBox(height: 16),
+
+        // PASSWORD
+        _buildPillField(
+          isDark: isDark,
+          controller: _passwordController,
+          hint: "Password",
+          icon: Icons.lock_outline_rounded,
+          obscure: _obscurePassword,
+          action: TextInputAction.done,
+          onSubmitted: (_) => _handleLogin(),
+          suffix: IconButton(
+            icon: Icon(
+              _obscurePassword
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+              color: muted,
+            ),
+            onPressed: () =>
+                setState(() => _obscurePassword = !_obscurePassword),
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // 🚨 PASSWORD RECOVERY (same navigation as before)
         Align(
           alignment: Alignment.centerRight,
           child: TextButton(
@@ -1237,113 +1458,489 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
               );
             },
             style: TextButton.styleFrom(
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(50, 30),
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+              minimumSize: const Size(50, 32),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: Text(
-              "Reset password",
-              style: TextStyle(color: primaryColor, fontSize: 13),
+              "Forgot password?",
+              style: TextStyle(
+                color: accent,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                decoration: TextDecoration.underline,
+                decorationColor: accent,
+              ),
             ),
           ),
         ),
         const SizedBox(height: 16),
 
+        // LOG IN BUTTON
         SizedBox(
-          width: double.infinity,
+          height: 58,
           child: ElevatedButton(
             onPressed: _isLoading ? null : _handleLogin,
             style: ElevatedButton.styleFrom(
-              backgroundColor: primaryColor,
+              backgroundColor: _brandGreen,
+              disabledBackgroundColor: _brandGreen.withValues(alpha: 0.6),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              disabledForegroundColor: Colors.white,
+              shape: const StadiumBorder(),
               elevation: 0,
             ),
             child: _isLoading
                 ? const SizedBox(
-                    height: 20,
-                    width: 20,
+                    height: 22,
+                    width: 22,
                     child: CircularProgressIndicator(
                       color: Colors.white,
-                      strokeWidth: 2,
+                      strokeWidth: 2.5,
                     ),
                   )
-                : const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        "Sign in",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      SizedBox(width: 8),
-                      Icon(Icons.arrow_forward, size: 18),
-                    ],
+                : const Text(
+                    "Log in",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
           ),
         ),
-
         const SizedBox(height: 24),
+
+        // OR CONTINUE WITH
         Row(
           children: [
             Expanded(child: Divider(color: borderColor)),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                "or",
-                style: TextStyle(
-                  color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
-                  fontSize: 13,
-                ),
+                "or continue with",
+                style: TextStyle(color: muted, fontSize: 14),
               ),
             ),
             Expanded(child: Divider(color: borderColor)),
           ],
         ),
+        const SizedBox(height: 20),
+
+        // 🚨 GOOGLE (same handler as before)
+        SizedBox(
+          height: 56,
+          child: OutlinedButton(
+            onPressed: _loginWithGoogle,
+            style: OutlinedButton.styleFrom(
+              backgroundColor: isDark ? Colors.transparent : Colors.white,
+              side: BorderSide(color: accent, width: 1.2),
+              shape: const StadiumBorder(),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CustomPaint(painter: _GoogleLogoPainter()),
+                ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    "Continue with Google",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: accent,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // 🚨 BIOMETRICS (only shown when available, same handler as before)
+        if (_canCheckBiometrics) ...[
+          const SizedBox(height: 20),
+          Center(
+            child: InkWell(
+              onTap: _handleBiometricLogin,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.fingerprint_rounded, size: 44, color: accent),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Login with biometrics",
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 24),
 
-        _buildSignUpText(isDark, primaryColor),
+        _buildSignUpText(isDark, accent),
       ],
     );
   }
 
-  // 🚨 UI FIX: Wrapped label in a FittedBox and reduced padding to prevent text wrapping on small screens
-  Widget _buildSocialButton(
-    IconData icon,
-    String label,
-    VoidCallback onTap,
-    bool isDark,
-    Color borderColor,
-  ) {
-    return Expanded(
-      child: OutlinedButton.icon(
-        onPressed: onTap,
-        icon: Icon(
-          icon,
-          size: 20, // Slightly reduced to give text more room
-          color: isDark ? Colors.white : Colors.black87,
-        ),
-        label: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            label,
-            maxLines: 1,
-            style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+  // Pill-shaped text field used for both Login ID and Password
+  Widget _buildPillField({
+    required bool isDark,
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    bool obscure = false,
+    Widget? suffix,
+    TextInputAction? action,
+    ValueChanged<String>? onSubmitted,
+  }) {
+    final muted = isDark ? Colors.white54 : const Color(0xFF5F7396);
+    final borderColor = isDark ? Colors.white24 : const Color(0xFFD3E0EF);
+    final accent = isDark ? _brandGreenLight : _brandGreen;
+
+    OutlineInputBorder border(Color color, double width) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(32),
+      borderSide: BorderSide(color: color, width: width),
+    );
+
+    return TextFormField(
+      controller: controller,
+      obscureText: obscure,
+      textInputAction: action,
+      style: TextStyle(
+        fontSize: 16,
+        color: isDark ? Colors.white : const Color(0xFF0B1B14),
+      ),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: muted, fontSize: 16),
+        filled: true,
+        fillColor: isDark ? const Color(0xFF1A211D) : Colors.white,
+        prefixIcon: Icon(icon, color: muted),
+        suffixIcon: suffix,
+        contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
+        border: border(borderColor, 1),
+        enabledBorder: border(borderColor, 1),
+        focusedBorder: border(accent, 1.8),
+      ),
+      onFieldSubmitted: onSubmitted,
+    );
+  }
+
+  // Clickable "Create account" row (same navigation as the old Sign Up link)
+  Widget _buildSignUpText(bool isDark, Color accent) {
+    return Center(
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            "New to Trideta? ",
+            style: TextStyle(
+              color: isDark ? Colors.grey[400] : const Color(0xFF5F7396),
+              fontSize: 14,
+            ),
           ),
-        ),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          side: BorderSide(color: borderColor),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const SchoolRegistrationScreen(),
+                ),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                "Create account",
+                style: TextStyle(
+                  color: accent,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                  decoration: TextDecoration.underline,
+                  decorationColor: accent,
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
+}
+
+// =============================================================================
+// 🎨 DECORATIVE PAINTERS (pure drawing — no assets or packages required)
+// =============================================================================
+enum _Scene { hero, globe, corner }
+
+class _StudyScenePainter extends CustomPainter {
+  final _Scene scene;
+  final Color line;
+  final Color tint;
+  final Color paper;
+
+  const _StudyScenePainter({
+    required this.scene,
+    required this.line,
+    required this.tint,
+    required this.paper,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width / 300, size.height / 190);
+
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..color = line;
+    final thin = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1
+      ..strokeCap = StrokeCap.round
+      ..color = line.withValues(alpha: 0.5);
+    final fill = Paint()
+      ..style = PaintingStyle.fill
+      ..color = paper;
+    final tintPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = tint;
+    final solid = Paint()
+      ..style = PaintingStyle.fill
+      ..color = line;
+
+    void shape(Path p) {
+      canvas.drawPath(p, fill);
+      canvas.drawPath(p, stroke);
+    }
+
+    void rrect(Rect r, double rad) {
+      final rr = RRect.fromRectAndRadius(r, Radius.circular(rad));
+      canvas.drawRRect(rr, fill);
+      canvas.drawRRect(rr, stroke);
+    }
+
+    void book(Rect r) {
+      rrect(r, 3);
+      for (final t in [0.35, 0.65]) {
+        final y = r.top + r.height * t;
+        canvas.drawLine(
+          Offset(r.left + r.width * 0.55, y),
+          Offset(r.right - 5, y),
+          thin,
+        );
+      }
+    }
+
+    void pencil(Offset base, Offset tip) {
+      final d = tip - base;
+      final n = Offset(-d.dy, d.dx) / d.distance * 2.8;
+      final mid = base + d * 0.78;
+      shape(
+        Path()
+          ..moveTo(base.dx + n.dx, base.dy + n.dy)
+          ..lineTo(mid.dx + n.dx, mid.dy + n.dy)
+          ..lineTo(tip.dx, tip.dy)
+          ..lineTo(mid.dx - n.dx, mid.dy - n.dy)
+          ..lineTo(base.dx - n.dx, base.dy - n.dy)
+          ..close(),
+      );
+    }
+
+    void cupWithPencils(double x) {
+      pencil(Offset(x + 10, 134), Offset(x + 6, 90));
+      pencil(Offset(x + 18, 134), Offset(x + 23, 84));
+      pencil(Offset(x + 26, 134), Offset(x + 36, 98));
+      rrect(Rect.fromLTWH(x, 128, 36, 47), 5);
+      canvas.drawLine(Offset(x + 3, 138), Offset(x + 33, 138), thin);
+    }
+
+    void leaf(Offset b, double a, double len) {
+      final dir = Offset(math.cos(a), math.sin(a));
+      final nr = Offset(-dir.dy, dir.dx);
+      final tip = b + dir * len;
+      final m = b + dir * (len * 0.5);
+      final c1 = m + nr * (len * 0.4);
+      final c2 = m - nr * (len * 0.4);
+      shape(
+        Path()
+          ..moveTo(b.dx, b.dy)
+          ..quadraticBezierTo(c1.dx, c1.dy, tip.dx, tip.dy)
+          ..quadraticBezierTo(c2.dx, c2.dy, b.dx, b.dy),
+      );
+    }
+
+    void plantInVase(double cx, double baseY) {
+      canvas.drawPath(
+        Path()
+          ..moveTo(cx, baseY - 50)
+          ..quadraticBezierTo(cx + 3, baseY - 78, cx - 2, baseY - 106),
+        stroke,
+      );
+      leaf(Offset(cx, baseY - 62), -0.7, 20);
+      leaf(Offset(cx, baseY - 72), -2.4, 20);
+      leaf(Offset(cx + 1, baseY - 84), -0.6, 20);
+      leaf(Offset(cx, baseY - 94), -2.5, 18);
+      leaf(Offset(cx - 2, baseY - 105), -1.6, 20);
+      shape(
+        Path()
+          ..moveTo(cx - 6, baseY - 50)
+          ..lineTo(cx - 6, baseY - 38)
+          ..quadraticBezierTo(cx - 24, baseY - 26, cx - 18, baseY - 10)
+          ..quadraticBezierTo(cx - 16, baseY, cx, baseY)
+          ..quadraticBezierTo(cx + 16, baseY, cx + 18, baseY - 10)
+          ..quadraticBezierTo(cx + 24, baseY - 26, cx + 6, baseY - 38)
+          ..lineTo(cx + 6, baseY - 50)
+          ..close(),
+      );
+    }
+
+    void sparkles() {
+      const ticks = [
+        [150.0, 30.0, 150.0, 41.0],
+        [172.0, 38.0, 166.0, 47.0],
+        [128.0, 38.0, 134.0, 47.0],
+        [100.0, 52.0, 108.0, 57.0],
+      ];
+      for (final t in ticks) {
+        canvas.drawLine(Offset(t[0], t[1]), Offset(t[2], t[3]), stroke);
+      }
+    }
+
+    // Cloud-like soft background shape
+    if (scene != _Scene.corner) {
+      canvas.drawCircle(const Offset(105, 112), 58, tintPaint);
+      canvas.drawCircle(const Offset(175, 98), 54, tintPaint);
+      canvas.drawCircle(const Offset(232, 128), 44, tintPaint);
+      canvas.drawRect(const Rect.fromLTWH(48, 118, 224, 57), tintPaint);
+    }
+
+    // Ground line
+    canvas.drawLine(const Offset(4, 175), const Offset(296, 175), stroke);
+
+    if (scene == _Scene.corner) {
+      book(const Rect.fromLTWH(6, 163, 116, 12));
+      book(const Rect.fromLTWH(26, 151, 104, 12));
+      book(const Rect.fromLTWH(16, 139, 110, 12));
+      cupWithPencils(150);
+      plantInVase(240, 175);
+      canvas.restore();
+      return;
+    }
+
+    // Stack of books + graduation cap
+    book(const Rect.fromLTWH(10, 160, 140, 15));
+    book(const Rect.fromLTWH(22, 144, 116, 16));
+    book(const Rect.fromLTWH(16, 128, 128, 16));
+
+    shape(
+      Path()
+        ..moveTo(52, 108)
+        ..lineTo(52, 122)
+        ..quadraticBezierTo(80, 134, 108, 122)
+        ..lineTo(108, 108),
+    );
+    shape(
+      Path()
+        ..moveTo(80, 80)
+        ..lineTo(132, 98)
+        ..lineTo(80, 116)
+        ..lineTo(28, 98)
+        ..close(),
+    );
+    canvas.drawLine(const Offset(34, 100), const Offset(34, 119), stroke);
+    canvas.drawCircle(const Offset(34, 122), 2.6, solid);
+
+    // Standing books and pencil cup
+    rrect(const Rect.fromLTWH(152, 108, 13, 67), 2);
+    rrect(const Rect.fromLTWH(167, 118, 11, 57), 2);
+    cupWithPencils(184);
+
+    if (scene == _Scene.hero) {
+      plantInVase(252, 175);
+    } else {
+      // Globe
+      const c = Offset(252, 92);
+      const r = 34.0;
+      canvas.drawCircle(c, r, fill);
+      canvas.drawCircle(c - const Offset(10, 8), 9, tintPaint);
+      canvas.drawCircle(c + const Offset(12, 10), 10, tintPaint);
+      canvas.drawCircle(c, r, stroke);
+      canvas.drawOval(Rect.fromCenter(center: c, width: 34, height: 68), thin);
+      canvas.drawLine(c - const Offset(r, 0), c + const Offset(r, 0), thin);
+      canvas.drawArc(
+        Rect.fromCircle(center: c, radius: r + 5),
+        0.2,
+        2.8,
+        false,
+        stroke,
+      );
+      canvas.drawLine(const Offset(252, 126), const Offset(252, 168), stroke);
+      final baseRect = Rect.fromCenter(
+        center: const Offset(252, 171),
+        width: 44,
+        height: 8,
+      );
+      canvas.drawOval(baseRect, fill);
+      canvas.drawOval(baseRect, stroke);
+    }
+
+    sparkles();
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _StudyScenePainter old) =>
+      old.scene != scene ||
+      old.line != line ||
+      old.tint != tint ||
+      old.paper != paper;
+}
+
+// Multi-colour Google "G" drawn with arcs (no image asset needed)
+class _GoogleLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final r = size.width * 0.36;
+    final sw = size.width * 0.2;
+    final rect = Rect.fromCircle(center: c, radius: r);
+
+    Paint p(Color color) => Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = sw
+      ..color = color;
+
+    canvas.drawArc(rect, -2.35, 1.55, false, p(const Color(0xFFEA4335)));
+    canvas.drawArc(rect, 2.4, 1.54, false, p(const Color(0xFFFBBC05)));
+    canvas.drawArc(rect, 0.85, 1.55, false, p(const Color(0xFF34A853)));
+    canvas.drawArc(rect, 0.0, 0.85, false, p(const Color(0xFF4285F4)));
+    canvas.drawLine(
+      c,
+      Offset(c.dx + r + sw / 2, c.dy),
+      p(const Color(0xFF4285F4)),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

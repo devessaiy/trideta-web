@@ -162,13 +162,13 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
 
           final dynamic rawClassIds = fee['applicable_class_ids'];
           List<dynamic> classIdsList = [];
-          
+
           if (rawClassIds is String && rawClassIds.startsWith('[')) {
-             try {
-                 classIdsList = jsonDecode(rawClassIds);
-             } catch(e) {}
+            try {
+              classIdsList = jsonDecode(rawClassIds);
+            } catch (e) {}
           } else if (rawClassIds is List) {
-             classIdsList = rawClassIds;
+            classIdsList = rawClassIds;
           }
 
           if (classIdsList.isNotEmpty && sClassId.isNotEmpty) {
@@ -199,7 +199,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
           }
         }
 
-        // 🚨 FLAWLESS MATH: Use Wallet ONLY as a credit buffer. 
+        // 🚨 FLAWLESS MATH: Use Wallet ONLY as a credit buffer.
         // If the wallet is negative (past debt), it is treated as 0.0 so we strictly calculate CURRENT term debt.
         double availableCredit = walletBalance > 0 ? walletBalance : 0.0;
         double finalTrueDebt = activeStudentDebt - availableCredit;
@@ -213,7 +213,7 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
         setState(() {
           _isFeesActivated = feeData.isNotEmpty;
           _rawCollected = totalCollected;
-          _rawDebt = totalDebt; 
+          _rawDebt = totalDebt;
           _invoiceCount = validInvoiceCount;
           _isLoading = false;
         });
@@ -231,9 +231,18 @@ class _FinanceCentreScreenState extends State<FinanceCentreScreen>
 
   String _standardizeClass(String val) {
     String v = val.replaceAll(' ', '').toLowerCase();
-    v = v.replaceAll('one', '1').replaceAll('two', '2').replaceAll('three', '3');
-    v = v.replaceAll('four', '4').replaceAll('five', '5').replaceAll('six', '6');
-    v = v.replaceAll('seven', '7').replaceAll('eight', '8').replaceAll('nine', '9');
+    v = v
+        .replaceAll('one', '1')
+        .replaceAll('two', '2')
+        .replaceAll('three', '3');
+    v = v
+        .replaceAll('four', '4')
+        .replaceAll('five', '5')
+        .replaceAll('six', '6');
+    v = v
+        .replaceAll('seven', '7')
+        .replaceAll('eight', '8')
+        .replaceAll('nine', '9');
     return v;
   }
 

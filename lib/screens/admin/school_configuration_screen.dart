@@ -749,184 +749,165 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   }
 
   // ===========================================================================
-  // 🚨 COLLAPSIBLE, CARDLESS WHATSAPP-STYLE EDGE-TO-EDGE UI
+  // 🚨 CARDLESS, LINELESS, ZERO-COLOR-BREAK UI
   // ===========================================================================
 
   Widget _buildOffDaysSelector(bool isDark, Color primaryColor) {
-    Color surfaceColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
     String summaryText = _selectedOffDays.isEmpty
         ? "Open all 7 days"
         : "Closed: ${_selectedOffDays.map((d) => d.substring(0, 3)).join(', ')}";
 
-    return Column(
-      children: [
-        Material(
-          color: surfaceColor,
-          child: InkWell(
-            onTap: () =>
-                setState(() => _isOffDaysExpanded = !_isOffDaysExpanded),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => setState(() => _isOffDaysExpanded = !_isOffDaysExpanded),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: primaryColor.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.calendar_today_rounded,
-                          color: primaryColor,
-                          size: 18,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "School Operating Days",
-                              style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 15,
-                                color: textColor,
-                                letterSpacing: -0.3,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              summaryText,
-                              style: TextStyle(
-                                color: _selectedOffDays.isEmpty
-                                    ? Colors.green
-                                    : Colors.orange,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Icon(
-                        _isOffDaysExpanded
-                            ? Icons.keyboard_arrow_up_rounded
-                            : Icons.keyboard_arrow_down_rounded,
-                        color: Colors.grey.shade400,
-                      ),
-                    ],
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: primaryColor.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.calendar_today_rounded,
+                      color: primaryColor,
+                      size: 18,
+                    ),
                   ),
-                  AnimatedCrossFade(
-                    duration: const Duration(milliseconds: 250),
-                    crossFadeState: _isOffDaysExpanded
-                        ? CrossFadeState.showSecond
-                        : CrossFadeState.showFirst,
-                    firstChild: const SizedBox(
-                      width: double.infinity,
-                      height: 0,
-                    ),
-                    secondChild: Padding(
-                      padding: const EdgeInsets.only(top: 14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "Select the days your school is CLOSED. Teachers will be blocked from recording attendance on these days.",
-                            style: TextStyle(
-                              color: Colors.grey.shade500,
-                              fontSize: 12,
-                              height: 1.4,
-                              fontWeight: FontWeight.w500,
-                            ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "School Operating Days",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                            color: textColor,
+                            letterSpacing: -0.3,
                           ),
-                          const SizedBox(height: 14),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: _daysOfWeek.map((day) {
-                              bool isSelected = _selectedOffDays.contains(day);
-                              return GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    if (isSelected) {
-                                      _selectedOffDays.remove(day);
-                                    } else {
-                                      _selectedOffDays.add(day);
-                                    }
-                                  });
-                                },
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 200),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? Colors.orange.withValues(alpha: 0.15)
-                                        : (isDark
-                                              ? Colors.white.withValues(
-                                                  alpha: 0.05,
-                                                )
-                                              : Colors.grey.shade100),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: isSelected
-                                          ? Colors.orange
-                                          : Colors.transparent,
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (isSelected) ...[
-                                        const Icon(
-                                          Icons.check_rounded,
-                                          size: 14,
-                                          color: Colors.orange,
-                                        ),
-                                        const SizedBox(width: 4),
-                                      ],
-                                      Text(
-                                        day.substring(0, 3),
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: isSelected
-                                              ? Colors.orange
-                                              : (isDark
-                                                    ? Colors.white70
-                                                    : Colors.black87),
-                                          fontWeight: isSelected
-                                              ? FontWeight.w900
-                                              : FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            }).toList(),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          summaryText,
+                          style: TextStyle(
+                            color: _selectedOffDays.isEmpty
+                                ? Colors.green
+                                : Colors.orange,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
+                  ),
+                  Icon(
+                    _isOffDaysExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: Colors.grey.shade400,
                   ),
                 ],
               ),
-            ),
+              AnimatedCrossFade(
+                duration: const Duration(milliseconds: 250),
+                crossFadeState: _isOffDaysExpanded
+                    ? CrossFadeState.showSecond
+                    : CrossFadeState.showFirst,
+                firstChild: const SizedBox(width: double.infinity, height: 0),
+                secondChild: Padding(
+                  padding: const EdgeInsets.only(top: 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Select the days your school is CLOSED. Teachers will be blocked from recording attendance on these days.",
+                        style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontSize: 12,
+                          height: 1.4,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _daysOfWeek.map((day) {
+                          bool isSelected = _selectedOffDays.contains(day);
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                if (isSelected) {
+                                  _selectedOffDays.remove(day);
+                                } else {
+                                  _selectedOffDays.add(day);
+                                }
+                              });
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? Colors.orange.withValues(alpha: 0.15)
+                                    : (isDark
+                                          ? Colors.white.withValues(alpha: 0.05)
+                                          : Colors.grey.shade200.withValues(
+                                              alpha: 0.6,
+                                            )),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (isSelected) ...[
+                                    const Icon(
+                                      Icons.check_rounded,
+                                      size: 14,
+                                      color: Colors.orange,
+                                    ),
+                                    const SizedBox(width: 4),
+                                  ],
+                                  Text(
+                                    day.substring(0, 3),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isSelected
+                                          ? Colors.orange
+                                          : (isDark
+                                                ? Colors.white70
+                                                : Colors.black87),
+                                      fontWeight: isSelected
+                                          ? FontWeight.w900
+                                          : FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-        Divider(
-          height: 1,
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
-      ],
+      ),
     );
   }
 
@@ -948,7 +929,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
       backgroundColor: bgColor,
       appBar: AppBar(
         title: const Text(
-          "School Configuration",
+          "System Configuration",
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         backgroundColor: bgColor,
@@ -962,74 +943,59 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1200),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: bgColor,
-                    border: Border.symmetric(
-                      vertical: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                child: Column(
+                  children: [
+                    _buildOffDaysSelector(isDark, primaryColor),
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 4,
+                            child: ClassesPanel(
+                              classes: _classes,
+                              classController: _classController,
+                              isDark: isDark,
+                              primaryColor: primaryColor,
+                              onAddClass: _addClass,
+                              onEditClass: _editClass,
+                              onRemoveClass: _removeClass,
+                              onReorder: (oldIdx, newIdx) {
+                                setState(() {
+                                  if (newIdx > oldIdx) newIdx -= 1;
+                                  _classes.insert(
+                                    newIdx,
+                                    _classes.removeAt(oldIdx),
+                                  );
+                                });
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 24),
+                          Expanded(
+                            flex: 6,
+                            child: SubjectsPanel(
+                              classes: _classes,
+                              classSubjects: _classSubjects,
+                              subjectController: _subjectController,
+                              selectedClassName: _selectedClassName,
+                              subjectType: _subjectType,
+                              isDark: isDark,
+                              primaryColor: primaryColor,
+                              onTargetClassChanged: (val) =>
+                                  setState(() => _selectedClassName = val),
+                              onSubjectTypeChanged: (val) =>
+                                  setState(() => _subjectType = val!),
+                              onAddSubject: _addSubject,
+                              onEditSubject: _editSubject,
+                              onRemoveSubject: _removeSubject,
+                              onCopySubjects: _showDuplicateDialog,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  child: Column(
-                    children: [
-                      _buildOffDaysSelector(isDark, primaryColor),
-                      Expanded(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              flex: 4,
-                              child: ClassesPanel(
-                                classes: _classes,
-                                classController: _classController,
-                                isDark: isDark,
-                                primaryColor: primaryColor,
-                                onAddClass: _addClass,
-                                onEditClass: _editClass,
-                                onRemoveClass: _removeClass,
-                                onReorder: (oldIdx, newIdx) {
-                                  setState(() {
-                                    if (newIdx > oldIdx) newIdx -= 1;
-                                    _classes.insert(
-                                      newIdx,
-                                      _classes.removeAt(oldIdx),
-                                    );
-                                  });
-                                },
-                              ),
-                            ),
-                            VerticalDivider(
-                              width: 1,
-                              color: isDark
-                                  ? Colors.white10
-                                  : Colors.grey.shade200,
-                            ),
-                            Expanded(
-                              flex: 6,
-                              child: SubjectsPanel(
-                                classes: _classes,
-                                classSubjects: _classSubjects,
-                                subjectController: _subjectController,
-                                selectedClassName: _selectedClassName,
-                                subjectType: _subjectType,
-                                isDark: isDark,
-                                primaryColor: primaryColor,
-                                onTargetClassChanged: (val) =>
-                                    setState(() => _selectedClassName = val),
-                                onSubjectTypeChanged: (val) =>
-                                    setState(() => _subjectType = val!),
-                                onAddSubject: _addSubject,
-                                onEditSubject: _editSubject,
-                                onRemoveSubject: _removeSubject,
-                                onCopySubjects: _showDuplicateDialog,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
             );
@@ -1086,7 +1052,6 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                     ),
                   ];
                 },
-                // 🚨 EDGE-TO-EDGE: Removed outer padding around ClassesPanel and SubjectsPanel
                 body: TabBarView(
                   children: [
                     ClassesPanel(
@@ -1128,22 +1093,14 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
           }
         },
       ),
-      bottomNavigationBar: _buildBottomBar(isDark, primaryColor),
+      bottomNavigationBar: _buildBottomBar(bgColor, primaryColor),
     );
   }
 
-  Widget _buildBottomBar(bool isDark, Color primaryColor) {
+  Widget _buildBottomBar(Color bgColor, Color primaryColor) {
     return Container(
+      color: bgColor,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        border: Border(
-          top: BorderSide(
-            color: isDark ? Colors.white10 : Colors.grey.shade200,
-            width: 1,
-          ),
-        ),
-      ),
       child: SafeArea(
         child: SizedBox(
           width: double.infinity,

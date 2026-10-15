@@ -392,8 +392,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 30),
+              Text(
+                "SCHOOL CURRICULUM",
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Colors.grey.shade500,
+                  fontSize: 12,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 15),
+
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.folder_copy_rounded,
+                color: Colors.indigo.shade500,
+                title: "Curriculum Documents",
+                subtitle: "Send syllabus & scheme of work to teachers",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const CurriculumDocsScreen(),
+                  ),
+                ),
+              ),
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.fact_check_rounded,
+                color: Colors.green.shade600,
+                title: "Lesson Note Approvals",
+                subtitle: "Review lesson notes sent by teachers",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const LessonNoteReviewScreen(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 30),
+
               Text(
                 "ACADEMIC & RESULTS",
                 style: TextStyle(
@@ -464,32 +502,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     );
                   }
                 },
-              ),
-              _buildModuleTile(
-                isDark: isDark,
-                icon: Icons.folder_copy_rounded,
-                color: Colors.indigo.shade500,
-                title: "Curriculum Documents",
-                subtitle: "Send syllabus & scheme of work to teachers",
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const CurriculumDocsScreen(),
-                  ),
-                ),
-              ),
-              _buildModuleTile(
-                isDark: isDark,
-                icon: Icons.fact_check_rounded,
-                color: Colors.green.shade600,
-                title: "Lesson Note Approvals",
-                subtitle: "Review lesson notes sent by teachers",
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const LessonNoteReviewScreen(),
-                  ),
-                ),
               ),
               _buildModuleTile(
                 isDark: isDark,

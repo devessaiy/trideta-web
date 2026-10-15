@@ -79,10 +79,12 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
 
       if (response.isEmpty) {
         setState(() => _downloadedTables.add(tableName));
-        showSuccessDialog(
-          "Export Complete",
-          "No records found in $label. Marked as complete.",
-        );
+        if (mounted) {
+          showSuccessDialog(
+            "Export Complete",
+            "No records found in $label. Marked as complete.",
+          );
+        }
         return;
       }
 
@@ -106,34 +108,44 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
       }
 
       final Uint8List bytes = utf8.encode(csvContent.toString());
-      await FileSaver.instance.saveFile(
-        name:
-            'Trideta_${tableName.toUpperCase()}_Backup_${DateTime.now().millisecondsSinceEpoch}',
-        bytes: bytes,
-        mimeType: MimeType.csv,
-      );
+      final String fileName =
+          'Trideta_${tableName.toUpperCase()}_Backup_${DateTime.now().millisecondsSinceEpoch}';
+
+      // 🚨 MOBILE APK FIX: Use saveAs on Mobile so Android/iOS saves to visible Downloads folder
+      if (kIsWeb) {
+        await FileSaver.instance.saveFile(
+          name: fileName,
+          bytes: bytes,
+          fileExtension: 'csv',
+          mimeType: MimeType.csv,
+        );
+      } else {
+        final String? savedPath = await FileSaver.instance.saveAs(
+          name: fileName,
+          bytes: bytes,
+          fileExtension: 'csv',
+          mimeType: MimeType.csv,
+        );
+        if (savedPath == null || savedPath.isEmpty) {
+          return;
+        }
+      }
 
       setState(() => _downloadedTables.add(tableName));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              "$label Exported Successfully!",
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
+        showSuccessDialog("Export Complete", "$label exported successfully!");
       }
     } catch (e) {
-      showAuthErrorDialog("Failed to export $label: $e");
+      if (mounted) {
+        showAuthErrorDialog("Failed to export $label: $e");
+      }
     } finally {
       if (mounted) setState(() => _currentlyDownloading = null);
     }
   }
 
   // ===========================================================================
-  // 🚨 TOTAL ANNIHILATION ENGINE (TABLES, AUTH.USERS, & PARENT MIGRATION)
+  // 🚨 TOTAL ANNIHILATION ENGINE (STRICTLY UNTOUCHED)
   // ===========================================================================
   Future<void> _executeAnnihilation() async {
     if (_downloadedTables.length < _tablesToExport.length) {
@@ -298,13 +310,18 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
               style: TextStyle(
                 fontWeight: FontWeight.w900,
                 color: Colors.redAccent,
+                fontSize: 18,
               ),
             ),
           ],
         ),
-        content: const Text(
+        content: Text(
           "You are about to permanently delete your entire school database AND completely wipe all associated parent, teacher, and admin login accounts (except parents with active students in other Trideta schools).\n\nThis action is irreversible. Do you wish to proceed?",
-          style: TextStyle(height: 1.5),
+          style: TextStyle(
+            height: 1.5,
+            fontSize: 14,
+            color: isDark ? Colors.white70 : Colors.black87,
+          ),
         ),
         actions: [
           TextButton(
@@ -338,11 +355,253 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
     );
   }
 
+  // ===========================================================================
+  // 🚨 CARDLESS, WHATSAPP-STYLE EDGE-TO-EDGE UI
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color surfaceColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+    bool allSecured = _downloadedTables.length >= _tablesToExport.length;
+
+    Widget mainContent = CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        // ─── 1. EDGE-TO-EDGE WARNING & PROGRESS HEADER ───
+        SliverToBoxAdapter(
+          child: Container(
+            width: double.infinity,
+            color: surfaceColor,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.privacy_tip_rounded,
+                        color: Colors.redAccent,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Data Extraction Required",
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                              color: textColor,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            "Before terminating your Trideta service, you must securely download a CSV backup of all ${_tablesToExport.length} database tables below.",
+                            style: TextStyle(
+                              color: isDark
+                                  ? Colors.white70
+                                  : Colors.grey.shade600,
+                              height: 1.4,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: (allSecured ? Colors.green : Colors.redAccent)
+                        .withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        allSecured
+                            ? Icons.verified_rounded
+                            : Icons.lock_clock_rounded,
+                        size: 16,
+                        color: allSecured ? Colors.green : Colors.redAccent,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        "${_downloadedTables.length} OF ${_tablesToExport.length} TABLES SECURED",
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 11,
+                          letterSpacing: 1.0,
+                          color: allSecured ? Colors.green : Colors.redAccent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        SliverToBoxAdapter(
+          child: Divider(
+            height: 1,
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
+
+        // ─── 2. SECTION LABEL ───
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+            child: Text(
+              "DATABASE TABLES",
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 11,
+                color: Colors.grey.shade500,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
+        ),
+
+        // ─── 3. WHATSAPP-STYLE EDGE-TO-EDGE TABLE LIST ───
+        SliverList(
+          delegate: SliverChildBuilderDelegate((context, index) {
+            final tableMap = _tablesToExport[index];
+            final String tName = tableMap['table']!;
+            final String tLabel = tableMap['label']!;
+            final bool isDownloaded = _downloadedTables.contains(tName);
+            final bool isDownloadingThis = _currentlyDownloading == tName;
+
+            return Container(
+              color: surfaceColor,
+              child: Column(
+                children: [
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 6,
+                    ),
+                    leading: CircleAvatar(
+                      backgroundColor: isDownloaded
+                          ? Colors.green.withValues(alpha: 0.1)
+                          : Colors.blue.withValues(alpha: 0.1),
+                      child: Icon(
+                        isDownloaded
+                            ? Icons.check_circle_rounded
+                            : Icons.table_chart_rounded,
+                        color: isDownloaded ? Colors.green : Colors.blue,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      tLabel,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: textColor,
+                      ),
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        isDownloaded
+                            ? "Secured • $tName.csv"
+                            : "Pending Download • $tName",
+                        style: TextStyle(
+                          color: isDownloaded
+                              ? Colors.green
+                              : Colors.grey.shade500,
+                          fontWeight: isDownloaded
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    trailing: isDownloadingThis
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: TridetaLoader(color: Colors.blue),
+                          )
+                        : (isDownloaded
+                              ? const Icon(
+                                  Icons.cloud_done_rounded,
+                                  color: Colors.green,
+                                )
+                              : FilledButton.icon(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: Colors.blue,
+                                    elevation: 0,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 8,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  onPressed: _currentlyDownloading != null
+                                      ? null
+                                      : () => _downloadTable(tName, tLabel),
+                                  icon: const Icon(
+                                    Icons.download_rounded,
+                                    size: 16,
+                                    color: Colors.white,
+                                  ),
+                                  label: const Text(
+                                    "EXPORT",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 11,
+                                      color: Colors.white,
+                                      letterSpacing: 0.8,
+                                    ),
+                                  ),
+                                )),
+                    onTap: (isDownloaded || _currentlyDownloading != null)
+                        ? null
+                        : () => _downloadTable(tName, tLabel),
+                  ),
+                  if (index < _tablesToExport.length - 1)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 88, right: 24),
+                      child: Divider(
+                        height: 1,
+                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }, childCount: _tablesToExport.length),
+        ),
+
+        const SliverToBoxAdapter(child: SizedBox(height: 40)),
+      ],
+    );
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -355,212 +614,83 @@ class _SchoolDataExportScreenState extends State<SchoolDataExportScreen>
           "Export & Termination Hub",
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        backgroundColor: Colors.redAccent,
-        foregroundColor: Colors.white,
+        backgroundColor: bgColor,
+        foregroundColor: textColor,
         elevation: 0,
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 30, 24, 50),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 800),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(24),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth > 800) {
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.redAccent.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: Colors.redAccent.withValues(alpha: 0.3),
+                    color: bgColor,
+                    border: Border.symmetric(
+                      vertical: BorderSide(
+                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                      ),
                     ),
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(
-                        Icons.privacy_tip_rounded,
-                        color: Colors.redAccent,
-                        size: 28,
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Text(
-                          "Data Extraction Required\n\nBefore you can terminate your Trideta service, you must securely download a CSV backup of your database tables below.",
-                          style: TextStyle(
-                            color: isDark
-                                ? Colors.white70
-                                : Colors.red.shade900,
-                            height: 1.5,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  child: mainContent,
                 ),
-                const SizedBox(height: 40),
-
-                const Text(
-                  "DATABASE TABLES",
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 12,
-                    color: Colors.grey,
-                    letterSpacing: 1.5,
-                  ),
+              ),
+            );
+          } else {
+            return mainContent;
+          }
+        },
+      ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        decoration: BoxDecoration(
+          color: surfaceColor,
+          border: Border(
+            top: BorderSide(
+              color: isDark ? Colors.white10 : Colors.grey.shade200,
+              width: 1,
+            ),
+          ),
+        ),
+        child: SafeArea(
+          child: SizedBox(
+            width: double.infinity,
+            height: 55,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                const SizedBox(height: 16),
-
-                ..._tablesToExport.map((tableMap) {
-                  String tName = tableMap['table']!;
-                  String tLabel = tableMap['label']!;
-                  bool isDownloaded = _downloadedTables.contains(tName);
-                  bool isDownloadingThis = _currentlyDownloading == tName;
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: cardColor,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isDownloaded
-                            ? Colors.green.withValues(alpha: 0.5)
-                            : (isDark ? Colors.white10 : Colors.grey.shade200),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.02),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+              ),
+              onPressed: _isDeleting
+                  ? null
+                  : () => _confirmAnnihilation(isDark),
+              icon: _isDeleting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: TridetaLoader(color: Colors.white),
+                    )
+                  : const Icon(
+                      Icons.delete_forever_rounded,
+                      color: Colors.white,
+                      size: 22,
                     ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 8,
-                      ),
-                      leading: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: isDownloaded
-                              ? Colors.green.withValues(alpha: 0.1)
-                              : Colors.blue.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          isDownloaded
-                              ? Icons.check_circle_rounded
-                              : Icons.table_chart_rounded,
-                          color: isDownloaded ? Colors.green : Colors.blue,
-                          size: 20,
-                        ),
-                      ),
-                      title: Text(
-                        tLabel,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 14,
-                        ),
-                      ),
-                      subtitle: Text(
-                        isDownloaded ? "Secured" : "Pending Download",
-                        style: TextStyle(
-                          color: isDownloaded
-                              ? Colors.green
-                              : Colors.grey.shade500,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
-                        ),
-                      ),
-                      trailing: isDownloadingThis
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: TridetaLoader(color: Colors.blue),
-                            )
-                          : (isDownloaded
-                                ? const Icon(
-                                    Icons.cloud_done_rounded,
-                                    color: Colors.green,
-                                  )
-                                : FilledButton.icon(
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: Colors.blue,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                    onPressed: _currentlyDownloading != null
-                                        ? null
-                                        : () => _downloadTable(tName, tLabel),
-                                    icon: const Icon(
-                                      Icons.download_rounded,
-                                      size: 16,
-                                    ),
-                                    label: const Text(
-                                      "EXPORT",
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 11,
-                                        letterSpacing: 1.0,
-                                      ),
-                                    ),
-                                  )),
-                    ),
-                  );
-                }),
-
-                const SizedBox(height: 50),
-                const Divider(),
-                const SizedBox(height: 30),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 65,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.redAccent,
-                      foregroundColor: Colors.white,
-                      elevation:
-                          _downloadedTables.length < _tablesToExport.length
-                          ? 0
-                          : 8,
-                      shadowColor: Colors.redAccent.withValues(alpha: 0.5),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    onPressed: _isDeleting
-                        ? null
-                        : () => _confirmAnnihilation(isDark),
-                    icon: _isDeleting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: TridetaLoader(color: Colors.white),
-                          )
-                        : const Icon(Icons.delete_forever_rounded, size: 24),
-                    label: Text(
-                      _isDeleting
-                          ? "WIPING ACCOUNTS & DATA..."
-                          : "UNDERSTOOD, TERMINATE.",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.0,
-                        fontSize: 15,
-                      ),
-                    ),
-                  ),
+              label: Text(
+                _isDeleting
+                    ? "WIPING ACCOUNTS & DATA..."
+                    : "UNDERSTOOD, TERMINATE.",
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  letterSpacing: 1.0,
+                  fontSize: 14,
                 ),
-              ],
+              ),
             ),
           ),
         ),

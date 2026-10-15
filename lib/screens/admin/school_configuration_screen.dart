@@ -22,6 +22,8 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
 
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _isOffDaysExpanded =
+      false; // 🚨 UI STATE: Collapsed by default for more space
   String? _schoolId;
 
   // --- RELATIONAL STATE DATA ---
@@ -58,7 +60,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   }
 
   // ===========================================================================
-  // 🚨 LOGIC ENGINE
+  // 🚨 LOGIC ENGINE: STRICTLY UNTOUCHED
   // ===========================================================================
   Future<void> _fetchRelationalConfig() async {
     try {
@@ -380,7 +382,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   }
 
   // ===========================================================================
-  // 🚨 DIALOG HANDLERS
+  // 🚨 DIALOG HANDLERS (UPGRADED TO CUSTOM POPUPS)
   // ===========================================================================
 
   void _showDeleteConflictDialog() {
@@ -390,20 +392,24 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: const Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
             SizedBox(width: 10),
             Text(
               "Action Blocked",
-              style: TextStyle(fontWeight: FontWeight.bold),
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
             ),
           ],
         ),
-        content: const Text(
+        content: Text(
           "This Subject contains past scores, to delete it contact Trideta IT Suport.",
-          style: TextStyle(fontSize: 14),
+          style: TextStyle(
+            fontSize: 14,
+            color: isDark ? Colors.white70 : Colors.black87,
+            height: 1.5,
+          ),
         ),
         actions: [
           TextButton(
@@ -416,9 +422,11 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
+              elevation: 0,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
             onPressed: () async {
               Navigator.pop(ctx);
@@ -600,19 +608,76 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
     }
   }
 
+  // 🚨 UI UPGRADE: Custom Popup instead of Native SnackBar
   void _showDuplicateAlert(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        contentPadding: const EdgeInsets.all(24),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.info_outline, color: Colors.white),
-            const SizedBox(width: 10),
-            Expanded(child: Text(message)),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.info_outline_rounded,
+                color: Colors.orange,
+                size: 40,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              "Notice",
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                color: isDark ? Colors.white : Colors.black87,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: isDark ? Colors.white70 : Colors.grey.shade600,
+                height: 1.4,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.orange.shade800,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 0,
+                ),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text(
+                  "OKAY",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
-        backgroundColor: Colors.orange.shade800,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       ),
     );
   }
@@ -650,13 +715,10 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
       }
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          "Subjects successfully copied! Remember to save changes.",
-        ),
-        backgroundColor: Colors.green,
-      ),
+    // 🚨 UI UPGRADE: Custom Popup instead of Native SnackBar
+    showSuccessDialog(
+      "Subjects Copied",
+      "Subjects successfully copied! Remember to save changes.",
     );
   }
 
@@ -687,89 +749,210 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
   }
 
   // ===========================================================================
-  // 🚨 CLEAN, MODULARIZED UI
+  // 🚨 COLLAPSIBLE, CARDLESS WHATSAPP-STYLE EDGE-TO-EDGE UI
   // ===========================================================================
 
   Widget _buildOffDaysSelector(bool isDark, Color primaryColor) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
+    Color surfaceColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+    String summaryText = _selectedOffDays.isEmpty
+        ? "Open all 7 days"
+        : "Closed: ${_selectedOffDays.map((d) => d.substring(0, 3)).join(', ')}";
+
+    return Column(
+      children: [
+        Material(
+          color: surfaceColor,
+          child: InkWell(
+            onTap: () =>
+                setState(() => _isOffDaysExpanded = !_isOffDaysExpanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: primaryColor.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.calendar_today_rounded,
+                          color: primaryColor,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "School Operating Days",
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 15,
+                                color: textColor,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              summaryText,
+                              style: TextStyle(
+                                color: _selectedOffDays.isEmpty
+                                    ? Colors.green
+                                    : Colors.orange,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        _isOffDaysExpanded
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        color: Colors.grey.shade400,
+                      ),
+                    ],
+                  ),
+                  AnimatedCrossFade(
+                    duration: const Duration(milliseconds: 250),
+                    crossFadeState: _isOffDaysExpanded
+                        ? CrossFadeState.showSecond
+                        : CrossFadeState.showFirst,
+                    firstChild: const SizedBox(
+                      width: double.infinity,
+                      height: 0,
+                    ),
+                    secondChild: Padding(
+                      padding: const EdgeInsets.only(top: 14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Select the days your school is CLOSED. Teachers will be blocked from recording attendance on these days.",
+                            style: TextStyle(
+                              color: Colors.grey.shade500,
+                              fontSize: 12,
+                              height: 1.4,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: _daysOfWeek.map((day) {
+                              bool isSelected = _selectedOffDays.contains(day);
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    if (isSelected) {
+                                      _selectedOffDays.remove(day);
+                                    } else {
+                                      _selectedOffDays.add(day);
+                                    }
+                                  });
+                                },
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? Colors.orange.withValues(alpha: 0.15)
+                                        : (isDark
+                                              ? Colors.white.withValues(
+                                                  alpha: 0.05,
+                                                )
+                                              : Colors.grey.shade100),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? Colors.orange
+                                          : Colors.transparent,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (isSelected) ...[
+                                        const Icon(
+                                          Icons.check_rounded,
+                                          size: 14,
+                                          color: Colors.orange,
+                                        ),
+                                        const SizedBox(width: 4),
+                                      ],
+                                      Text(
+                                        day.substring(0, 3),
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: isSelected
+                                              ? Colors.orange
+                                              : (isDark
+                                                    ? Colors.white70
+                                                    : Colors.black87),
+                                          fontWeight: isSelected
+                                              ? FontWeight.w900
+                                              : FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Divider(
+          height: 1,
           color: isDark ? Colors.white10 : Colors.grey.shade200,
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.calendar_today_rounded, color: primaryColor, size: 20),
-              const SizedBox(width: 10),
-              const Text(
-                "School Operating Days",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "Select the days your school is CLOSED. Teachers will be blocked from recording attendance on these days.",
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _daysOfWeek.map((day) {
-              bool isSelected = _selectedOffDays.contains(day);
-              return FilterChip(
-                label: Text(day.substring(0, 3)), // Mon, Tue, etc.
-                selected: isSelected,
-                selectedColor: Colors.orange.withValues(alpha: 0.2),
-                checkmarkColor: Colors.orange,
-                labelStyle: TextStyle(
-                  color: isSelected
-                      ? Colors.orange
-                      : (isDark ? Colors.white70 : Colors.black87),
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                ),
-                onSelected: (bool selected) {
-                  setState(() {
-                    if (selected) {
-                      _selectedOffDays.add(day);
-                    } else {
-                      _selectedOffDays.remove(day);
-                    }
-                  });
-                },
-              );
-            }).toList(),
-          ),
-        ],
-      ),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Scaffold(body: Center(child: TridetaLoader()));
-
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
     Color primaryColor = Theme.of(context).primaryColor;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: bgColor,
+        body: Center(child: TridetaLoader(color: primaryColor)),
+      );
+    }
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
         title: const Text(
-          "System Configuration",
+          "School Configuration",
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         backgroundColor: bgColor,
-        foregroundColor: isDark ? Colors.white : const Color(0xFF1A1A2E),
+        foregroundColor: textColor,
         elevation: 0,
         centerTitle: true,
       ),
@@ -777,62 +960,76 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
         builder: (context, constraints) {
           if (constraints.maxWidth > 900) {
             return Center(
-              child: Container(
+              child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1200),
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  children: [
-                    _buildOffDaysSelector(isDark, primaryColor),
-                    Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            flex: 4,
-                            child: ClassesPanel(
-                              classes: _classes,
-                              classController: _classController,
-                              isDark: isDark,
-                              primaryColor: primaryColor,
-                              onAddClass: _addClass,
-                              onEditClass: _editClass,
-                              onRemoveClass: _removeClass,
-                              onReorder: (oldIdx, newIdx) {
-                                setState(() {
-                                  if (newIdx > oldIdx) newIdx -= 1;
-                                  _classes.insert(
-                                    newIdx,
-                                    _classes.removeAt(oldIdx),
-                                  );
-                                });
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 24),
-                          Expanded(
-                            flex: 6,
-                            child: SubjectsPanel(
-                              classes: _classes,
-                              classSubjects: _classSubjects,
-                              subjectController: _subjectController,
-                              selectedClassName: _selectedClassName,
-                              subjectType: _subjectType,
-                              isDark: isDark,
-                              primaryColor: primaryColor,
-                              onTargetClassChanged: (val) =>
-                                  setState(() => _selectedClassName = val),
-                              onSubjectTypeChanged: (val) =>
-                                  setState(() => _subjectType = val!),
-                              onAddSubject: _addSubject,
-                              onEditSubject: _editSubject,
-                              onRemoveSubject: _removeSubject,
-                              onCopySubjects: _showDuplicateDialog,
-                            ),
-                          ),
-                        ],
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    border: Border.symmetric(
+                      vertical: BorderSide(
+                        color: isDark ? Colors.white10 : Colors.grey.shade200,
                       ),
                     ),
-                  ],
+                  ),
+                  child: Column(
+                    children: [
+                      _buildOffDaysSelector(isDark, primaryColor),
+                      Expanded(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 4,
+                              child: ClassesPanel(
+                                classes: _classes,
+                                classController: _classController,
+                                isDark: isDark,
+                                primaryColor: primaryColor,
+                                onAddClass: _addClass,
+                                onEditClass: _editClass,
+                                onRemoveClass: _removeClass,
+                                onReorder: (oldIdx, newIdx) {
+                                  setState(() {
+                                    if (newIdx > oldIdx) newIdx -= 1;
+                                    _classes.insert(
+                                      newIdx,
+                                      _classes.removeAt(oldIdx),
+                                    );
+                                  });
+                                },
+                              ),
+                            ),
+                            VerticalDivider(
+                              width: 1,
+                              color: isDark
+                                  ? Colors.white10
+                                  : Colors.grey.shade200,
+                            ),
+                            Expanded(
+                              flex: 6,
+                              child: SubjectsPanel(
+                                classes: _classes,
+                                classSubjects: _classSubjects,
+                                subjectController: _subjectController,
+                                selectedClassName: _selectedClassName,
+                                subjectType: _subjectType,
+                                isDark: isDark,
+                                primaryColor: primaryColor,
+                                onTargetClassChanged: (val) =>
+                                    setState(() => _selectedClassName = val),
+                                onSubjectTypeChanged: (val) =>
+                                    setState(() => _subjectType = val!),
+                                onAddSubject: _addSubject,
+                                onEditSubject: _editSubject,
+                                onRemoveSubject: _removeSubject,
+                                onCopySubjects: _showDuplicateDialog,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -850,40 +1047,37 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                       delegate: _StickyTabBarDelegate(
                         backgroundColor: bgColor,
                         child: Container(
-                          height: 46,
+                          height: 48,
                           margin: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 10,
+                            horizontal: 24,
+                            vertical: 9,
                           ),
                           decoration: BoxDecoration(
                             color: isDark
-                                ? Colors.white10
+                                ? Colors.white.withValues(alpha: 0.05)
                                 : Colors.grey.shade200,
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: TabBar(
                             labelColor: Colors.white,
                             unselectedLabelColor: isDark
-                                ? Colors.white70
+                                ? Colors.white54
                                 : Colors.grey.shade600,
                             indicatorSize: TabBarIndicatorSize.tab,
                             dividerColor: Colors.transparent,
+                            labelStyle: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
                             indicator: BoxDecoration(
                               color: primaryColor,
                               borderRadius: BorderRadius.circular(16),
                             ),
                             tabs: const [
+                              Tab(text: "CLASSES", iconMargin: EdgeInsets.zero),
                               Tab(
-                                child: Text(
-                                  "Classes",
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                              Tab(
-                                child: Text(
-                                  "Subjects",
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
+                                text: "SUBJECTS",
+                                iconMargin: EdgeInsets.zero,
                               ),
                             ],
                           ),
@@ -892,45 +1086,40 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
                     ),
                   ];
                 },
+                // 🚨 EDGE-TO-EDGE: Removed outer padding around ClassesPanel and SubjectsPanel
                 body: TabBarView(
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: ClassesPanel(
-                        classes: _classes,
-                        classController: _classController,
-                        isDark: isDark,
-                        primaryColor: primaryColor,
-                        onAddClass: _addClass,
-                        onEditClass: _editClass,
-                        onRemoveClass: _removeClass,
-                        onReorder: (oldIdx, newIdx) {
-                          setState(() {
-                            if (newIdx > oldIdx) newIdx -= 1;
-                            _classes.insert(newIdx, _classes.removeAt(oldIdx));
-                          });
-                        },
-                      ),
+                    ClassesPanel(
+                      classes: _classes,
+                      classController: _classController,
+                      isDark: isDark,
+                      primaryColor: primaryColor,
+                      onAddClass: _addClass,
+                      onEditClass: _editClass,
+                      onRemoveClass: _removeClass,
+                      onReorder: (oldIdx, newIdx) {
+                        setState(() {
+                          if (newIdx > oldIdx) newIdx -= 1;
+                          _classes.insert(newIdx, _classes.removeAt(oldIdx));
+                        });
+                      },
                     ),
-                    Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: SubjectsPanel(
-                        classes: _classes,
-                        classSubjects: _classSubjects,
-                        subjectController: _subjectController,
-                        selectedClassName: _selectedClassName,
-                        subjectType: _subjectType,
-                        isDark: isDark,
-                        primaryColor: primaryColor,
-                        onTargetClassChanged: (val) =>
-                            setState(() => _selectedClassName = val),
-                        onSubjectTypeChanged: (val) =>
-                            setState(() => _subjectType = val!),
-                        onAddSubject: _addSubject,
-                        onEditSubject: _editSubject,
-                        onRemoveSubject: _removeSubject,
-                        onCopySubjects: _showDuplicateDialog,
-                      ),
+                    SubjectsPanel(
+                      classes: _classes,
+                      classSubjects: _classSubjects,
+                      subjectController: _subjectController,
+                      selectedClassName: _selectedClassName,
+                      subjectType: _subjectType,
+                      isDark: isDark,
+                      primaryColor: primaryColor,
+                      onTargetClassChanged: (val) =>
+                          setState(() => _selectedClassName = val),
+                      onSubjectTypeChanged: (val) =>
+                          setState(() => _subjectType = val!),
+                      onAddSubject: _addSubject,
+                      onEditSubject: _editSubject,
+                      onRemoveSubject: _removeSubject,
+                      onCopySubjects: _showDuplicateDialog,
                     ),
                   ],
                 ),
@@ -945,49 +1134,46 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
 
   Widget _buildBottomBar(bool isDark, Color primaryColor) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         border: Border(
           top: BorderSide(
             color: isDark ? Colors.white10 : Colors.grey.shade200,
+            width: 1,
           ),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, -5),
-          ),
-        ],
       ),
-      child: SizedBox(
-        width: double.infinity,
-        height: 55,
-        child: FilledButton.icon(
-          style: FilledButton.styleFrom(
-            backgroundColor: primaryColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+      child: SafeArea(
+        child: SizedBox(
+          width: double.infinity,
+          height: 55,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: primaryColor,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
             ),
-          ),
-          onPressed: _isSaving ? null : _saveConfig,
-          icon: _isSaving
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: TridetaLoader(color: Colors.white),
-                )
-              : const Icon(
-                  Icons.security_update_good_rounded,
-                  color: Colors.white,
-                ),
-          label: Text(
-            _isSaving ? "SAVING..." : "SECURE SYSTEM CONFIGURATION",
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.0,
+            onPressed: _isSaving ? null : _saveConfig,
+            icon: _isSaving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: TridetaLoader(color: Colors.white),
+                  )
+                : const Icon(
+                    Icons.security_update_good_rounded,
+                    color: Colors.white,
+                  ),
+            label: Text(
+              _isSaving ? "SAVING..." : "SECURE SYSTEM CONFIGURATION",
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.0,
+              ),
             ),
           ),
         ),

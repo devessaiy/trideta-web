@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
@@ -163,7 +164,7 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
   }
 
   // ===========================================================================
-  // 🚨 SMART FINANCIAL CSV GENERATOR (STRICTLY UNTOUCHED)
+  // 🚨 SMART FINANCIAL CSV GENERATOR (CALCULATION LOGIC STRICTLY UNTOUCHED)
   // ===========================================================================
   Future<void> _generateClassArchive() async {
     if (_selectedArchiveClassId == null) return;
@@ -352,13 +353,28 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
       String safeName = selectedClassName.replaceAll(' ', '_');
       String safeSession = _selectedArchiveSession.replaceAll('/', '-');
       String safeTerm = _selectedArchiveTerm.replaceAll(' ', '_');
+      final String fileName =
+          'Financial_Report_${safeName}_${safeSession}_$safeTerm';
 
-      await FileSaver.instance.saveFile(
-        name: 'Financial_Report_${safeName}_${safeSession}_$safeTerm',
-        bytes: bytes,
-        fileExtension: 'csv',
-        mimeType: MimeType.csv,
-      );
+      // 🚨 MOBILE APK FIX: Use saveAs on Mobile so Android/iOS saves to visible Downloads folder
+      if (kIsWeb) {
+        await FileSaver.instance.saveFile(
+          name: fileName,
+          bytes: bytes,
+          fileExtension: 'csv',
+          mimeType: MimeType.csv,
+        );
+      } else {
+        final String? savedPath = await FileSaver.instance.saveAs(
+          name: fileName,
+          bytes: bytes,
+          fileExtension: 'csv',
+          mimeType: MimeType.csv,
+        );
+        if (savedPath == null || savedPath.isEmpty) {
+          return;
+        }
+      }
 
       if (mounted) {
         showSuccessDialog(
@@ -374,13 +390,14 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
   }
 
   // ===========================================================================
-  // 🚨 UI BUILDER (FLAT, EDGE-TO-EDGE WHATSAPP STYLE)
+  // 🚨 UI BUILDER (CARDLESS, WHATSAPP-STYLE EDGE-TO-EDGE)
   // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color surfaceColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
     Color primaryColor = Theme.of(context).primaryColor;
 
     if (_isLoading) {
@@ -399,69 +416,102 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
           ),
           backgroundColor: bgColor,
-          foregroundColor: isDark ? Colors.white : const Color(0xFF1A1A2E),
+          foregroundColor: textColor,
           elevation: 0,
           centerTitle: true,
         ),
-        body: const Center(
-          child: Text(
-            "No classes configured. Please set up your school structure first.",
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.folder_off_rounded,
+                size: 60,
+                color: Colors.grey.shade400,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                "No classes configured.\nPlease set up your school structure first.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey.shade500,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       );
     }
 
-    // 🚨 UI FIX: Rebuilt strictly flat to remove floating card constraints
-    Widget mainContent = SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
+    Widget mainContent = CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        // ─── 1. EDGE-TO-EDGE HEADER & PERIOD SELECTORS ───
+        SliverToBoxAdapter(
+          child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
-            decoration: BoxDecoration(
-              color: cardColor,
-              border: Border(
-                bottom: BorderSide(
-                  color: isDark ? Colors.white10 : Colors.grey.shade200,
-                  width: 1,
-                ),
-              ),
-            ),
+            color: surfaceColor,
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(Icons.download_rounded, color: Colors.blueAccent),
-                    SizedBox(width: 10),
-                    Text(
-                      "Download Financial Report (CSV)",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.table_view_rounded,
+                        color: primaryColor,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Export Financial Report (CSV)",
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                              color: textColor,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            "Includes expected revenue, student debt roster & ledger",
+                            style: TextStyle(
+                              color: Colors.grey.shade500,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 15),
-                Text(
-                  "Select a class, session, and term below. This will download a spreadsheet containing the total expected revenue, an individual breakdown of student debts/credits, and a complete transaction history.",
-                  style: TextStyle(
-                    color: isDark ? Colors.white70 : Colors.black87,
-                    fontSize: 13,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 30),
-
+                const SizedBox(height: 24),
+                _buildLabel("ACADEMIC PERIOD", primaryColor),
                 Row(
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
                         isExpanded: true,
                         initialValue: _selectedArchiveSession,
-                        dropdownColor: cardColor,
+                        dropdownColor: surfaceColor,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: textColor,
+                          fontSize: 14,
+                        ),
                         decoration: _inputStyle(
                           "Session",
                           Icons.history_edu_rounded,
@@ -472,13 +522,7 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
                             .map(
                               (e) => DropdownMenuItem(
                                 value: e,
-                                child: Text(
-                                  e,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                child: Text(e, overflow: TextOverflow.ellipsis),
                               ),
                             )
                             .toList(),
@@ -486,12 +530,17 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
                             setState(() => _selectedArchiveSession = val!),
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: DropdownButtonFormField<String>(
                         isExpanded: true,
                         initialValue: _selectedArchiveTerm,
-                        dropdownColor: cardColor,
+                        dropdownColor: surfaceColor,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: textColor,
+                          fontSize: 14,
+                        ),
                         decoration: _inputStyle(
                           "Term",
                           Icons.calendar_month_rounded,
@@ -502,13 +551,7 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
                             .map(
                               (e) => DropdownMenuItem(
                                 value: e,
-                                child: Text(
-                                  e,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                child: Text(e, overflow: TextOverflow.ellipsis),
                               ),
                             )
                             .toList(),
@@ -518,69 +561,101 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  initialValue: _selectedArchiveClassId,
-                  dropdownColor: cardColor,
-                  decoration: _inputStyle(
-                    "Target Class",
-                    Icons.class_rounded,
-                    isDark,
-                    primaryColor,
-                  ),
-                  items: _allClasses
-                      .map(
-                        (c) => DropdownMenuItem<String>(
-                          value: c['id'],
-                          child: Text(
-                            c['name'],
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (val) =>
-                      setState(() => _selectedArchiveClassId = val),
-                ),
-                const SizedBox(height: 35),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    onPressed: _isGenerating ? null : _generateClassArchive,
-                    icon: _isGenerating
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Icon(Icons.download_rounded),
-                    label: Text(
-                      _isGenerating ? "GENERATING CSV..." : "DOWNLOAD REPORT",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
-        ],
-      ),
+        ),
+
+        SliverToBoxAdapter(
+          child: Divider(
+            height: 1,
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
+
+        // ─── 2. WHATSAPP-STYLE EDGE-TO-EDGE CLASS ROSTER ───
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+            child: _buildLabel("SELECT TARGET CLASS", primaryColor),
+          ),
+        ),
+
+        SliverList(
+          delegate: SliverChildBuilderDelegate((context, index) {
+            final c = _allClasses[index];
+            final bool isSelected = _selectedArchiveClassId == c['id'];
+
+            return Container(
+              color: isSelected
+                  ? primaryColor.withValues(alpha: 0.08)
+                  : surfaceColor,
+              child: Column(
+                children: [
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 6,
+                    ),
+                    leading: CircleAvatar(
+                      backgroundColor: isSelected
+                          ? primaryColor
+                          : primaryColor.withValues(alpha: 0.1),
+                      child: Icon(
+                        Icons.class_rounded,
+                        color: isSelected ? Colors.white : primaryColor,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      c['name'],
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: textColor,
+                      ),
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        "$_selectedArchiveSession • $_selectedArchiveTerm Spreadsheet",
+                        style: TextStyle(
+                          color: isSelected
+                              ? primaryColor
+                              : Colors.grey.shade500,
+                          fontSize: 12,
+                          fontWeight: isSelected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    trailing: Icon(
+                      isSelected
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      color: isSelected ? primaryColor : Colors.grey.shade400,
+                      size: 22,
+                    ),
+                    onTap: () =>
+                        setState(() => _selectedArchiveClassId = c['id']),
+                  ),
+                  if (index < _allClasses.length - 1)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 88, right: 24),
+                      child: Divider(
+                        height: 1,
+                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }, childCount: _allClasses.length),
+        ),
+
+        const SliverToBoxAdapter(child: SizedBox(height: 40)),
+      ],
     );
 
     return Scaffold(
@@ -591,7 +666,7 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         backgroundColor: bgColor,
-        foregroundColor: isDark ? Colors.white : const Color(0xFF1A1A2E),
+        foregroundColor: textColor,
         elevation: 0,
         centerTitle: true,
       ),
@@ -619,9 +694,71 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
           }
         },
       ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        decoration: BoxDecoration(
+          color: surfaceColor,
+          border: Border(
+            top: BorderSide(
+              color: isDark ? Colors.white10 : Colors.grey.shade200,
+              width: 1,
+            ),
+          ),
+        ),
+        child: SafeArea(
+          child: SizedBox(
+            width: double.infinity,
+            height: 55,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: primaryColor,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              onPressed: _isGenerating ? null : _generateClassArchive,
+              icon: _isGenerating
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(Icons.download_rounded, color: Colors.white),
+              label: Text(
+                _isGenerating ? "GENERATING CSV..." : "DOWNLOAD REPORT",
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.0,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
+  Widget _buildLabel(String text, Color primaryColor) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10, left: 4),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontWeight: FontWeight.w900,
+          fontSize: 11,
+          color: primaryColor.withValues(alpha: 0.85),
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+
+  // 🚨 UI FIX: Borderless, matte inputs matching RecordPaymentScreen
   InputDecoration _inputStyle(
     String label,
     IconData icon,
@@ -634,17 +771,15 @@ class _SessionArchiveScreenState extends State<SessionArchiveScreen>
       prefixIcon: Icon(icon, color: pColor, size: 18),
       filled: true,
       fillColor: isDark
-          ? Colors.white.withValues(alpha: 0.03)
-          : Colors.grey.shade50,
+          ? Colors.white.withValues(alpha: 0.05)
+          : Colors.grey.shade100,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide.none,
       ),
-      enabledBorder: OutlineInputBorder(
+      focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
+        borderSide: BorderSide(color: pColor.withValues(alpha: 0.5), width: 2),
       ),
     );
   }

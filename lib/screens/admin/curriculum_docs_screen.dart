@@ -159,8 +159,9 @@ class _CurriculumDocsScreenState extends State<CurriculumDocsScreen> {
       ),
     );
     if (created == true) {
-      if (mounted)
+      if (mounted) {
         showDocSnack(context, 'Sent to the teachers of that subject.');
+      }
       await _load();
     }
   }

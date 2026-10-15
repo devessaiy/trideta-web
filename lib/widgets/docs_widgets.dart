@@ -28,13 +28,15 @@ String kindLabel(String kind) =>
 String friendlyDocError(Object e) {
   if (e is DocsStorageException) return e.message;
   final s = e.toString();
-  if (s.contains('NOTE_COMMENT'))
+  if (s.contains('NOTE_COMMENT')) {
     return 'Please add a comment when returning a note.';
+  }
   if (s.contains('NOTE_STATE')) {
     return 'This note cannot be changed in its current state. Refresh and try again.';
   }
-  if (s.contains('NOTE_LOCKED'))
+  if (s.contains('NOTE_LOCKED')) {
     return 'This note is locked and cannot be changed.';
+  }
   if (s.contains('23505') || s.contains('duplicate key')) {
     return 'A lesson note for that week already exists for this subject. Open it from your list to replace the file.';
   }

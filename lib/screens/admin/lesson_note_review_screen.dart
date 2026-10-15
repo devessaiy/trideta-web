@@ -437,12 +437,13 @@ class _ReviewSheetState extends State<_ReviewSheet> {
                     ? null
                     : () =>
                           DocsStorage.open('lesson_notes', _id).catchError((e) {
-                            if (mounted)
+                            if (mounted) {
                               showDocSnack(
                                 context,
                                 friendlyDocError(e),
                                 error: true,
                               );
+                            }
                           }),
                 style: OutlinedButton.styleFrom(
                   side: BorderSide(color: primaryColor.withValues(alpha: 0.5)),

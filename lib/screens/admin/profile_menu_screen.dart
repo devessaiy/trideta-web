@@ -550,7 +550,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                 ),
               ),
               _buildSettingsItem(
-                title: "System Configuration",
+                title: "School Configuration",
                 subtitle: "Manage terms, active classes, and subjects",
                 icon: Icons.settings_applications,
                 color: Colors.orange,

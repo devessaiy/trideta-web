@@ -1,5 +1,6 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
+import 'package:trideta_v2/screens/parent/parent_ui_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
@@ -129,11 +130,12 @@ class _ReceiptDetailViewState extends State<ReceiptDetailView>
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF1F4F8);
+    Color bgColor = PUi.bg(isDark);
     Color primaryColor = Theme.of(context).primaryColor;
 
     if (_loading) {
       return Scaffold(
+        backgroundColor: bgColor,
         body: Center(child: TridetaLoader(color: primaryColor)),
       );
     }
@@ -145,9 +147,23 @@ class _ReceiptDetailViewState extends State<ReceiptDetailView>
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text("Digital Receipt"),
-        backgroundColor: primaryColor,
+        title: Text(
+          "Digital Receipt",
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 17,
+            color: PUi.ink(isDark),
+          ),
+        ),
+        backgroundColor: PUi.surface(isDark),
+        foregroundColor: PUi.ink(isDark),
+        surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 0,
         centerTitle: true,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: PUi.border(isDark)),
+        ),
       ),
       body: Column(
         children: [
@@ -365,53 +381,53 @@ class _ReceiptDetailViewState extends State<ReceiptDetailView>
               ),
             ),
           ),
+          // ─── ACTION BAR (UI only — same _share() calls as before) ───
           Container(
-            padding: const EdgeInsets.all(25),
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -5),
-                ),
-              ],
+              color: PUi.surface(isDark),
+              border: Border(top: BorderSide(color: PUi.border(isDark))),
             ),
-            child: _busy
-                ? Center(child: TridetaLoader(color: primaryColor))
-                : Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _share(false),
-                          icon: const Icon(Icons.image),
-                          label: const Text(
-                            "Share Image",
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                          ),
+            child: SafeArea(
+              top: false,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 520),
+                  child: _busy
+                      ? Center(child: TridetaLoader(color: primaryColor))
+                      : Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () => _share(false),
+                                icon: const Icon(Icons.image_rounded),
+                                label: const Text("Share Image"),
+                                style: PUi.outlinedPill(primaryColor).copyWith(
+                                  padding: const WidgetStatePropertyAll(
+                                    EdgeInsets.symmetric(horizontal: 12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: () => _share(true),
+                                icon: const Icon(Icons.picture_as_pdf_rounded),
+                                label: const Text("Share PDF"),
+                                style: PUi.filledPill(primaryColor).copyWith(
+                                  padding: const WidgetStatePropertyAll(
+                                    EdgeInsets.symmetric(horizontal: 12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(width: 15),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _share(true),
-                          icon: const Icon(Icons.picture_as_pdf),
-                          label: const Text(
-                            "Share PDF",
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            backgroundColor: primaryColor,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),

@@ -6,6 +6,7 @@ import 'package:trideta_v2/main.dart';
 // 🚨 IMPORT YOUR LOGIN SCREEN SO WE CAN NAVIGATE THERE!
 import 'package:trideta_v2/screens/auth/login_screen.dart';
 import 'package:trideta_v2/screens/shared/about_trideta_screen.dart';
+import 'package:trideta_v2/screens/parent/parent_ui_kit.dart';
 
 class ParentProfileTab extends StatefulWidget {
   final String parentName;
@@ -40,42 +41,65 @@ class _ParentProfileTabState extends State<ParentProfileTab> {
       builder: (ctx) {
         bool isDark = Theme.of(context).brightness == Brightness.dark;
         return AlertDialog(
-          backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          backgroundColor: PUi.surface(isDark),
+          surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(28),
           ),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.logout_rounded, color: Colors.redAccent),
-              SizedBox(width: 10),
-              Text("Sign Out", style: TextStyle(fontWeight: FontWeight.bold)),
+              const PIconBadge(
+                icon: Icons.logout_rounded,
+                color: Colors.redAccent,
+                size: 40,
+                iconSize: 20,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                "Sign Out",
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: PUi.ink(isDark),
+                ),
+              ),
             ],
           ),
-          content: const Text(
+          content: Text(
             "Are you sure you want to sign out of your account?",
+            style: TextStyle(color: PUi.muted(isDark)),
           ),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
+              style: TextButton.styleFrom(
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+              ),
               child: Text(
                 "Cancel",
                 style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontWeight: FontWeight.bold,
+                  color: PUi.muted(isDark),
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
             FilledButton(
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.redAccent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
                 ),
               ),
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text(
                 "Sign Out",
-                style: TextStyle(fontWeight: FontWeight.bold),
+                style: TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
           ],
@@ -101,196 +125,171 @@ class _ParentProfileTabState extends State<ParentProfileTab> {
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color primaryColor = Theme.of(context).primaryColor;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
-    Color subTextColor = isDark ? Colors.white70 : const Color(0xFF9098B1);
 
     String email = _supabase.auth.currentUser?.email ?? "No email provided";
 
-    return SafeArea(
-      child: Scaffold(
-        backgroundColor: bgColor,
-        body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // ─── PROFILE HEADER ───
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: primaryColor.withValues(alpha: 0.3),
-                        width: 2,
-                      ),
-                    ),
-                    child: CircleAvatar(
-                      radius: 50,
-                      backgroundColor: primaryColor.withValues(alpha: 0.1),
-                      child: Text(
-                        widget.parentName.isNotEmpty
+    return Scaffold(
+      backgroundColor: PUi.bg(isDark),
+      body: PBackdrop(
+        accent: primaryColor,
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 620),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 32,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ─── PROFILE HEADER ───
+                    Center(
+                      child: PAvatar(
+                        initial: widget.parentName.isNotEmpty
                             ? widget.parentName[0].toUpperCase()
                             : 'P',
-                        style: TextStyle(
-                          fontSize: 36,
-                          fontWeight: FontWeight.bold,
-                          color: primaryColor,
+                        imageUrl: '',
+                        radius: 50,
+                        ringColor: primaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      widget.parentName,
+                      style: PUi.title(isDark, size: 28),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: PUi.surface(isDark),
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(color: PUi.border(isDark)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.mail_outline_rounded,
+                              size: 16,
+                              color: PUi.muted(isDark),
+                            ),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                email,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  color: PUi.muted(isDark),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    widget.parentName,
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      color: textColor,
-                      letterSpacing: -0.5,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.white10
-                          : Colors.black.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      email,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: subTextColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
 
-                  const SizedBox(height: 40),
+                    const SizedBox(height: 40),
 
-                  // ─── APPEARANCE SETTINGS ───
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      "App Settings",
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: subTextColor,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+                    // ─── APPEARANCE SETTINGS ───
+                    Text("APP SETTINGS", style: PUi.sectionLabel(isDark)),
+                    const SizedBox(height: 12),
 
-                  Container(
-                    decoration: BoxDecoration(
-                      color: cardColor,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.02),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
+                    PCard(
+                      radius: 28,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
-                              Icon(
-                                Icons.palette_outlined,
+                              PIconBadge(
+                                icon: Icons.palette_outlined,
                                 color: primaryColor,
-                                size: 22,
+                                size: 40,
+                                iconSize: 20,
                               ),
                               const SizedBox(width: 12),
                               Text(
                                 "Appearance",
                                 style: TextStyle(
                                   fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: textColor,
+                                  fontWeight: FontWeight.w800,
+                                  color: PUi.ink(isDark),
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 18),
                           _buildThemeSegmentedControl(primaryColor, isDark),
                         ],
                       ),
                     ),
-                  ),
 
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.info_outline_rounded),
-                    title: const Text(
-                      "About Trideta",
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const AboutTridetaScreen(),
-                        ),
-                      );
-                    },
-                  ),
+                    const SizedBox(height: 14),
 
-                  const SizedBox(height: 40),
-
-                  // ─── LOGOUT BUTTON ───
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.redAccent.withValues(
-                          alpha: 0.1,
-                        ),
-                        foregroundColor: Colors.redAccent,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(
-                            color: Colors.redAccent.withValues(alpha: 0.3),
-                            width: 1.5,
-                          ),
-                        ),
+                    PCard(
+                      radius: 28,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
                       ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AboutTridetaScreen(),
+                          ),
+                        );
+                      },
+                      child: Row(
+                        children: [
+                          PIconBadge(
+                            icon: Icons.info_outline_rounded,
+                            color: primaryColor,
+                            size: 40,
+                            iconSize: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              "About Trideta",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: PUi.ink(isDark),
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: PUi.muted(isDark),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 36),
+
+                    // ─── LOGOUT BUTTON ───
+                    OutlinedButton.icon(
+                      style: PUi.outlinedPill(Colors.redAccent, height: 56),
                       onPressed: () => _handleLogout(context),
                       icon: const Icon(Icons.logout_rounded),
-                      label: const Text(
-                        "Sign Out",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      label: const Text("Sign Out"),
                     ),
-                  ),
-                  const SizedBox(height: 40),
-                ],
+                    const SizedBox(height: 24),
+                  ],
+                ),
               ),
             ),
           ),
@@ -304,13 +303,11 @@ class _ParentProfileTabState extends State<ParentProfileTab> {
   // ===========================================================================
 
   Widget _buildThemeSegmentedControl(Color primaryColor, bool isDark) {
-    Color trackColor = isDark ? Colors.black26 : Colors.grey.shade100;
-
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(5),
       decoration: BoxDecoration(
-        color: trackColor,
-        borderRadius: BorderRadius.circular(16),
+        color: PUi.surfaceAlt(isDark),
+        borderRadius: BorderRadius.circular(40),
       ),
       child: Row(
         children: [
@@ -357,19 +354,8 @@ class _ParentProfileTabState extends State<ParentProfileTab> {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected
-                ? (isDark ? const Color(0xFF2C2C2C) : Colors.white)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : [],
+            color: isSelected ? primaryColor : Colors.transparent,
+            borderRadius: BorderRadius.circular(40),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -377,19 +363,19 @@ class _ParentProfileTabState extends State<ParentProfileTab> {
               Icon(
                 icon,
                 size: 16,
-                color: isSelected
-                    ? primaryColor
-                    : (isDark ? Colors.white54 : Colors.grey.shade500),
+                color: isSelected ? Colors.white : PUi.muted(isDark),
               ),
               const SizedBox(width: 6),
-              Text(
-                mode,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                  color: isSelected
-                      ? (isDark ? Colors.white : Colors.black87)
-                      : (isDark ? Colors.white54 : Colors.grey.shade600),
+              Flexible(
+                child: Text(
+                  mode,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                    color: isSelected ? Colors.white : PUi.muted(isDark),
+                  ),
                 ),
               ),
             ],

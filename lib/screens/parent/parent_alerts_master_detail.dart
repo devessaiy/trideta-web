@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
+import 'package:trideta_v2/screens/parent/parent_ui_kit.dart';
 
 class ParentAlertsMasterDetail extends StatefulWidget {
   const ParentAlertsMasterDetail({super.key});
@@ -26,7 +27,7 @@ class ParentAlertsMasterDetail extends StatefulWidget {
   }
 
   // ===========================================================================
-  // PREMIUM DETAIL / READING PANE
+  // 🖼️ PREMIUM DETAIL / READING PANE (UI only)
   // ===========================================================================
   static Widget buildDetailPane(
     Map<String, dynamic> alert,
@@ -49,160 +50,125 @@ class ParentAlertsMasterDetail extends StatefulWidget {
           ).format(DateTime.parse(alert['created_at']))
         : '';
 
-    return Container(
-      color: isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC),
-      child: Column(
-        children: [
-          // ─── PREMIUM READING HEADER ───
-          Container(
-            padding: const EdgeInsets.fromLTRB(40, 40, 40, 30),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-              border: Border(
-                bottom: BorderSide(
-                  color: isDark ? Colors.white10 : Colors.grey.shade200,
-                ),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: schoolColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: schoolColor.withValues(alpha: 0.2),
-                        ),
-                      ),
-                      child: Text(
-                        type.replaceAll('_', ' ').toUpperCase(),
-                        style: TextStyle(
-                          color: schoolColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Text(
-                        dateStr,
-                        textAlign: TextAlign.right,
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  alert['title'] ?? 'Notice',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: isDark ? Colors.white : const Color(0xFF1A1A2E),
-                    letterSpacing: -0.5,
-                    height: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 18,
-                      backgroundColor: isDark
-                          ? Colors.white10
-                          : Colors.grey.shade100,
-                      backgroundImage: alert['schools']?['logo_url'] != null
-                          ? NetworkImage(alert['schools']!['logo_url'])
-                          : null,
-                      child: alert['schools']?['logo_url'] == null
-                          ? Icon(Icons.school, size: 18, color: schoolColor)
-                          : null,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+    final String? logoUrl = alert['schools']?['logo_url'];
+
+    return LayoutBuilder(
+      builder: (context, c) {
+        final double pad = c.maxWidth < 600 ? 20.0 : 40.0;
+        final bool narrow = c.maxWidth < 600;
+
+        return Container(
+          color: PUi.bg(isDark),
+          child: PBackdrop(
+            accent: schoolColor,
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(pad),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 780),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Type + date
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Text(
-                            "From",
-                            style: TextStyle(
-                              color: Colors.grey.shade500,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
+                          PPill(
+                            text: type.replaceAll('_', ' ').toUpperCase(),
+                            color: schoolColor,
                           ),
                           Text(
-                            alert['schools']?['name'] ??
-                                'School Administration',
+                            dateStr,
                             style: TextStyle(
-                              color: isDark ? Colors.white : Colors.black87,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
+                              color: PUi.muted(isDark),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+                      const SizedBox(height: 20),
+                      Text(
+                        alert['title'] ?? 'Notice',
+                        style: PUi.title(isDark, size: narrow ? 26 : 32),
+                      ),
+                      const SizedBox(height: 22),
 
-          // ─── PREMIUM READING BODY ───
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(40),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.02),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                  border: Border.all(
-                    color: isDark ? Colors.white10 : Colors.white,
-                    width: 2,
-                  ),
-                ),
-                child: Text(
-                  alert['message'] ?? '',
-                  softWrap: true,
-                  style: TextStyle(
-                    fontSize: 16,
-                    height: 1.8,
-                    color: isDark ? Colors.white70 : Colors.black87,
+                      // Sender
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 21,
+                            backgroundColor: PUi.tint(schoolColor, isDark, 0.12),
+                            backgroundImage: logoUrl != null
+                                ? NetworkImage(logoUrl)
+                                : null,
+                            child: logoUrl == null
+                                ? Icon(
+                                    Icons.school_rounded,
+                                    size: 20,
+                                    color: schoolColor,
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "From",
+                                  style: TextStyle(
+                                    color: PUi.muted(isDark),
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Text(
+                                  alert['schools']?['name'] ??
+                                      'School Administration',
+                                  style: TextStyle(
+                                    color: PUi.ink(isDark),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14.5,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 26),
+
+                      // Message body
+                      PCard(
+                        radius: 28,
+                        padding: EdgeInsets.all(narrow ? 22 : 32),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: Text(
+                            alert['message'] ?? '',
+                            softWrap: true,
+                            style: TextStyle(
+                              fontSize: narrow ? 15.5 : 16.5,
+                              height: 1.75,
+                              color: isDark ? Colors.white70 : Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -468,12 +434,15 @@ class _ParentAlertsMasterDetailState extends State<ParentAlertsMasterDetail> {
     }
   }
 
+  // ===========================================================================
+  // 🖼️ UI ONLY — presentation below. Fetching, the debtor shield and the
+  // read-receipt sync above are untouched.
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color primaryColor = Theme.of(context).primaryColor;
-    Color bgColor = isDark ? const Color(0xFF121212) : Colors.white;
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+    Color bgColor = PUi.bg(isDark);
 
     if (_isLoading) {
       return Scaffold(
@@ -485,248 +454,85 @@ class _ParentAlertsMasterDetailState extends State<ParentAlertsMasterDetail> {
     return LayoutBuilder(
       builder: (context, constraints) {
         bool isMobile = constraints.maxWidth < 900;
+        final double listWidth = constraints.maxWidth >= 1250 ? 420 : 370;
 
         Widget inboxList = Material(
           color: bgColor,
           child: Container(
-            width: isMobile ? double.infinity : 400,
+            width: isMobile ? double.infinity : listWidth,
             decoration: BoxDecoration(
               border: isMobile
                   ? null
-                  : Border(
-                      right: BorderSide(
-                        color: Colors.grey.withValues(alpha: 0.15),
+                  : Border(right: BorderSide(color: PUi.border(isDark))),
+            ),
+            child: SafeArea(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 18),
+                    child: Text(
+                      "Announcements",
+                      style: PUi.title(isDark, size: 30),
+                    ),
+                  ),
+
+                  if (_uniqueSchools.length > 1)
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        children: [
+                          _buildFilterChip("All", null, primaryColor, isDark),
+                          ..._uniqueSchools.map(
+                            (s) => _buildFilterChip(
+                              s['name'],
+                              s['id'].toString(),
+                              ParentAlertsMasterDetail.getSchoolColor(
+                                s,
+                                primaryColor,
+                              ),
+                              isDark,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
-                  child: Text(
-                    "Announcements",
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: textColor,
-                    ),
-                  ),
-                ),
+                  if (_uniqueSchools.length > 1) const SizedBox(height: 18),
 
-                if (_uniqueSchools.length > 1)
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      children: [
-                        _buildFilterChip("All", null, primaryColor, isDark),
-                        ..._uniqueSchools.map(
-                          (s) => _buildFilterChip(
-                            s['name'],
-                            s['id'].toString(),
-                            ParentAlertsMasterDetail.getSchoolColor(
-                              s,
-                              primaryColor,
+                  Expanded(
+                    child: _filteredAlerts.isEmpty
+                        ? Center(
+                            child: PEmptyState(
+                              title: "No announcements found.",
+                              accent: primaryColor,
                             ),
-                            isDark,
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                            itemCount: _filteredAlerts.length,
+                            itemBuilder: (context, index) {
+                              final alert = _filteredAlerts[index];
+                              return _buildAlertCard(
+                                alert,
+                                isMobile,
+                                isDark,
+                                primaryColor,
+                              );
+                            },
                           ),
-                        ),
-                      ],
-                    ),
                   ),
-                if (_uniqueSchools.length > 1) const SizedBox(height: 20),
-
-                Expanded(
-                  child: _filteredAlerts.isEmpty
-                      ? Center(
-                          child: Text(
-                            "No announcements found.",
-                            style: TextStyle(color: Colors.grey.shade500),
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 10,
-                          ),
-                          itemCount: _filteredAlerts.length,
-                          itemBuilder: (context, index) {
-                            final alert = _filteredAlerts[index];
-                            bool isSelected =
-                                !isMobile &&
-                                _selectedAlert?['id'] == alert['id'];
-                            bool isUnread = !(alert['is_read'] ?? false);
-
-                            Color schoolBrandColor =
-                                ParentAlertsMasterDetail.getSchoolColor(
-                                  alert['schools'],
-                                  primaryColor,
-                                );
-                            String type = (alert['type'] ?? '')
-                                .toString()
-                                .toLowerCase();
-
-                            Color iconColor = isUnread
-                                ? schoolBrandColor
-                                : Colors.grey.shade400;
-                            Color iconBg = isUnread
-                                ? schoolBrandColor.withValues(alpha: 0.1)
-                                : (isDark
-                                      ? Colors.white10
-                                      : Colors.grey.shade100);
-                            IconData badgeIcon = Icons.notifications_rounded;
-
-                            if (type.contains('urgent') ||
-                                type.contains('fee') ||
-                                type.contains('debtor')) {
-                              iconColor = isUnread
-                                  ? Colors.orange
-                                  : Colors.grey.shade400;
-                              iconBg = isUnread
-                                  ? Colors.orange.withValues(alpha: 0.1)
-                                  : (isDark
-                                        ? Colors.white10
-                                        : Colors.grey.shade100);
-                              badgeIcon = Icons.warning_rounded;
-                            }
-
-                            String timeAgo = alert['created_at'] != null
-                                ? DateFormat(
-                                    'MMM d',
-                                  ).format(DateTime.parse(alert['created_at']))
-                                : '';
-
-                            return GestureDetector(
-                              onTap: () => _markAsRead(alert, isMobile),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 200),
-                                margin: const EdgeInsets.only(bottom: 12),
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? schoolBrandColor.withValues(alpha: 0.05)
-                                      : (isDark
-                                            ? const Color(0xFF1E1E1E)
-                                            : Colors.white),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? schoolBrandColor.withValues(
-                                            alpha: 0.5,
-                                          )
-                                        : (isDark
-                                              ? Colors.white10
-                                              : Colors.grey.shade200),
-                                    width: isSelected ? 1.5 : 1.0,
-                                  ),
-                                  boxShadow: isSelected
-                                      ? [
-                                          BoxShadow(
-                                            color: schoolBrandColor.withValues(
-                                              alpha: 0.1,
-                                            ),
-                                            blurRadius: 15,
-                                            offset: const Offset(0, 5),
-                                          ),
-                                        ]
-                                      : [
-                                          BoxShadow(
-                                            color: Colors.black.withValues(
-                                              alpha: 0.02,
-                                            ),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 4),
-                                          ),
-                                        ],
-                                ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      margin: const EdgeInsets.only(top: 4),
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: iconBg,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Icon(
-                                        badgeIcon,
-                                        color: iconColor,
-                                        size: 20,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  alert['title'] ?? 'Notice',
-                                                  style: TextStyle(
-                                                    fontWeight: isUnread
-                                                        ? FontWeight.w900
-                                                        : FontWeight.w600,
-                                                    fontSize: 15,
-                                                    color: textColor,
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Text(
-                                                timeAgo,
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  color: isUnread
-                                                      ? schoolBrandColor
-                                                      : Colors.grey.shade500,
-                                                  fontWeight: isUnread
-                                                      ? FontWeight.w800
-                                                      : FontWeight.w600,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 6),
-                                          Text(
-                                            alert['message'] ?? '',
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              color: isUnread
-                                                  ? (isDark
-                                                        ? Colors.white70
-                                                        : Colors.black87)
-                                                  : Colors.grey.shade500,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
 
         if (isMobile) {
-          return Scaffold(backgroundColor: bgColor, body: inboxList);
+          return Scaffold(
+            backgroundColor: bgColor,
+            body: PBackdrop(accent: primaryColor, child: inboxList),
+          );
         }
 
         return Scaffold(
@@ -737,9 +543,9 @@ class _ParentAlertsMasterDetailState extends State<ParentAlertsMasterDetail> {
               Expanded(
                 child: _selectedAlert == null || _filteredAlerts.isEmpty
                     ? Center(
-                        child: Text(
-                          "Select an announcement to read",
-                          style: TextStyle(color: Colors.grey.shade500),
+                        child: PEmptyState(
+                          title: "Select an announcement to read",
+                          accent: primaryColor,
                         ),
                       )
                     : ParentAlertsMasterDetail.buildDetailPane(
@@ -752,6 +558,142 @@ class _ParentAlertsMasterDetailState extends State<ParentAlertsMasterDetail> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildAlertCard(
+    Map<String, dynamic> alert,
+    bool isMobile,
+    bool isDark,
+    Color primaryColor,
+  ) {
+    bool isSelected = !isMobile && _selectedAlert?['id'] == alert['id'];
+    bool isUnread = !(alert['is_read'] ?? false);
+
+    Color schoolBrandColor = ParentAlertsMasterDetail.getSchoolColor(
+      alert['schools'],
+      primaryColor,
+    );
+    String type = (alert['type'] ?? '').toString().toLowerCase();
+
+    Color iconColor = isUnread ? schoolBrandColor : PUi.muted(isDark);
+    IconData badgeIcon = Icons.notifications_rounded;
+
+    if (type.contains('urgent') ||
+        type.contains('fee') ||
+        type.contains('debtor')) {
+      iconColor = isUnread ? Colors.orange : PUi.muted(isDark);
+      badgeIcon = Icons.warning_rounded;
+    }
+
+    String timeAgo = alert['created_at'] != null
+        ? DateFormat('MMM d').format(DateTime.parse(alert['created_at']))
+        : '';
+
+    return GestureDetector(
+      onTap: () => _markAsRead(alert, isMobile),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? PUi.tint(schoolBrandColor, isDark, 0.07)
+              : PUi.surface(isDark),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isSelected
+                ? schoolBrandColor.withValues(alpha: 0.55)
+                : PUi.border(isDark),
+            width: isSelected ? 1.6 : 1.0,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: schoolBrandColor.withValues(alpha: 0.12),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : PUi.softShadow(isDark),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 2),
+              child: PIconBadge(
+                icon: badgeIcon,
+                color: iconColor,
+                size: 44,
+                iconSize: 20,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (isUnread)
+                        Container(
+                          width: 8,
+                          height: 8,
+                          margin: const EdgeInsets.only(right: 8),
+                          decoration: BoxDecoration(
+                            color: schoolBrandColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      Expanded(
+                        child: Text(
+                          alert['title'] ?? 'Notice',
+                          style: TextStyle(
+                            fontWeight: isUnread
+                                ? FontWeight.w800
+                                : FontWeight.w600,
+                            fontSize: 15,
+                            color: PUi.ink(isDark),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        timeAgo,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: isUnread
+                              ? schoolBrandColor
+                              : PUi.muted(isDark),
+                          fontWeight: isUnread
+                              ? FontWeight.w800
+                              : FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    alert['message'] ?? '',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isUnread
+                          ? (isDark ? Colors.white70 : Colors.black87)
+                          : PUi.muted(isDark),
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -777,22 +719,18 @@ class _ParentAlertsMasterDetailState extends State<ParentAlertsMasterDetail> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.only(right: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
         decoration: BoxDecoration(
-          color: isActive
-              ? color
-              : (isDark ? Colors.white10 : Colors.grey.shade100),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: isActive ? color : Colors.transparent),
+          color: isActive ? color : PUi.surface(isDark),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: isActive ? color : PUi.border(isDark)),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 13,
-            fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
-            color: isActive
-                ? Colors.white
-                : (isDark ? Colors.white70 : Colors.black54),
+            fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+            color: isActive ? Colors.white : PUi.muted(isDark),
           ),
         ),
       ),
@@ -808,32 +746,50 @@ class MobileAlertDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color primaryColor = Theme.of(context).primaryColor;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
 
     return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        title: const Text(
-          "Announcement",
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+      backgroundColor: PUi.bg(isDark),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 20, 4),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.maybePop(context),
+                    style: IconButton.styleFrom(
+                      backgroundColor: PUi.surface(isDark),
+                      side: BorderSide(color: PUi.border(isDark)),
+                      minimumSize: const Size(44, 44),
+                    ),
+                    icon: Icon(
+                      Icons.arrow_back_rounded,
+                      color: PUi.ink(isDark),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    "Announcement",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 17,
+                      color: PUi.ink(isDark),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ParentAlertsMasterDetail.buildDetailPane(
+                alert,
+                primaryColor,
+                isDark,
+              ),
+            ),
+          ],
         ),
-        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        foregroundColor: isDark ? Colors.white : Colors.black,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
-          child: Container(
-            color: isDark ? Colors.white10 : Colors.grey.shade200,
-            height: 1.0,
-          ),
-        ),
-      ),
-      body: ParentAlertsMasterDetail.buildDetailPane(
-        alert,
-        primaryColor,
-        isDark,
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:trideta_v2/screens/parent/parent_ui_kit.dart';
 
 class ParentHomeTab extends StatelessWidget {
   final String parentName;
@@ -29,11 +30,7 @@ class ParentHomeTab extends StatelessWidget {
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color primaryColor = Theme.of(context).primaryColor;
-
-    // Absolute white background for the premium feel
-    Color bgColor = isDark ? const Color(0xFF121212) : Colors.white;
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
-    Color subTextColor = isDark ? Colors.white70 : const Color(0xFF9098B1);
+    Color bgColor = PUi.bg(isDark);
 
     // Calculate unread alerts
     List<Map<String, dynamic>> unreadAlerts = alerts
@@ -45,84 +42,102 @@ class ParentHomeTab extends StatelessWidget {
     String firstName = parentName.split(' ').first;
     if (firstName.isEmpty) firstName = "Parent";
 
-    // Split alerts: 1 for the prominent popup, the rest for the bottom list
+    // Split alerts: 1 for the prominent card, the rest for the list
     Map<String, dynamic>? latestAlert = alerts.isNotEmpty ? alerts.first : null;
     List<Map<String, dynamic>> recentAlerts = alerts.length > 1
         ? alerts.sublist(1)
         : [];
 
-    return SafeArea(
-      child: Container(
-        color: bgColor,
-        child: RefreshIndicator(
-          color: primaryColor,
-          onRefresh: onRefresh,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 1. HEADER (Profile Picture & Notification Bell)
-                _buildHeader(
+    return Container(
+      color: bgColor,
+      child: PBackdrop(
+        accent: primaryColor,
+        child: SafeArea(
+          child: RefreshIndicator(
+            color: primaryColor,
+            onRefresh: onRefresh,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final bool wide = constraints.maxWidth >= 820;
+
+                final header = _buildHeader(
                   firstName,
                   unreadCount,
                   primaryColor,
-                  textColor,
+                  isDark,
                   bgColor,
-                ),
-                const SizedBox(height: 30),
-
-                // 2. MAIN MASTER CARD (Glassy & Premium)
-                _buildGlassyMasterCard(primaryColor, unreadCount),
-                const SizedBox(height: 25),
-
-                // 3. PREMIUM LATEST ALERT POPUP (Replaced the pill tabs)
-                if (latestAlert != null) ...[
-                  _buildPremiumLatestAlert(
-                    latestAlert,
-                    primaryColor,
-                    isDark,
-                    textColor,
-                    subTextColor,
-                  ),
-                  const SizedBox(height: 30),
-                ],
-
-                // 4. RECENT ANNOUNCEMENTS LIST
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "Recent Announcements",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: textColor,
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () => onNavigate(2),
-                      child: Text(
-                        "See all",
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: primaryColor,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 15),
-                _buildRecentAlertsList(
+                );
+                final hero = _buildHeroCard(primaryColor, unreadCount);
+                final latest = latestAlert == null
+                    ? null
+                    : _buildLatestAlert(
+                        latestAlert,
+                        primaryColor,
+                        isDark,
+                      );
+                final announcements = _buildAnnouncementsSection(
                   recentAlerts,
                   primaryColor,
                   isDark,
-                  textColor,
-                  subTextColor,
-                ),
-              ],
+                );
+
+                final Widget body = wide
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          header,
+                          const SizedBox(height: 32),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 5,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    hero,
+                                    if (latest != null) ...[
+                                      const SizedBox(height: 24),
+                                      latest,
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 28),
+                              Expanded(flex: 6, child: announcements),
+                            ],
+                          ),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          header,
+                          const SizedBox(height: 24),
+                          hero,
+                          if (latest != null) ...[
+                            const SizedBox(height: 20),
+                            latest,
+                          ],
+                          const SizedBox(height: 28),
+                          announcements,
+                        ],
+                      );
+
+                return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: wide ? 40 : 20,
+                    vertical: wide ? 32 : 16,
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1100),
+                      child: body,
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ),
@@ -138,44 +153,58 @@ class ParentHomeTab extends StatelessWidget {
     String firstName,
     int unreadCount,
     Color primaryColor,
-    Color textColor,
+    bool isDark,
     Color bgColor,
   ) {
+    final String initial = firstName.isNotEmpty
+        ? firstName[0].toUpperCase()
+        : 'P';
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          children: [
-            // 🚨 Replaced the Hamburger Menu with a Profile Picture Placeholder
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: primaryColor.withValues(alpha: 0.1),
-              child: Icon(Icons.person_rounded, color: primaryColor, size: 24),
-            ),
-            const SizedBox(width: 15),
-            Text(
-              "Hello, $firstName",
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: textColor,
-                letterSpacing: -0.5,
+        Expanded(
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: PUi.tint(primaryColor, isDark, 0.14),
+                child: Text(
+                  initial,
+                  style: TextStyle(
+                    color: primaryColor,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                  ),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  "Hello, $firstName",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PUi.title(isDark, size: 26),
+                ),
+              ),
+            ],
+          ),
         ),
+        const SizedBox(width: 12),
 
-        // 🚨 Upgraded Notification Bell with crisp Red Badge
+        // Notification bell with unread badge
         GestureDetector(
           onTap: () => onNavigate(2),
           child: Stack(
             clipBehavior: Clip.none,
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
-                  color: primaryColor.withValues(alpha: 0.08),
+                  color: PUi.surface(isDark),
                   shape: BoxShape.circle,
+                  border: Border.all(color: PUi.border(isDark)),
                 ),
                 child: Icon(
                   Icons.notifications_rounded,
@@ -185,17 +214,14 @@ class ParentHomeTab extends StatelessWidget {
               ),
               if (unreadCount > 0)
                 Positioned(
-                  top: -2,
-                  right: -2,
+                  top: -3,
+                  right: -3,
                   child: Container(
                     padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
                       color: Colors.redAccent,
                       shape: BoxShape.circle,
-                      border: Border.all(
-                        color: bgColor,
-                        width: 2.5,
-                      ), // Cutout effect
+                      border: Border.all(color: bgColor, width: 2.5),
                     ),
                     child: Text(
                       unreadCount > 9 ? '9+' : unreadCount.toString(),
@@ -215,96 +241,89 @@ class ParentHomeTab extends StatelessWidget {
     );
   }
 
-  Widget _buildGlassyMasterCard(Color primaryColor, int unreadCount) {
+  Widget _buildHeroCard(Color primaryColor, int unreadCount) {
     return Container(
       width: double.infinity,
-      clipBehavior: Clip.antiAlias, // Ensures the geometric circles stay inside
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [primaryColor.withValues(alpha: 0.85), primaryColor],
+          colors: [primaryColor.withValues(alpha: 0.88), primaryColor],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(30),
         boxShadow: [
           BoxShadow(
-            color: primaryColor.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
+            color: primaryColor.withValues(alpha: 0.28),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
           ),
         ],
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.2),
-          width: 1.5,
-        ),
       ),
       child: Stack(
         children: [
-          // 🚨 Decorative geometric overlays for the "Glassy/Premium" feel
+          // Faint study illustration (top-right)
           Positioned(
-            right: -30,
-            top: -30,
-            child: CircleAvatar(
-              radius: 70,
-              backgroundColor: Colors.white.withValues(alpha: 0.1),
+            top: 6,
+            right: 8,
+            width: 150,
+            child: IgnorePointer(
+              child: AspectRatio(
+                aspectRatio: 300 / 190,
+                child: CustomPaint(
+                  painter: PScenePainter(
+                    scene: PScene.hero,
+                    line: Colors.white.withValues(alpha: 0.4),
+                    tint: Colors.white.withValues(alpha: 0.08),
+                    paper: primaryColor,
+                  ),
+                ),
+              ),
             ),
           ),
-          Positioned(
-            left: -20,
-            bottom: -40,
-            child: CircleAvatar(
-              radius: 60,
-              backgroundColor: Colors.white.withValues(alpha: 0.05),
-            ),
-          ),
-
-          // Card Content
           Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(22),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   "Current Academic Session",
                   style: TextStyle(
                     color: Colors.white70,
                     fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
                   primarySession,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 38,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
+                    fontSize: 34,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1,
                   ),
                 ),
-                const SizedBox(height: 30),
+                const SizedBox(height: 26),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildMasterCardStat(
-                      "Linked Wards",
-                      myChildren.length.toString(),
+                    Expanded(
+                      child: _buildHeroStat(
+                        "Linked Wards",
+                        myChildren.length.toString(),
+                      ),
                     ),
-                    Container(
-                      height: 30,
-                      width: 1,
-                      color: Colors.white.withValues(alpha: 0.2),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _buildHeroStat(
+                        "Total Alerts",
+                        alerts.length.toString(),
+                      ),
                     ),
-                    _buildMasterCardStat(
-                      "Total Alerts",
-                      alerts.length.toString(),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _buildHeroStat("Unread", unreadCount.toString()),
                     ),
-                    Container(
-                      height: 30,
-                      width: 1,
-                      color: Colors.white.withValues(alpha: 0.2),
-                    ),
-                    _buildMasterCardStat("Unread", unreadCount.toString()),
                   ],
                 ),
               ],
@@ -315,129 +334,163 @@ class ParentHomeTab extends StatelessWidget {
     );
   }
 
-  Widget _buildMasterCardStat(String label, String value) {
-    return Column(
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
+  Widget _buildHeroStat(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              label,
+              maxLines: 1,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildPremiumLatestAlert(
+  Widget _buildLatestAlert(
     Map<String, dynamic> alert,
     Color primaryColor,
     bool isDark,
-    Color textColor,
-    Color subTextColor,
   ) {
     bool isUnread = !(alert['is_read'] ?? false);
 
-    return GestureDetector(
+    return PCard(
+      radius: 26,
       onTap: () => onNavigate(2), // Navigate to alerts tab
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 15,
-              offset: const Offset(0, 8),
-            ),
-          ],
-          border: Border.all(
-            color: isUnread
-                ? primaryColor.withValues(alpha: 0.3)
-                : (isDark ? Colors.white10 : Colors.grey.shade100),
-            width: 1.5,
+      borderColor: isUnread
+          ? primaryColor.withValues(alpha: 0.4)
+          : PUi.border(isDark),
+      borderWidth: isUnread ? 1.5 : 1,
+      child: Row(
+        children: [
+          PIconBadge(
+            icon: Icons.campaign_rounded,
+            color: primaryColor,
+            size: 50,
+            iconSize: 24,
           ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: primaryColor.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.campaign_rounded,
-                color: primaryColor,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        "Latest Announcement",
-                        style: TextStyle(
-                          color: primaryColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.5,
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      "LATEST ANNOUNCEMENT",
+                      style: TextStyle(
+                        color: primaryColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    if (isUnread) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: Colors.redAccent,
+                          shape: BoxShape.circle,
                         ),
                       ),
-                      if (isUnread) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: const BoxDecoration(
-                            color: Colors.redAccent,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ],
                     ],
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  alert['title'] ?? 'Notice',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: PUi.ink(isDark),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    alert['title'] ?? 'Notice',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: textColor,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    alert['message'] ?? 'Tap to read more.',
-                    style: TextStyle(fontSize: 13, color: subTextColor),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  alert['message'] ?? 'Tap to read more.',
+                  style: TextStyle(fontSize: 13, color: PUi.muted(isDark)),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(Icons.chevron_right_rounded, color: PUi.muted(isDark)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAnnouncementsSection(
+    List<Map<String, dynamic>> recentAlerts,
+    Color primaryColor,
+    bool isDark,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              "Recent Announcements",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+                color: PUi.ink(isDark),
               ),
             ),
-            const SizedBox(width: 10),
-            Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
+            GestureDetector(
+              onTap: () => onNavigate(2),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Text(
+                  "See all",
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: primaryColor,
+                    decoration: TextDecoration.underline,
+                    decorationColor: primaryColor,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
-      ),
+        const SizedBox(height: 14),
+        _buildRecentAlertsList(recentAlerts, primaryColor, isDark),
+      ],
     );
   }
 
@@ -445,16 +498,18 @@ class ParentHomeTab extends StatelessWidget {
     List<Map<String, dynamic>> recentAlerts,
     Color primaryColor,
     bool isDark,
-    Color textColor,
-    Color subTextColor,
   ) {
     if (recentAlerts.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(40.0),
-          child: Text(
-            "No older announcements.",
-            style: TextStyle(color: subTextColor),
+      return PCard(
+        radius: 26,
+        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+        child: SizedBox(
+          width: double.infinity,
+          child: Center(
+            child: Text(
+              "No older announcements.",
+              style: TextStyle(color: PUi.muted(isDark)),
+            ),
           ),
         ),
       );
@@ -463,106 +518,93 @@ class ParentHomeTab extends StatelessWidget {
     // Show only the next 3 alerts to keep it clean
     int displayCount = recentAlerts.length > 3 ? 3 : recentAlerts.length;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade100,
-          width: 1.5,
-        ),
+    return PCard(
+      radius: 26,
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          for (int index = 0; index < displayCount; index++) ...[
+            if (index > 0)
+              Divider(
+                height: 1,
+                color: PUi.border(isDark),
+                indent: 20,
+                endIndent: 20,
+              ),
+            _buildAlertRow(recentAlerts[index], primaryColor, isDark),
+          ],
+        ],
       ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: displayCount,
-        separatorBuilder: (context, index) => Divider(
-          height: 1,
-          color: isDark ? Colors.white10 : Colors.grey.shade100,
-          indent: 20,
-          endIndent: 20,
-        ),
-        itemBuilder: (context, index) {
-          final alert = recentAlerts[index];
-          bool isUnread = !(alert['is_read'] ?? false);
+    );
+  }
 
-          String type = (alert['type'] ?? '').toString().toLowerCase();
-          Color iconBg = primaryColor.withValues(alpha: 0.1);
-          Color iconColor = primaryColor;
-          IconData icon = Icons.notifications_rounded;
+  Widget _buildAlertRow(
+    Map<String, dynamic> alert,
+    Color primaryColor,
+    bool isDark,
+  ) {
+    bool isUnread = !(alert['is_read'] ?? false);
 
-          if (type.contains('urgent') || type.contains('fee')) {
-            iconBg = Colors.red.withValues(alpha: 0.1);
-            iconColor = Colors.red;
-            icon = Icons.warning_rounded;
-          } else if (type.contains('academic')) {
-            iconBg = Colors.green.withValues(alpha: 0.1);
-            iconColor = Colors.green;
-            icon = Icons.school_rounded;
-          }
+    String type = (alert['type'] ?? '').toString().toLowerCase();
+    Color iconColor = primaryColor;
+    IconData icon = Icons.notifications_rounded;
 
-          String dateStr = "";
-          if (alert['created_at'] != null) {
-            dateStr = DateFormat(
-              'MMMM d, yyyy',
-            ).format(DateTime.parse(alert['created_at']));
-          }
+    if (type.contains('urgent') || type.contains('fee')) {
+      iconColor = Colors.red;
+      icon = Icons.warning_rounded;
+    } else if (type.contains('academic')) {
+      iconColor = Colors.green;
+      icon = Icons.school_rounded;
+    }
 
-          return ListTile(
-            tileColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 12,
-            ),
-            leading: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
-              child: Icon(icon, color: iconColor, size: 20),
-            ),
-            title: Text(
-              alert['title'] ?? 'Announcement',
-              style: TextStyle(
-                fontWeight: isUnread ? FontWeight.bold : FontWeight.w600,
-                fontSize: 14,
-                color: textColor,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4.0),
-              child: Text(
-                dateStr,
-                style: TextStyle(fontSize: 12, color: subTextColor),
+    String dateStr = "";
+    if (alert['created_at'] != null) {
+      dateStr = DateFormat(
+        'MMMM d, yyyy',
+      ).format(DateTime.parse(alert['created_at']));
+    }
+
+    return InkWell(
+      onTap: () => onNavigate(2),
+      borderRadius: BorderRadius.circular(26),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          children: [
+            PIconBadge(icon: icon, color: iconColor, size: 44, iconSize: 20),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    alert['title'] ?? 'Announcement',
+                    style: TextStyle(
+                      fontWeight: isUnread ? FontWeight.w800 : FontWeight.w600,
+                      fontSize: 14.5,
+                      color: PUi.ink(isDark),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    dateStr,
+                    style: TextStyle(fontSize: 12, color: PUi.muted(isDark)),
+                  ),
+                ],
               ),
             ),
-            trailing: isUnread
-                ? Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Text(
-                      "New",
-                      style: TextStyle(
-                        color: Colors.orange,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  )
+            const SizedBox(width: 10),
+            isUnread
+                ? const PPill(text: "NEW", color: Colors.orange)
                 : Icon(
                     Icons.check_circle_rounded,
                     color: Colors.green.shade400,
-                    size: 18,
+                    size: 20,
                   ),
-            onTap: () => onNavigate(2),
-          );
-        },
+          ],
+        ),
       ),
     );
   }

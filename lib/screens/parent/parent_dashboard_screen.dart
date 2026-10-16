@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
+import 'package:trideta_v2/screens/parent/parent_ui_kit.dart';
 
 import 'package:trideta_v2/screens/parent/tabs/parent_home_tab.dart';
 import 'package:trideta_v2/screens/parent/tabs/parent_wards_tab.dart';
@@ -257,11 +258,15 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
     }
   }
 
+  // ===========================================================================
+  // 🖼️ UI ONLY — everything below is presentation. The data/debt/alert logic
+  // above is untouched.
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color navBarColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color bgColor = PUi.bg(isDark);
+    Color navBarColor = PUi.surface(isDark);
     Color primaryColor = Theme.of(context).primaryColor;
 
     final List<Widget> mobilePages = [
@@ -308,53 +313,17 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth >= 900) {
+          // Full sidebar on large desktops, slim icon rail on smaller ones.
+          final bool expanded = constraints.maxWidth >= 1100;
           return Scaffold(
             backgroundColor: bgColor,
             body: Row(
               children: [
-                Container(
-                  width: 250,
-                  color: navBarColor,
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 40),
-                      Icon(Icons.school, size: 50, color: primaryColor),
-                      const SizedBox(height: 20),
-                      const Text(
-                        "TRIDETA",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                      const SizedBox(height: 40),
-                      _buildDesktopNavItem(
-                        Icons.home_rounded,
-                        "Home",
-                        0,
-                        primaryColor,
-                      ),
-                      _buildDesktopNavItem(
-                        Icons.family_restroom,
-                        "Wards",
-                        1,
-                        primaryColor,
-                      ),
-                      _buildDesktopNavItem(
-                        Icons.notifications_active_rounded,
-                        "Alerts",
-                        2,
-                        primaryColor,
-                      ),
-                      _buildDesktopNavItem(
-                        Icons.person,
-                        "Profile",
-                        3,
-                        primaryColor,
-                      ),
-                    ],
-                  ),
+                _buildDesktopSidebar(
+                  expanded,
+                  isDark,
+                  primaryColor,
+                  navBarColor,
                 ),
                 Expanded(child: desktopPages[_currentIndex]),
               ],
@@ -365,41 +334,252 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
         return Scaffold(
           backgroundColor: bgColor,
           body: IndexedStack(index: _currentIndex, children: mobilePages),
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: _currentIndex,
-            onDestinationSelected: (i) {
-              setState(() => _currentIndex = i);
-            },
-            backgroundColor: navBarColor,
-            indicatorColor: primaryColor.withValues(alpha: 0.1),
-            destinations: [
-              NavigationDestination(
-                icon: const Icon(Icons.home_outlined),
-                selectedIcon: Icon(Icons.home_rounded, color: primaryColor),
-                label: 'Home',
+          bottomNavigationBar: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: PUi.border(isDark))),
+            ),
+            child: NavigationBarTheme(
+              data: NavigationBarThemeData(
+                height: 68,
+                elevation: 0,
+                backgroundColor: navBarColor,
+                surfaceTintColor: Colors.transparent,
+                indicatorColor: primaryColor.withValues(alpha: 0.14),
+                indicatorShape: const StadiumBorder(),
+                labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                  final selected = states.contains(WidgetState.selected);
+                  return TextStyle(
+                    fontSize: 12,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: selected ? primaryColor : PUi.muted(isDark),
+                  );
+                }),
               ),
-              NavigationDestination(
-                icon: const Icon(Icons.family_restroom_outlined),
-                selectedIcon: Icon(Icons.family_restroom, color: primaryColor),
-                label: 'Wards',
+              child: NavigationBar(
+                selectedIndex: _currentIndex,
+                onDestinationSelected: (i) {
+                  setState(() => _currentIndex = i);
+                },
+                destinations: [
+                  NavigationDestination(
+                    icon: Icon(
+                      Icons.home_outlined,
+                      color: PUi.muted(isDark),
+                    ),
+                    selectedIcon: Icon(Icons.home_rounded, color: primaryColor),
+                    label: 'Home',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(
+                      Icons.family_restroom_outlined,
+                      color: PUi.muted(isDark),
+                    ),
+                    selectedIcon: Icon(
+                      Icons.family_restroom,
+                      color: primaryColor,
+                    ),
+                    label: 'Wards',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(
+                      Icons.notifications_none_rounded,
+                      color: PUi.muted(isDark),
+                    ),
+                    selectedIcon: Icon(
+                      Icons.notifications_active_rounded,
+                      color: primaryColor,
+                    ),
+                    label: 'Alerts',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(
+                      Icons.person_outline,
+                      color: PUi.muted(isDark),
+                    ),
+                    selectedIcon: Icon(Icons.person, color: primaryColor),
+                    label: 'Profile',
+                  ),
+                ],
               ),
-              NavigationDestination(
-                icon: const Icon(Icons.notifications_none_rounded),
-                selectedIcon: Icon(
-                  Icons.notifications_active_rounded,
-                  color: primaryColor,
-                ),
-                label: 'Alerts',
-              ),
-              NavigationDestination(
-                icon: const Icon(Icons.person_outline),
-                selectedIcon: Icon(Icons.person, color: primaryColor),
-                label: 'Profile',
-              ),
-            ],
+            ),
           ),
         );
       },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 🖥️ DESKTOP SIDEBAR
+  // ---------------------------------------------------------------------------
+  Widget _buildDesktopSidebar(
+    bool expanded,
+    bool isDark,
+    Color primaryColor,
+    Color navBarColor,
+  ) {
+    final initial = _parentName.isNotEmpty
+        ? _parentName[0].toUpperCase()
+        : 'P';
+
+    return Container(
+      width: expanded ? 264 : 92,
+      decoration: BoxDecoration(
+        color: navBarColor,
+        border: Border(right: BorderSide(color: PUi.border(isDark))),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(expanded ? 20 : 14, 28, expanded ? 20 : 14, 20),
+          child: Column(
+            crossAxisAlignment: expanded
+                ? CrossAxisAlignment.stretch
+                : CrossAxisAlignment.center,
+            children: [
+              // Logo
+              Row(
+                mainAxisAlignment: expanded
+                    ? MainAxisAlignment.start
+                    : MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: PUi.tint(primaryColor, isDark, 0.12),
+                    ),
+                    child: Icon(
+                      Icons.school_rounded,
+                      color: primaryColor,
+                      size: 24,
+                    ),
+                  ),
+                  if (expanded) ...[
+                    const SizedBox(width: 12),
+                    Text(
+                      "TRIDETA",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 19,
+                        letterSpacing: 2,
+                        color: PUi.ink(isDark),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 36),
+
+              // Navigation
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      _buildDesktopNavItem(
+                        Icons.home_rounded,
+                        "Home",
+                        0,
+                        primaryColor,
+                        isDark,
+                        expanded,
+                      ),
+                      _buildDesktopNavItem(
+                        Icons.family_restroom,
+                        "Wards",
+                        1,
+                        primaryColor,
+                        isDark,
+                        expanded,
+                      ),
+                      _buildDesktopNavItem(
+                        Icons.notifications_active_rounded,
+                        "Alerts",
+                        2,
+                        primaryColor,
+                        isDark,
+                        expanded,
+                      ),
+                      _buildDesktopNavItem(
+                        Icons.person,
+                        "Profile",
+                        3,
+                        primaryColor,
+                        isDark,
+                        expanded,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Signed-in parent
+              if (expanded)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: PUi.surfaceAlt(isDark),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 19,
+                        backgroundColor: PUi.tint(primaryColor, isDark, 0.14),
+                        child: Text(
+                          initial,
+                          style: TextStyle(
+                            color: primaryColor,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _parentName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                color: PUi.ink(isDark),
+                              ),
+                            ),
+                            if (_parentEmail.isNotEmpty)
+                              Text(
+                                _parentEmail,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: PUi.muted(isDark),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                CircleAvatar(
+                  radius: 21,
+                  backgroundColor: PUi.tint(primaryColor, isDark, 0.14),
+                  child: Text(
+                    initial,
+                    style: TextStyle(
+                      color: primaryColor,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -408,22 +588,65 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen>
     String title,
     int index,
     Color primaryColor,
+    bool isDark,
+    bool expanded,
   ) {
-    bool isSelected = _currentIndex == index;
-    return ListTile(
-      leading: Icon(icon, color: isSelected ? primaryColor : Colors.grey),
-      title: Text(
-        title,
-        style: TextStyle(
-          color: isSelected ? primaryColor : Colors.grey,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+    final bool isSelected = _currentIndex == index;
+    final Color fg = isSelected ? Colors.white : PUi.muted(isDark);
+
+    void select() {
+      setState(() => _currentIndex = index);
+    }
+
+    if (!expanded) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Tooltip(
+          message: title,
+          child: Material(
+            color: isSelected ? primaryColor : Colors.transparent,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: select,
+              child: SizedBox(
+                width: 54,
+                height: 54,
+                child: Icon(icon, color: fg, size: 24),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: isSelected ? primaryColor : Colors.transparent,
+        shape: const StadiumBorder(),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: select,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            child: Row(
+              children: [
+                Icon(icon, color: fg, size: 22),
+                const SizedBox(width: 14),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: fg,
+                    fontSize: 15,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-      selected: isSelected,
-      selectedTileColor: primaryColor.withValues(alpha: 0.1),
-      onTap: () {
-        setState(() => _currentIndex = index);
-      },
     );
   }
 }

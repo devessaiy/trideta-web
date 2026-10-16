@@ -9,6 +9,7 @@ import 'package:printing/printing.dart';
 
 import 'package:trideta_v2/screens/parent/parent_financial_service.dart';
 import 'package:trideta_v2/screens/parent/receipt_detail_view.dart';
+import 'package:trideta_v2/screens/parent/parent_ui_kit.dart';
 
 class ParentChildDetailScreen extends StatefulWidget {
   final Map<String, dynamic> childData;
@@ -563,11 +564,13 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
     );
   }
 
+  // ===========================================================================
+  // 🖼️ UI ONLY — presentation below. Data fetching, the PDF dossier engine and
+  // the fee lock rule above/inside are untouched.
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     Color primaryColor = Theme.of(context).primaryColor;
     Color schoolColor = _getSchoolColor(primaryColor);
 
@@ -579,67 +582,210 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
     double balance = _totalExpected - _totalPaid;
     if (balance < 0) balance = 0;
 
+    // Pushed on phones (can go back) vs embedded in the desktop split view.
+    final bool canGoBack = Navigator.of(context).canPop();
+
     return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        title: Text(
-          "$fName's Records",
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+      backgroundColor: PUi.bg(isDark),
+      body: PBackdrop(
+        accent: schoolColor,
+        child: SafeArea(
+          bottom: false,
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final bool wide = c.maxWidth >= 760;
+              final double hPad = wide ? 32.0 : 20.0;
+
+              return Column(
+                children: [
+                  if (canGoBack)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 20, 0),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            onPressed: () => Navigator.maybePop(context),
+                            style: IconButton.styleFrom(
+                              backgroundColor: PUi.surface(isDark),
+                              side: BorderSide(color: PUi.border(isDark)),
+                              minimumSize: const Size(44, 44),
+                            ),
+                            icon: Icon(
+                              Icons.arrow_back_rounded,
+                              color: PUi.ink(isDark),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              "$fName's Records",
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 17,
+                                color: PUi.ink(isDark),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  Expanded(
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1000),
+                        child: Column(
+                          children: [
+                            // ─── HERO ───
+                            Padding(
+                              padding: EdgeInsets.fromLTRB(
+                                hPad,
+                                canGoBack ? 12 : (wide ? 28 : 16),
+                                hPad,
+                                0,
+                              ),
+                              child: _buildHero(
+                                fName,
+                                lName,
+                                initial,
+                                passport,
+                                schoolColor,
+                              ),
+                            ),
+
+                            // ─── PILL TABS ───
+                            Container(
+                              margin: EdgeInsets.fromLTRB(hPad, 18, hPad, 0),
+                              padding: const EdgeInsets.all(5),
+                              decoration: BoxDecoration(
+                                color: PUi.surfaceAlt(isDark),
+                                borderRadius: BorderRadius.circular(40),
+                              ),
+                              child: TabBar(
+                                controller: _tabController,
+                                labelColor: Colors.white,
+                                unselectedLabelColor: PUi.muted(isDark),
+                                indicatorSize: TabBarIndicatorSize.tab,
+                                indicator: BoxDecoration(
+                                  color: schoolColor,
+                                  borderRadius: BorderRadius.circular(40),
+                                ),
+                                dividerColor: Colors.transparent,
+                                splashBorderRadius: BorderRadius.circular(40),
+                                labelStyle: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                ),
+                                unselectedLabelStyle: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
+                                tabs: const [
+                                  Tab(height: 42, text: "Academics"),
+                                  Tab(height: 42, text: "Finances"),
+                                ],
+                              ),
+                            ),
+
+                            // ─── TAB CONTENT ───
+                            Expanded(
+                              child: _isLoading
+                                  ? Center(
+                                      child: TridetaLoader(color: schoolColor),
+                                    )
+                                  : TabBarView(
+                                      controller: _tabController,
+                                      children: [
+                                        _buildAcademicTab(
+                                          isDark,
+                                          schoolColor,
+                                          balance,
+                                          wide,
+                                          hPad,
+                                        ),
+                                        _buildFinanceTab(
+                                          isDark,
+                                          schoolColor,
+                                          balance,
+                                          wide,
+                                          hPad,
+                                        ),
+                                      ],
+                                    ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
-        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        foregroundColor: isDark ? Colors.white : Colors.black,
-        elevation: 0,
-        centerTitle: true,
       ),
-      body: Column(
+    );
+  }
+
+  Widget _buildHero(
+    String fName,
+    String lName,
+    String initial,
+    String passport,
+    Color schoolColor,
+  ) {
+    return Container(
+      width: double.infinity,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [schoolColor.withValues(alpha: 0.88), schoolColor],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: schoolColor.withValues(alpha: 0.26),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Stack(
         children: [
-          // ─── PREMIUM GLASSY HEADER ───
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 30),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [schoolColor.withValues(alpha: 0.85), schoolColor],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(32),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: schoolColor.withValues(alpha: 0.2),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
+          Positioned(
+            right: -6,
+            bottom: -4,
+            width: 150,
+            child: IgnorePointer(
+              child: AspectRatio(
+                aspectRatio: 300 / 190,
+                child: CustomPaint(
+                  painter: PScenePainter(
+                    scene: PScene.hero,
+                    line: Colors.white.withValues(alpha: 0.35),
+                    tint: Colors.white.withValues(alpha: 0.07),
+                    paper: schoolColor,
+                  ),
                 ),
-              ],
+              ),
             ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
             child: Row(
               children: [
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                  child: CircleAvatar(
-                    radius: 40,
-                    backgroundColor: Colors.white.withValues(alpha: 0.2),
-                    backgroundImage: passport.isNotEmpty
-                        ? NetworkImage(passport)
-                        : null,
-                    child: passport.isEmpty
-                        ? Text(
-                            initial,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 32,
-                            ),
-                          )
-                        : null,
-                  ),
+                PAvatar(
+                  initial: initial,
+                  imageUrl: passport,
+                  radius: 36,
+                  ringColor: Colors.white,
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  initialColor: Colors.white,
                 ),
-                const SizedBox(width: 20),
+                const SizedBox(width: 18),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -648,40 +794,43 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
                         "$fName $lName",
                         style: const TextStyle(
                           fontSize: 24,
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w800,
                           color: Colors.white,
-                          letterSpacing: -0.5,
+                          letterSpacing: -0.6,
+                          height: 1.1,
                         ),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 8),
-                      Row(
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
+                              horizontal: 12,
+                              vertical: 5,
                             ),
                             decoration: BoxDecoration(
                               color: Colors.white.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(30),
                             ),
                             child: Text(
                               widget.childData['class_level'] ?? 'Unassigned',
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 11.5,
                               ),
                             ),
                           ),
-                          const SizedBox(width: 10),
                           Text(
-                            "Session: ${widget.childData['schools']['current_session'] ?? 'N/A'}",
+                            "Session: ${widget.childData['schools']?['current_session'] ?? 'N/A'}",
                             style: const TextStyle(
                               color: Colors.white70,
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -693,330 +842,286 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
 
-          // ─── MODERN PILL TAB BAR ───
-          Container(
-            margin: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white10 : Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: TabBar(
-              controller: _tabController,
-              labelColor: isDark ? Colors.black : Colors.white,
-              unselectedLabelColor: isDark
-                  ? Colors.white70
-                  : Colors.grey.shade600,
-              indicatorSize: TabBarIndicatorSize.tab,
-              indicator: BoxDecoration(
-                color: isDark ? Colors.white : schoolColor,
-                borderRadius: BorderRadius.circular(16),
+  // ---------------------------------------------------------------------------
+  // ACADEMICS
+  // ---------------------------------------------------------------------------
+  Widget _buildAcademicTab(
+    bool isDark,
+    Color schoolColor,
+    double balance,
+    bool wide,
+    double hPad,
+  ) {
+    final stats = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: _buildStatCard(
+            "Attendance",
+            _attendancePercentage,
+            Icons.calendar_month_rounded,
+            schoolColor,
+            isDark,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: _buildStatCard(
+            "Average",
+            _gradeAverage,
+            Icons.auto_graph_rounded,
+            schoolColor,
+            isDark,
+          ),
+        ),
+      ],
+    );
+
+    final grades = _buildGradesSection(isDark, schoolColor);
+    final dossier = _buildDossierSection(isDark, schoolColor, balance);
+
+    final padding = EdgeInsets.fromLTRB(hPad, 22, hPad, 32);
+
+    if (wide) {
+      return SingleChildScrollView(
+        padding: padding,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: 3, child: grades),
+            const SizedBox(width: 24),
+            Expanded(
+              flex: 2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [stats, const SizedBox(height: 24), dossier],
               ),
-              dividerColor: Colors.transparent, // Removes the ugly bottom line
-              tabs: const [
-                Tab(
-                  child: Text(
-                    "ACADEMICS",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView(
+      padding: padding,
+      children: [stats, const SizedBox(height: 26), grades, const SizedBox(height: 26), dossier],
+    );
+  }
+
+  Widget _buildGradesSection(bool isDark, Color schoolColor) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("SUBJECT GRADES", style: PUi.sectionLabel(isDark)),
+        const SizedBox(height: 12),
+        if (_subjectGrades.isEmpty)
+          PCard(
+            radius: 26,
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+            child: SizedBox(
+              width: double.infinity,
+              child: Center(
+                child: Text(
+                  "No scores recorded yet.",
+                  style: TextStyle(color: PUi.muted(isDark)),
                 ),
-                Tab(
-                  child: Text(
-                    "FINANCES",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
-                ),
+              ),
+            ),
+          )
+        else
+          PCard(
+            radius: 26,
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                for (int index = 0; index < _subjectGrades.length; index++) ...[
+                  if (index > 0)
+                    Divider(
+                      height: 1,
+                      color: PUi.border(isDark),
+                      indent: 20,
+                      endIndent: 20,
+                    ),
+                  _buildGradeRow(_subjectGrades[index], isDark),
+                ],
               ],
             ),
           ),
+      ],
+    );
+  }
 
-          // ─── TAB CONTENT ───
-          Expanded(
-            child: _isLoading
-                ? Center(child: TridetaLoader(color: schoolColor))
-                : TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildAcademicTab(
-                        isDark,
-                        schoolColor,
-                        cardColor,
-                        balance,
-                      ),
-                      _buildFinanceTab(isDark, schoolColor, cardColor, balance),
-                    ],
+  Widget _buildGradeRow(Map<String, dynamic> gradeData, bool isDark) {
+    Color gColor = Colors.grey;
+    if (gradeData['grade'] == 'A') gColor = Colors.green;
+    if (gradeData['grade'] == 'B') gColor = Colors.blue;
+    if (gradeData['grade'] == 'C') gColor = Colors.orange;
+    if (gradeData['grade'] == 'P') gColor = Colors.purple;
+    if (gradeData['grade'] == 'F') gColor = Colors.red;
+
+    final double scoreValue =
+        (double.tryParse(gradeData['score'].toString()) ?? 0)
+            .clamp(0, 100)
+            .toDouble();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  gradeData['subject'],
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14.5,
+                    color: PUi.ink(isDark),
                   ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              PPill(
+                text: "${gradeData['score']} (${gradeData['grade']})",
+                color: gColor,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              value: scoreValue / 100,
+              minHeight: 5,
+              backgroundColor: PUi.tint(gColor, isDark, 0.1),
+              valueColor: AlwaysStoppedAnimation<Color>(gColor),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAcademicTab(
-    bool isDark,
-    Color schoolColor,
-    Color cardColor,
-    double balance,
-  ) {
+  Widget _buildDossierSection(bool isDark, Color schoolColor, double balance) {
     bool isLocked = balance > 0;
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+    final Color accent = isLocked ? Colors.red : schoolColor;
 
-    return ListView(
-      padding: const EdgeInsets.all(20),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: _buildGlassyStatCard(
-                "Attendance",
-                _attendancePercentage,
-                Icons.calendar_month_rounded,
-                Colors.blue,
-                cardColor,
-                isDark,
-              ),
-            ),
-            const SizedBox(width: 15),
-            Expanded(
-              child: _buildGlassyStatCard(
-                "Average",
-                _gradeAverage,
-                Icons.auto_graph_rounded,
-                Colors.purple,
-                cardColor,
-                isDark,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 30),
-
-        Text(
-          "SUBJECT GRADES",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 12,
-            color: Colors.grey.shade500,
-            letterSpacing: 1.2,
-          ),
-        ),
+        Text("REPORT SHEETS & RECORDS", style: PUi.sectionLabel(isDark)),
         const SizedBox(height: 12),
-
-        if (_subjectGrades.isEmpty)
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.all(40.0),
-              child: Text(
-                "No scores recorded yet.",
-                style: TextStyle(color: Colors.grey.shade500),
+        PCard(
+          radius: 26,
+          borderColor: accent.withValues(alpha: 0.4),
+          borderWidth: 1.5,
+          onTap: isLocked
+              ? () {
+                  showAuthErrorDialog(
+                    "Please clear the outstanding balance of ₦${balance.toStringAsFixed(0)} in the Finances tab to unlock this student's report sheet.",
+                  );
+                }
+              : (_isGeneratingRecord ? null : _generateComprehensiveRecord),
+          child: Row(
+            children: [
+              PIconBadge(
+                icon: isLocked
+                    ? Icons.lock_outline_rounded
+                    : Icons.picture_as_pdf_rounded,
+                color: accent,
+                size: 50,
+                iconSize: 24,
               ),
-            ),
-          )
-        else
-          Container(
-            decoration: BoxDecoration(
-              color: cardColor,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isDark ? Colors.white10 : Colors.grey.shade200,
-              ),
-            ),
-            child: ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _subjectGrades.length,
-              separatorBuilder: (context, index) => Divider(
-                height: 1,
-                color: isDark ? Colors.white10 : Colors.grey.shade100,
-                indent: 20,
-                endIndent: 20,
-              ),
-              itemBuilder: (context, index) {
-                final gradeData = _subjectGrades[index];
-                Color gColor = Colors.grey;
-                if (gradeData['grade'] == 'A') gColor = Colors.green;
-                if (gradeData['grade'] == 'B') gColor = Colors.blue;
-                if (gradeData['grade'] == 'C') gColor = Colors.orange;
-                if (gradeData['grade'] == 'P') gColor = Colors.purple;
-                if (gradeData['grade'] == 'F') gColor = Colors.red;
-
-                return ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 4,
-                  ),
-                  title: Text(
-                    gradeData['subject'],
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: textColor,
-                    ),
-                  ),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: gColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      "${gradeData['score']} (${gradeData['grade']})",
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Full Academic Dossier",
                       style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: gColor,
-                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: isLocked ? Colors.red : PUi.ink(isDark),
                       ),
                     ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-        const SizedBox(height: 30),
-
-        Text(
-          "REPORT SHEETS & RECORDS",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 12,
-            color: Colors.grey.shade500,
-            letterSpacing: 1.2,
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        Card(
-          color: cardColor,
-          elevation: 0,
-          margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: BorderSide(
-              color: isLocked
-                  ? Colors.red.withValues(alpha: 0.3)
-                  : schoolColor.withValues(alpha: 0.3),
-              width: 1.5,
-            ),
-          ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: isLocked
-                ? () {
-                    showAuthErrorDialog(
-                      "Please clear the outstanding balance of ₦${balance.toStringAsFixed(0)} in the Finances tab to unlock this student's report sheet.",
-                    );
-                  }
-                : (_isGeneratingRecord ? null : _generateComprehensiveRecord),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: isLocked
-                          ? Colors.red.withValues(alpha: 0.1)
-                          : schoolColor.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
+                    const SizedBox(height: 4),
+                    Text(
                       isLocked
-                          ? Icons.lock_outline_rounded
-                          : Icons.picture_as_pdf_rounded,
-                      color: isLocked ? Colors.red : schoolColor,
+                          ? "Locked due to outstanding fees."
+                          : "Download complete historic report sheet.",
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: isLocked
+                            ? Colors.red.shade300
+                            : PUi.muted(isDark),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "Full Academic Dossier",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                            color: isLocked ? Colors.red : textColor,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          isLocked
-                              ? "Locked due to outstanding fees."
-                              : "Download complete historic report sheet.",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isLocked
-                                ? Colors.red.shade300
-                                : Colors.grey.shade500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _isGeneratingRecord
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: TridetaLoader(color: schoolColor),
-                        )
-                      : Icon(
-                          isLocked
-                              ? Icons.lock_rounded
-                              : Icons.download_rounded,
-                          color: isLocked ? Colors.red : schoolColor,
-                        ),
-                ],
+                  ],
+                ),
               ),
-            ),
+              const SizedBox(width: 10),
+              _isGeneratingRecord
+                  ? SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: TridetaLoader(color: schoolColor),
+                    )
+                  : Icon(
+                      isLocked ? Icons.lock_rounded : Icons.download_rounded,
+                      color: accent,
+                    ),
+            ],
           ),
         ),
-        const SizedBox(height: 20),
       ],
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // FINANCES
+  // ---------------------------------------------------------------------------
   Widget _buildFinanceTab(
     bool isDark,
     Color schoolColor,
-    Color cardColor,
     double balance,
+    bool wide,
+    double hPad,
   ) {
     final formatCurrency = NumberFormat.currency(symbol: '₦');
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+    final bool owing = balance > 0;
+    final Color statusColor = owing ? Colors.red : Colors.green;
 
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        if (!_isFinanceActivated)
-          Container(
+    final Widget notice = !_isFinanceActivated
+        ? Container(
             margin: const EdgeInsets.only(bottom: 20),
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: Colors.orange.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(24),
               border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
             ),
-            child: Row(
+            child: const Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.info_outline_rounded,
                   color: Colors.orange,
                   size: 28,
                 ),
-                const SizedBox(width: 16),
+                SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
+                    children: [
                       Text(
                         "Financial Engine Not Activated",
                         style: TextStyle(
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w800,
                           color: Colors.orange,
                           fontSize: 14,
                         ),
@@ -1024,220 +1129,256 @@ class _ParentChildDetailScreenState extends State<ParentChildDetailScreen>
                       SizedBox(height: 4),
                       Text(
                         "The school administration has not yet published the fee structures.",
-                        style: TextStyle(fontSize: 12, color: Colors.orange),
+                        style: TextStyle(fontSize: 12.5, color: Colors.orange),
                       ),
                     ],
                   ),
                 ),
               ],
             ),
-          ),
-
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: balance > 0
-                ? Colors.red.withValues(alpha: 0.05)
-                : Colors.green.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: balance > 0
-                  ? Colors.red.withValues(alpha: 0.3)
-                  : Colors.green.withValues(alpha: 0.3),
-              width: 1.5,
-            ),
-          ),
-          child: Column(
-            children: [
-              Text(
-                "CURRENT OUTSTANDING",
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: balance > 0 ? Colors.red : Colors.green,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                formatCurrency.format(balance),
-                style: TextStyle(
-                  fontSize: 36,
-                  fontWeight: FontWeight.w900,
-                  color: balance > 0 ? Colors.red : Colors.green,
-                  letterSpacing: -0.5,
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 30),
-
-        Text(
-          "PAYMENT HISTORY",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 12,
-            color: Colors.grey.shade500,
-            letterSpacing: 1.2,
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        if (_receipts.isEmpty)
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.all(40.0),
-              child: Text(
-                "No payments made yet.",
-                style: TextStyle(color: Colors.grey.shade500),
-              ),
-            ),
           )
-        else
-          Container(
-            decoration: BoxDecoration(
-              color: cardColor,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isDark ? Colors.white10 : Colors.grey.shade200,
-              ),
-            ),
-            child: ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _receipts.length,
-              separatorBuilder: (context, index) => Divider(
-                height: 1,
-                color: isDark ? Colors.white10 : Colors.grey.shade100,
-                indent: 20,
-                endIndent: 20,
-              ),
-              itemBuilder: (context, index) {
-                final tx = _receipts[index];
-                return InkWell(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ReceiptDetailView(tx: tx),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withValues(alpha: 0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.receipt_long_rounded,
-                            color: Colors.green,
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                tx['category'] ?? 'Fee Payment',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                  color: textColor,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                DateFormat(
-                                  'MMM d, yyyy',
-                                ).format(DateTime.parse(tx['created_at'])),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey.shade500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Text(
-                          formatCurrency.format(tx['amount']),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        const SizedBox(height: 20),
-      ],
-    );
-  }
+        : const SizedBox.shrink();
 
-  Widget _buildGlassyStatCard(
-    String title,
-    String val,
-    IconData icon,
-    Color color,
-    Color cardColor,
-    bool isDark,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(20),
+    final Widget outstanding = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(24),
+        color: PUi.tint(statusColor, isDark, 0.07),
+        borderRadius: BorderRadius.circular(28),
         border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
+          color: statusColor.withValues(alpha: 0.35),
+          width: 1.5,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: color, size: 20),
+          Row(
+            children: [
+              PIconBadge(
+                icon: owing
+                    ? Icons.account_balance_wallet_rounded
+                    : Icons.verified_rounded,
+                color: statusColor,
+                size: 44,
+                iconSize: 22,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  "CURRENT OUTSTANDING",
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: statusColor,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 18),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              formatCurrency.format(balance),
+              style: TextStyle(
+                fontSize: 40,
+                fontWeight: FontWeight.w800,
+                color: statusColor,
+                letterSpacing: -1,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final Widget history = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("PAYMENT HISTORY", style: PUi.sectionLabel(isDark)),
+        const SizedBox(height: 12),
+        if (_receipts.isEmpty)
+          PCard(
+            radius: 26,
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+            child: SizedBox(
+              width: double.infinity,
+              child: Center(
+                child: Text(
+                  "No payments made yet.",
+                  style: TextStyle(color: PUi.muted(isDark)),
+                ),
+              ),
+            ),
+          )
+        else
+          PCard(
+            radius: 26,
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                for (int index = 0; index < _receipts.length; index++) ...[
+                  if (index > 0)
+                    Divider(
+                      height: 1,
+                      color: PUi.border(isDark),
+                      indent: 20,
+                      endIndent: 20,
+                    ),
+                  _buildReceiptRow(_receipts[index], isDark, formatCurrency),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+
+    final padding = EdgeInsets.fromLTRB(hPad, 22, hPad, 32);
+
+    if (wide) {
+      return SingleChildScrollView(
+        padding: padding,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [notice, outstanding],
+              ),
+            ),
+            const SizedBox(width: 24),
+            Expanded(flex: 3, child: history),
+          ],
+        ),
+      );
+    }
+
+    return ListView(
+      padding: padding,
+      children: [notice, outstanding, const SizedBox(height: 26), history],
+    );
+  }
+
+  Widget _buildReceiptRow(
+    Map<String, dynamic> tx,
+    bool isDark,
+    NumberFormat formatCurrency,
+  ) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(26),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ReceiptDetailView(tx: tx)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          children: [
+            const PIconBadge(
+              icon: Icons.receipt_long_rounded,
+              color: Colors.green,
+              size: 44,
+              iconSize: 20,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    tx['category'] ?? 'Fee Payment',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14.5,
+                      color: PUi.ink(isDark),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    DateFormat(
+                      'MMM d, yyyy',
+                    ).format(DateTime.parse(tx['created_at'])),
+                    style: TextStyle(fontSize: 12, color: PUi.muted(isDark)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              formatCurrency.format(tx['amount']),
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                color: Colors.green,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right_rounded, color: PUi.muted(isDark)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatCard(
+    String title,
+    String val,
+    IconData icon,
+    Color color,
+    bool isDark,
+  ) {
+    // "92.5% (37/40 Days)" is shown as a big value with a small caption.
+    String main = val;
+    String? sub;
+    final int cut = val.indexOf(' (');
+    if (cut > 0 && val.endsWith(')')) {
+      main = val.substring(0, cut);
+      sub = val.substring(cut + 2, val.length - 1);
+    }
+
+    return PCard(
+      radius: 26,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          PIconBadge(icon: icon, color: color, size: 42, iconSize: 20),
           const SizedBox(height: 16),
           Text(
             title,
             style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade500,
-              fontWeight: FontWeight.bold,
+              fontSize: 12.5,
+              color: PUi.muted(isDark),
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            val,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: color,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              main,
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+                color: PUi.ink(isDark),
+              ),
             ),
           ),
+          if (sub != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              sub,
+              style: TextStyle(fontSize: 12, color: PUi.muted(isDark)),
+            ),
+          ],
         ],
       ),
     );

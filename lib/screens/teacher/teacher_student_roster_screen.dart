@@ -1,5 +1,6 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -338,130 +339,163 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
     );
   }
 
+  // ===========================================================================
+  // 🖼️ UI ONLY — presentation below. Fetching, saving attendance, the QR scan
+  // handler and the scan pop-up above are untouched.
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color bgColor = PUi.bg(isDark);
+    Color cardColor = PUi.surface(isDark);
     Color primaryColor = Theme.of(context).primaryColor;
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+    Color textColor = PUi.ink(isDark);
 
     return Scaffold(
       backgroundColor: bgColor,
-      appBar: AppBar(
-        title: const Text(
-          "Class Roster",
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+      body: PBackdrop(
+        accent: primaryColor,
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final bool wide = constraints.maxWidth >= 700;
+              final double hPad = wide ? 32.0 : 20.0;
+
+              return Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 860),
+                  child: Column(
+                    children: [
+                      // ─── TOP BAR ───
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(hPad - 8, 8, hPad, 0),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              onPressed: () => Navigator.maybePop(context),
+                              style: IconButton.styleFrom(
+                                backgroundColor: cardColor,
+                                side: BorderSide(color: PUi.border(isDark)),
+                                minimumSize: const Size(44, 44),
+                              ),
+                              icon: Icon(
+                                Icons.arrow_back_rounded,
+                                color: textColor,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              "Class Roster",
+                              style: PUi.title(isDark, size: 24),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // ─── CLASS FILTER ───
+                      Container(
+                        margin: EdgeInsets.fromLTRB(hPad, 18, hPad, 0),
+                        child: _buildFilterDropdown(
+                          "Select Class",
+                          _myClasses,
+                          _selectedClass,
+                          (val) {
+                            setState(() {
+                              _selectedClass = val;
+                              _isLoading = true;
+                            });
+                            _fetchMyStudentsAndAttendance();
+                          },
+                          isDark,
+                          primaryColor,
+                          cardColor,
+                        ),
+                      ),
+
+                      // ─── PILL TAB BAR ───
+                      Container(
+                        margin: EdgeInsets.fromLTRB(hPad, 14, hPad, 10),
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: PUi.surfaceAlt(isDark),
+                          borderRadius: BorderRadius.circular(40),
+                        ),
+                        child: TabBar(
+                          controller: _tabController,
+                          labelColor: Colors.white,
+                          unselectedLabelColor: PUi.muted(isDark),
+                          indicatorSize: TabBarIndicatorSize.tab,
+                          dividerColor: Colors.transparent,
+                          splashBorderRadius: BorderRadius.circular(40),
+                          indicator: BoxDecoration(
+                            color: primaryColor,
+                            borderRadius: BorderRadius.circular(40),
+                          ),
+                          tabs: const [
+                            Tab(
+                              height: 42,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.list_alt_rounded, size: 18),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    "Manual List",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 13.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Tab(
+                              height: 42,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.qr_code_scanner_rounded, size: 18),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    "Scanner",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 13.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // ─── TABS CONTENT ───
+                      Expanded(
+                        child: _isLoading
+                            ? Center(child: TridetaLoader(color: primaryColor))
+                            : TabBarView(
+                                controller: _tabController,
+                                physics: const NeverScrollableScrollPhysics(),
+                                children: [
+                                  _buildManualTab(
+                                    cardColor,
+                                    isDark,
+                                    primaryColor,
+                                    textColor,
+                                    hPad,
+                                  ),
+                                  _buildScannerTab(primaryColor, isDark, hPad),
+                                ],
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
         ),
-        backgroundColor: bgColor,
-        foregroundColor: textColor,
-        elevation: 0,
-        centerTitle: true,
-      ),
-      body: Column(
-        children: [
-          // ─── PREMIUM CLASS FILTER ───
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            child: _buildFilterDropdown(
-              "Select Class",
-              _myClasses,
-              _selectedClass,
-              (val) {
-                setState(() {
-                  _selectedClass = val;
-                  _isLoading = true;
-                });
-                _fetchMyStudentsAndAttendance();
-              },
-              isDark,
-              primaryColor,
-              cardColor,
-            ),
-          ),
-
-          // ─── MODERN PILL TAB BAR ───
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white10 : Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: TabBar(
-              controller: _tabController,
-              labelColor: Colors.white,
-              unselectedLabelColor: isDark
-                  ? Colors.white70
-                  : Colors.grey.shade600,
-              indicatorSize: TabBarIndicatorSize.tab,
-              dividerColor: Colors.transparent,
-              indicator: BoxDecoration(
-                color: primaryColor,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: primaryColor.withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              tabs: const [
-                Tab(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.list_alt_rounded, size: 18),
-                      SizedBox(width: 8),
-                      Text(
-                        "Manual List",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Tab(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.qr_code_scanner_rounded, size: 18),
-                      SizedBox(width: 8),
-                      Text(
-                        "Scanner",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // ─── TABS CONTENT ───
-          Expanded(
-            child: _isLoading
-                ? Center(child: TridetaLoader(color: primaryColor))
-                : TabBarView(
-                    controller: _tabController,
-                    physics: const NeverScrollableScrollPhysics(),
-                    children: [
-                      _buildManualTab(
-                        cardColor,
-                        isDark,
-                        primaryColor,
-                        textColor,
-                      ),
-                      _buildScannerTab(primaryColor),
-                    ],
-                  ),
-          ),
-        ],
       ),
     );
   }
@@ -471,6 +505,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
     bool isDark,
     Color primaryColor,
     Color textColor,
+    double hPad,
   ) {
     if (_myClasses.isEmpty) {
       return _buildEmptyState(
@@ -492,20 +527,20 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.only(top: 10, bottom: 20),
+          padding: const EdgeInsets.only(top: 6, bottom: 14),
           child: Text(
             DateFormat('EEEE, MMMM d, yyyy').format(DateTime.now()),
             style: TextStyle(
-              color: Colors.grey.shade500,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.1,
+              color: PUi.muted(isDark),
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
               fontSize: 13,
             ),
           ),
         ),
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: EdgeInsets.symmetric(horizontal: hPad),
             itemCount: _allMyStudents.length,
             itemBuilder: (context, index) {
               final student = _allMyStudents[index];
@@ -518,60 +553,39 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
               String passportUrl = student['passport_url']?.toString() ?? "";
 
               return Container(
-                margin: const EdgeInsets.only(bottom: 16),
+                margin: const EdgeInsets.only(bottom: 14),
                 decoration: BoxDecoration(
                   color: cardColor,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isDark ? Colors.white10 : Colors.grey.shade200,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.02),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: PUi.border(isDark)),
+                  boxShadow: PUi.softShadow(isDark),
                 ),
                 child: Theme(
                   data: Theme.of(
                     context,
                   ).copyWith(dividerColor: Colors.transparent),
                   child: ExpansionTile(
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(26)),
+                    ),
+                    collapsedShape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(26)),
+                    ),
                     tilePadding: const EdgeInsets.symmetric(
-                      horizontal: 20,
+                      horizontal: 18,
                       vertical: 8,
                     ),
-                    leading: Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isDark ? Colors.white10 : Colors.grey.shade100,
-                          width: 2,
-                        ),
-                      ),
-                      child: CircleAvatar(
-                        radius: 22,
-                        backgroundColor: primaryColor.withValues(alpha: 0.1),
-                        backgroundImage: passportUrl.isNotEmpty
-                            ? NetworkImage(passportUrl)
-                            : null,
-                        child: passportUrl.isEmpty
-                            ? Text(
-                                initial,
-                                style: TextStyle(
-                                  color: primaryColor,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              )
-                            : null,
-                      ),
+                    leading: PAvatar(
+                      initial: initial,
+                      imageUrl: passportUrl,
+                      radius: 21,
+                      ringColor: primaryColor,
                     ),
                     title: Text(
                       "$lName $fName".trim().toUpperCase(),
                       style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14.5,
                         color: textColor,
                       ),
                     ),
@@ -579,47 +593,29 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                       padding: const EdgeInsets.only(top: 6),
                       child: Row(
                         children: [
-                          Text(
-                            student['admission_no']?.toString() ?? "N/A",
-                            style: TextStyle(
-                              color: Colors.grey[500],
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _getStatusColor(
-                                status,
-                              ).withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
+                          Flexible(
                             child: Text(
-                              status,
+                              student['admission_no']?.toString() ?? "N/A",
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: _getStatusColor(status),
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
+                                color: PUi.muted(isDark),
+                                fontSize: 12,
                               ),
                             ),
                           ),
+                          const SizedBox(width: 10),
+                          PPill(text: status, color: _getStatusColor(status)),
                         ],
                       ),
                     ),
                     childrenPadding: const EdgeInsets.only(
-                      left: 20,
-                      right: 20,
-                      bottom: 20,
+                      left: 18,
+                      right: 18,
+                      bottom: 18,
                     ),
                     children: [
-                      Divider(
-                        height: 1,
-                        color: isDark ? Colors.white10 : Colors.grey.shade100,
-                      ),
+                      Divider(height: 1, color: PUi.border(isDark)),
                       const SizedBox(height: 16),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
@@ -635,9 +631,9 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                                       label: Text(
                                         s,
                                         style: TextStyle(
-                                          fontSize: 12,
+                                          fontSize: 12.5,
                                           fontWeight: isSelected
-                                              ? FontWeight.bold
+                                              ? FontWeight.w800
                                               : FontWeight.w600,
                                         ),
                                       ),
@@ -645,17 +641,14 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                                       selectedColor: _getStatusColor(
                                         s,
                                       ).withValues(alpha: 0.15),
-                                      backgroundColor: isDark
-                                          ? Colors.white.withValues(alpha: 0.05)
-                                          : Colors.grey.shade50,
+                                      backgroundColor: PUi.surfaceAlt(isDark),
                                       labelStyle: TextStyle(
                                         color: isSelected
                                             ? _getStatusColor(s)
-                                            : Colors.grey.shade500,
+                                            : PUi.muted(isDark),
                                       ),
                                       showCheckmark: false,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
+                                      shape: StadiumBorder(
                                         side: BorderSide(
                                           color: isSelected
                                               ? _getStatusColor(
@@ -679,7 +672,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                           Container(
                             margin: const EdgeInsets.only(left: 12),
                             decoration: BoxDecoration(
-                              color: primaryColor.withValues(alpha: 0.1),
+                              color: PUi.tint(primaryColor, isDark, 0.1),
                               shape: BoxShape.circle,
                             ),
                             child: IconButton(
@@ -707,97 +700,101 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
           ),
         ),
         Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 20,
-                offset: const Offset(0, -10),
-              ),
-            ],
-          ),
           width: double.infinity,
+          padding: EdgeInsets.fromLTRB(hPad, 16, hPad, 20),
+          decoration: BoxDecoration(
+            color: PUi.surface(isDark),
+            border: Border(top: BorderSide(color: PUi.border(isDark))),
+          ),
           child: FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: primaryColor,
-              padding: const EdgeInsets.symmetric(vertical: 18),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+            style: PUi.filledPill(primaryColor, height: 56).copyWith(
+              textStyle: const WidgetStatePropertyAll(
+                TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
               ),
             ),
             onPressed: _saveManualAttendance,
-            child: const Text(
-              "Save Batch Attendance",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
+            child: const Text("Save Batch Attendance"),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildScannerTab(Color primaryColor) {
+  Widget _buildScannerTab(Color primaryColor, bool isDark, double hPad) {
     if (_selectedClass == null) {
-      return const Center(child: Text("Please select a class first."));
+      return Center(
+        child: Text(
+          "Please select a class first.",
+          style: TextStyle(color: PUi.muted(isDark)),
+        ),
+      );
     }
 
-    return Stack(
-      children: [
-        MobileScanner(controller: _scannerController, onDetect: _onDetect),
-        Center(
-          child: Container(
-            width: 250,
-            height: 250,
-            decoration: BoxDecoration(
-              border: Border.all(color: primaryColor, width: 3),
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: primaryColor.withValues(alpha: 0.2),
-                  blurRadius: 20,
-                  spreadRadius: 5,
-                ),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: 40,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E).withValues(alpha: 0.9),
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: Colors.white24),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.qr_code_scanner, color: Colors.white, size: 20),
-                  SizedBox(width: 12),
-                  Text(
-                    "Scan Student ID Card",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+    return Padding(
+      padding: EdgeInsets.fromLTRB(hPad, 4, hPad, 20),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            MobileScanner(controller: _scannerController, onDetect: _onDetect),
+            Center(
+              child: Container(
+                width: 250,
+                height: 250,
+                decoration: BoxDecoration(
+                  border: Border.all(color: primaryColor, width: 3),
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primaryColor.withValues(alpha: 0.2),
+                      blurRadius: 20,
+                      spreadRadius: 5,
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
+            Positioned(
+              bottom: 28,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E1E).withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.qr_code_scanner, color: Colors.white, size: 20),
+                      SizedBox(width: 12),
+                      Text(
+                        "Scan Student ID Card",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (_isProcessingScan)
+              Container(
+                color: Colors.black.withValues(alpha: 0.6),
+                child: Center(child: TridetaLoader(color: primaryColor)),
+              ),
+          ],
         ),
-        if (_isProcessingScan)
-          Container(
-            color: Colors.black.withValues(alpha: 0.6),
-            child: Center(child: TridetaLoader(color: primaryColor)),
-          ),
-      ],
+      ),
     );
   }
 
@@ -827,20 +824,12 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
   ) {
     if (items.isEmpty) return const SizedBox.shrink();
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: PUi.border(isDark)),
+        boxShadow: PUi.softShadow(isDark),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -849,7 +838,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
           hint: Text(
             hint,
             style: TextStyle(
-              color: Colors.grey.shade500,
+              color: PUi.muted(isDark),
               fontSize: 14,
               fontWeight: FontWeight.w600,
             ),
@@ -857,7 +846,7 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
           icon: Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: primaryColor.withValues(alpha: 0.1),
+              color: PUi.tint(primaryColor, isDark, 0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -872,17 +861,18 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
                   value: e,
                   child: Text(
                     e,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w800,
+                      color: PUi.ink(isDark),
                     ),
                   ),
                 ),
               )
               .toList(),
           onChanged: onChanged,
-          dropdownColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          dropdownColor: PUi.surface(isDark),
+          borderRadius: BorderRadius.circular(20),
         ),
       ),
     );
@@ -894,39 +884,32 @@ class _TeacherStudentRosterScreenState extends State<TeacherStudentRosterScreen>
     IconData icon,
     bool isDark,
   ) {
+    final Color accent = Theme.of(context).primaryColor;
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.05)
-                  : Colors.grey.shade100,
-              shape: BoxShape.circle,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PIconBadge(icon: icon, color: accent, size: 96, iconSize: 44),
+            const SizedBox(height: 22),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: PUi.ink(isDark),
+              ),
             ),
-            child: Icon(
-              icon,
-              size: 60,
-              color: isDark ? Colors.white24 : Colors.grey[400],
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: Text(
+            const SizedBox(height: 8),
+            Text(
               message,
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[500], fontSize: 14),
+              style: TextStyle(color: PUi.muted(isDark), fontSize: 14),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

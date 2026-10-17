@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 
 class StudentControlsBar extends StatelessWidget {
   final Color primaryColor;
@@ -26,31 +27,23 @@ class StudentControlsBar extends StatelessWidget {
     required this.onSortChanged,
   });
 
+  BoxDecoration _pillDecoration() => BoxDecoration(
+    color: PUi.surface(isDark),
+    borderRadius: BorderRadius.circular(30),
+    border: Border.all(color: PUi.border(isDark)),
+  );
+
   @override
   Widget build(BuildContext context) {
     final searchField = Container(
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
-      ),
+      decoration: _pillDecoration(),
       child: TextField(
         onChanged: onSearchChanged,
-        style: TextStyle(
-          fontSize: 14,
-          color: isDark ? Colors.white : Colors.black87,
-        ),
+        style: TextStyle(fontSize: 14, color: PUi.ink(isDark)),
         decoration: InputDecoration(
           hintText: "Search by name...",
-          hintStyle: TextStyle(
-            color: isDark ? Colors.white30 : Colors.grey.shade400,
-          ),
-          prefixIcon: Icon(
-            Icons.search_rounded,
-            color: isDark ? Colors.white54 : Colors.grey.shade400,
-          ),
+          hintStyle: TextStyle(color: PUi.muted(isDark)),
+          prefixIcon: Icon(Icons.search_rounded, color: PUi.muted(isDark)),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
@@ -64,29 +57,23 @@ class StudentControlsBar extends StatelessWidget {
       children: [
         Expanded(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.05)
-                  : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isDark ? Colors.white10 : Colors.grey.shade200,
-              ),
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
+            decoration: _pillDecoration(),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 isExpanded: true,
                 value: selectedClassFilter,
+                dropdownColor: PUi.surface(isDark),
+                borderRadius: BorderRadius.circular(20),
                 icon: Icon(
                   Icons.filter_list_rounded,
-                  color: Colors.grey.shade400,
+                  color: PUi.muted(isDark),
                   size: 18,
                 ),
                 style: TextStyle(
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w700,
                   fontSize: 13,
-                  color: isDark ? Colors.white : Colors.black87,
+                  color: PUi.ink(isDark),
                 ),
                 items: availableClasses.map((String value) {
                   return DropdownMenuItem<String>(
@@ -106,29 +93,23 @@ class StudentControlsBar extends StatelessWidget {
         const SizedBox(width: 12),
         Expanded(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.05)
-                  : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isDark ? Colors.white10 : Colors.grey.shade200,
-              ),
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
+            decoration: _pillDecoration(),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 isExpanded: true,
                 value: selectedSort,
+                dropdownColor: PUi.surface(isDark),
+                borderRadius: BorderRadius.circular(20),
                 icon: Icon(
                   Icons.sort_rounded,
-                  color: Colors.grey.shade400,
+                  color: PUi.muted(isDark),
                   size: 18,
                 ),
                 style: TextStyle(
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w700,
                   fontSize: 13,
-                  color: isDark ? Colors.white : Colors.black87,
+                  color: PUi.ink(isDark),
                 ),
                 items:
                     [

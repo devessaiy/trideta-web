@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:trideta_v2/screens/admin/student_profile_screen.dart';
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 
 class StudentListCard extends StatelessWidget {
   final dynamic student;
@@ -34,135 +35,160 @@ class StudentListCard extends StatelessWidget {
     String displayFullName = "$lName $fName".trim();
     String avatarUrl = student['passport_url']?.toString() ?? "";
 
-    return InkWell(
-      onLongPress: () {
-        if (!isSelecting) {
-          onToggleSelection(sId);
-        }
-      },
-      onTap: () {
-        if (isSelecting) {
-          onToggleSelection(sId);
-        } else {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => StudentProfileScreen(
-                name: displayFullName,
-                id: sId,
-                studentClass: classLevel,
-                imagePath: avatarUrl.isNotEmpty ? avatarUrl : null,
-                parentPhone: student['parent_phone'],
-                parentEmail: student['parent_email'],
-              ),
-            ),
-          ).then((_) => onRefresh());
-        }
-      },
-      child: Container(
+    final BorderRadius br = BorderRadius.circular(26);
+
+    return Container(
+      decoration: BoxDecoration(
         color: isSelected
-            ? primaryColor.withValues(alpha: 0.1)
-            : Colors.transparent,
-        child: Column(
-          children: [
-            ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 4,
-              ),
-              leading: Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 26,
-                    backgroundColor: primaryColor.withValues(alpha: 0.1),
-                    backgroundImage: avatarUrl.isNotEmpty
-                        ? NetworkImage(avatarUrl)
-                        : null,
-                    child: avatarUrl.isEmpty
-                        ? Text(
-                            initial,
-                            style: TextStyle(
-                              color: primaryColor,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          )
-                        : null,
+            ? PUi.tint(primaryColor, isDark, 0.08)
+            : PUi.surface(isDark),
+        borderRadius: br,
+        border: Border.all(
+          color: isSelected
+              ? primaryColor.withValues(alpha: 0.6)
+              : PUi.border(isDark),
+          width: isSelected ? 1.6 : 1,
+        ),
+        boxShadow: PUi.softShadow(isDark),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: br,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onLongPress: () {
+            if (!isSelecting) {
+              onToggleSelection(sId);
+            }
+          },
+          onTap: () {
+            if (isSelecting) {
+              onToggleSelection(sId);
+            } else {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => StudentProfileScreen(
+                    name: displayFullName,
+                    id: sId,
+                    studentClass: classLevel,
+                    imagePath: avatarUrl.isNotEmpty ? avatarUrl : null,
+                    parentPhone: student['parent_phone'],
+                    parentEmail: student['parent_email'],
                   ),
-                  if (isSelected)
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: const BoxDecoration(
-                          color: Colors.green,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.check,
-                          size: 12,
-                          color: Colors.white,
+                ),
+              ).then((_) => onRefresh());
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                Stack(
+                  children: [
+                    PAvatar(
+                      initial: initial,
+                      imageUrl: avatarUrl,
+                      radius: 24,
+                      ringColor: primaryColor,
+                    ),
+                    if (isSelected)
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: Colors.green,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: PUi.surface(isDark),
+                              width: 2,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.check,
+                            size: 12,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
-                    ),
-                ],
-              ),
-              title: Text(
-                displayFullName.toUpperCase(),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
+                  ],
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              subtitle: Row(
-                children: [
-                  Icon(
-                    Icons.badge_rounded,
-                    size: 14,
-                    color: Colors.grey.shade500,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        displayFullName.toUpperCase(),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14.5,
+                          color: PUi.ink(isDark),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.badge_rounded,
+                            size: 14,
+                            color: PUi.muted(isDark),
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              admNo,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: PUi.muted(isDark),
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Icon(
+                            Icons.person_rounded,
+                            size: 14,
+                            color: PUi.muted(isDark),
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              gender,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: PUi.muted(isDark),
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 4),
-                  Text(
-                    admNo,
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
-                  ),
-                  const SizedBox(width: 12),
-                  Icon(
-                    Icons.person_rounded,
-                    size: 14,
-                    color: Colors.grey.shade500,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    gender,
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
-                  ),
-                ],
-              ),
-              trailing: isSelecting
-                  ? Checkbox(
-                      value: isSelected,
-                      activeColor: primaryColor,
-                      shape: const CircleBorder(),
-                      onChanged: (_) => onToggleSelection(sId),
-                    )
-                  : Icon(
-                      Icons.chevron_right_rounded,
-                      color: Colors.grey.shade400,
-                    ),
+                ),
+                const SizedBox(width: 8),
+                isSelecting
+                    ? Checkbox(
+                        value: isSelected,
+                        activeColor: primaryColor,
+                        shape: const CircleBorder(),
+                        onChanged: (_) => onToggleSelection(sId),
+                      )
+                    : Icon(
+                        Icons.chevron_right_rounded,
+                        color: PUi.muted(isDark),
+                      ),
+              ],
             ),
-            Padding(
-              // Indented divider just like WhatsApp
-              padding: const EdgeInsets.only(left: 76, right: 20),
-              child: Divider(
-                height: 1,
-                color: isDark ? Colors.white10 : Colors.grey.shade200,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 
 class AdminBottomNavBar extends StatelessWidget {
   final int selectedIndex;
@@ -43,67 +44,60 @@ class AdminBottomNavBar extends StatelessWidget {
       },
     ];
 
-    // 🚨 FIX: Removed the massive gradient wrapper.
-    // Now it is just a completely transparent SafeArea holding the floating pill!
+    // A floating frosted pill that sits over the page content.
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 24.0, left: 24.0, right: 24.0),
+        padding: const EdgeInsets.only(bottom: 20.0, left: 20.0, right: 20.0),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // The shadow sits strictly behind the pill
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(40),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.1),
-                    blurRadius: 25,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(40),
-                child: BackdropFilter(
-                  // Strong blur so content passing underneath looks like frosted glass
-                  filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      // Highly transparent background allows the blur to shine through
-                      color: isDark
-                          ? const Color(0xFF1E1E1E).withValues(alpha: 0.55)
-                          : Colors.white.withValues(alpha: 0.65),
-                      borderRadius: BorderRadius.circular(40),
-                      border: Border.all(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.15)
-                            : Colors.black.withValues(alpha: 0.05),
-                        width: 1,
+            Flexible(
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(40),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(
+                        alpha: isDark ? 0.35 : 0.10,
                       ),
+                      blurRadius: 25,
+                      offset: const Offset(0, 10),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(navItems.length, (index) {
-                        final item = navItems[index];
-                        final bool isActive = selectedIndex == index;
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(40),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: PUi.surface(isDark).withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(40),
+                        border: Border.all(color: PUi.border(isDark), width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(navItems.length, (index) {
+                          final item = navItems[index];
+                          final bool isActive = selectedIndex == index;
 
-                        return _buildNavItem(
-                          context: context,
-                          isActive: isActive,
-                          activeIcon: item['activeIcon'] as IconData,
-                          inactiveIcon: item['inactiveIcon'] as IconData,
-                          label: item['label'] as String,
-                          index: index,
-                          isDark: isDark,
-                        );
-                      }),
+                          return _buildNavItem(
+                            context: context,
+                            isActive: isActive,
+                            activeIcon: item['activeIcon'] as IconData,
+                            inactiveIcon: item['inactiveIcon'] as IconData,
+                            label: item['label'] as String,
+                            index: index,
+                            isDark: isDark,
+                          );
+                        }),
+                      ),
                     ),
                   ),
                 ),
@@ -124,14 +118,7 @@ class AdminBottomNavBar extends StatelessWidget {
     required int index,
     required bool isDark,
   }) {
-    final Color activePillBg = isDark
-        ? Colors.white.withValues(alpha: 0.15)
-        : primaryColor.withValues(alpha: 0.15);
-
-    final Color activeItemColor = primaryColor;
-    final Color inactiveItemColor = isDark
-        ? Colors.white70
-        : Colors.grey.shade700;
+    final Color inactiveItemColor = PUi.muted(isDark);
 
     return GestureDetector(
       onTap: () {
@@ -147,7 +134,7 @@ class AdminBottomNavBar extends StatelessWidget {
           vertical: 12,
         ),
         decoration: BoxDecoration(
-          color: isActive ? activePillBg : Colors.transparent,
+          color: isActive ? primaryColor : Colors.transparent,
           borderRadius: BorderRadius.circular(30),
         ),
         child: Row(
@@ -155,17 +142,17 @@ class AdminBottomNavBar extends StatelessWidget {
           children: [
             Icon(
               isActive ? activeIcon : inactiveIcon,
-              size: isActive ? 28 : 24,
-              color: isActive ? activeItemColor : inactiveItemColor,
+              size: 24,
+              color: isActive ? Colors.white : inactiveItemColor,
             ),
             if (isActive) ...[
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Text(
                 label,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
-                  color: activeItemColor,
+                  color: Colors.white,
                 ),
               ),
             ],

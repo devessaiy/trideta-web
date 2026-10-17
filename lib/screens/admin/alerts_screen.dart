@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:trideta_v2/services/read_through.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
@@ -752,10 +753,15 @@ class _AlertsScreenState extends State<AlertsScreen>
     );
   }
 
+  // ===========================================================================
+  // 🖼️ UI ONLY — presentation below. Alert loading, the financial health
+  // calculation, selection/deletion, debtor alerts and the "post alert"
+  // dialog above are untouched.
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
+    Color bgColor = PUi.bg(isDark);
     Color primaryColor = Theme.of(context).primaryColor;
 
     if (_isLoading) {
@@ -767,120 +773,137 @@ class _AlertsScreenState extends State<AlertsScreen>
 
     return Scaffold(
       backgroundColor: bgColor,
-      appBar: AppBar(
-        title: Text(
-          _isSelecting
-              ? "${_selectedAlertKeys.length} Selected"
-              : "Action Center",
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        backgroundColor: bgColor,
-        foregroundColor: isDark ? Colors.white : Colors.black87,
-        elevation: 0,
-        centerTitle: true,
-        actions: [
-          if (_isSelecting)
-            IconButton(
-              icon: const Icon(
-                Icons.delete_outline_rounded,
-                color: Colors.redAccent,
+      body: PBackdrop(
+        accent: primaryColor,
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 860),
+              child: Column(
+                children: [
+                  // ─── HEADER ───
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 16, 0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _isSelecting
+                                ? "${_selectedAlertKeys.length} Selected"
+                                : "Action Center",
+                            style: PUi.title(isDark, size: 30),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (_isSelecting)
+                          IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: PUi.tint(
+                                Colors.redAccent,
+                                isDark,
+                                0.1,
+                              ),
+                              minimumSize: const Size(46, 46),
+                            ),
+                            icon: const Icon(
+                              Icons.delete_outline_rounded,
+                              color: Colors.redAccent,
+                            ),
+                            onPressed: _deleteSelectedAlerts,
+                          ),
+                        if (_isSelecting) const SizedBox(width: 8),
+                        if (_isSelecting)
+                          IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: PUi.surface(isDark),
+                              side: BorderSide(color: PUi.border(isDark)),
+                              minimumSize: const Size(46, 46),
+                            ),
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: PUi.ink(isDark),
+                            ),
+                            onPressed: () => setState(() {
+                              _selectedAlertKeys.clear();
+                              _selectedAlertsData.clear();
+                              _isSelecting = false;
+                            }),
+                          ),
+                        if (!_isSelecting && _tabController.index == 0)
+                          IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              minimumSize: const Size(48, 48),
+                            ),
+                            icon: const Icon(
+                              Icons.add_rounded,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                            tooltip: "Post New Alert",
+                            onPressed: _showCreateAlertDialog,
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  // ─── PILL TABS ───
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(24, 18, 24, 8),
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: PUi.surfaceAlt(isDark),
+                      borderRadius: BorderRadius.circular(40),
+                    ),
+                    child: TabBar(
+                      controller: _tabController,
+                      dividerColor: Colors.transparent,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      splashBorderRadius: BorderRadius.circular(40),
+                      indicator: BoxDecoration(
+                        color: primaryColor,
+                        borderRadius: BorderRadius.circular(40),
+                      ),
+                      labelColor: Colors.white,
+                      unselectedLabelColor: PUi.muted(isDark),
+                      labelStyle: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13.5,
+                      ),
+                      unselectedLabelStyle: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
+                      tabs: const [
+                        Tab(
+                          height: 42,
+                          text: "Alerts",
+                          iconMargin: EdgeInsets.zero,
+                        ),
+                        Tab(
+                          height: 42,
+                          text: "Social",
+                          iconMargin: EdgeInsets.zero,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  Expanded(
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildAlertsTab(isDark, primaryColor),
+                        _buildSocialFeedsPlaceholderTab(isDark, primaryColor),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              onPressed: _deleteSelectedAlerts,
-            ),
-          if (_isSelecting)
-            IconButton(
-              icon: const Icon(Icons.close_rounded),
-              onPressed: () => setState(() {
-                _selectedAlertKeys.clear();
-                _selectedAlertsData.clear();
-                _isSelecting = false;
-              }),
-            ),
-          if (!_isSelecting && _tabController.index == 0)
-            IconButton(
-              icon: Icon(
-                Icons.add_circle_outline_rounded,
-                color: primaryColor,
-                size: 28,
-              ),
-              tooltip: "Post New Alert",
-              onPressed: _showCreateAlertDialog,
-            ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(60),
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.05)
-                  : Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: TabBar(
-              controller: _tabController,
-              dividerColor: Colors.transparent,
-              indicatorSize: TabBarIndicatorSize.tab,
-              indicator: BoxDecoration(
-                color: primaryColor,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              labelColor: Colors.white,
-              unselectedLabelColor: isDark
-                  ? Colors.white54
-                  : Colors.grey.shade600,
-              labelStyle: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-              tabs: const [
-                Tab(text: "ALERTS", iconMargin: EdgeInsets.zero),
-                Tab(text: "SOCIAL", iconMargin: EdgeInsets.zero),
-              ],
             ),
           ),
         ),
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth > 800) {
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 800),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: bgColor,
-                    border: Border(
-                      left: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
-                      ),
-                      right: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                        width: 1,
-                      ),
-                    ),
-                  ),
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildAlertsTab(isDark, primaryColor),
-                      _buildSocialFeedsPlaceholderTab(isDark, primaryColor),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          } else {
-            return TabBarView(
-              controller: _tabController,
-              children: [
-                _buildAlertsTab(isDark, primaryColor),
-                _buildSocialFeedsPlaceholderTab(isDark, primaryColor),
-              ],
-            );
-          }
-        },
       ),
     );
   }
@@ -888,24 +911,22 @@ class _AlertsScreenState extends State<AlertsScreen>
   Widget _buildHealthCard(bool isDark) {
     if (_totalExpectedFees == 0) {
       return Container(
-        margin: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+        margin: const EdgeInsets.only(top: 8, bottom: 20),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(20),
+          color: PUi.surfaceAlt(isDark),
+          borderRadius: BorderRadius.circular(26),
         ),
         child: Row(
           children: [
-            Icon(Icons.info_outline_rounded, color: Colors.grey.shade600),
+            Icon(Icons.info_outline_rounded, color: PUi.muted(isDark)),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 "Awaiting financial data for $_currentTerm, $_currentSession.",
                 style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontWeight: FontWeight.bold,
+                  color: PUi.muted(isDark),
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
@@ -954,12 +975,13 @@ class _AlertsScreenState extends State<AlertsScreen>
     }
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-      padding: const EdgeInsets.all(24),
+      margin: const EdgeInsets.only(top: 8, bottom: 20),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: textColor.withValues(alpha: 0.3), width: 1.5),
+        color: PUi.surface(isDark),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: textColor.withValues(alpha: 0.35), width: 1.5),
+        boxShadow: PUi.softShadow(isDark),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -968,8 +990,8 @@ class _AlertsScreenState extends State<AlertsScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                width: 60,
-                height: 60,
+                width: 64,
+                height: 64,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -980,7 +1002,7 @@ class _AlertsScreenState extends State<AlertsScreen>
                       valueColor: AlwaysStoppedAnimation<Color>(textColor),
                       strokeCap: StrokeCap.round,
                     ),
-                    Center(child: Icon(icon, color: textColor, size: 24)),
+                    Center(child: Icon(icon, color: textColor, size: 26)),
                   ],
                 ),
               ),
@@ -995,16 +1017,16 @@ class _AlertsScreenState extends State<AlertsScreen>
                         fontWeight: FontWeight.w900,
                         color: textColor,
                         fontSize: 16,
-                        letterSpacing: -0.5,
+                        letterSpacing: -0.3,
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       subtitle,
                       style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.white70 : Colors.grey.shade600,
-                        height: 1.4,
+                        fontSize: 12.5,
+                        color: PUi.muted(isDark),
+                        height: 1.45,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -1017,15 +1039,13 @@ class _AlertsScreenState extends State<AlertsScreen>
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
-              height: 45,
+              height: 50,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
                   backgroundColor: textColor,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  shape: const StadiumBorder(),
                 ),
                 onPressed: _isSendingDebtorAlert ? null : _showDebtorOptions,
                 icon: _isSendingDebtorAlert
@@ -1057,6 +1077,7 @@ class _AlertsScreenState extends State<AlertsScreen>
       child: _hasError && _alerts.isEmpty
           ? ListView(
               physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               children: [
                 _buildHealthCard(isDark),
                 SizedBox(
@@ -1072,7 +1093,7 @@ class _AlertsScreenState extends State<AlertsScreen>
             )
           : ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.only(bottom: 100),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
               children: [
                 _buildHealthCard(isDark),
                 if (_alerts.isEmpty)
@@ -1112,61 +1133,32 @@ class _AlertsScreenState extends State<AlertsScreen>
 
   Widget _buildSocialFeedsPlaceholderTab(bool isDark, Color primaryColor) {
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(30),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: primaryColor.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.dynamic_feed_rounded,
-                size: 60,
-                color: primaryColor,
-              ),
+            PIconBadge(
+              icon: Icons.dynamic_feed_rounded,
+              color: primaryColor,
+              size: 120,
+              iconSize: 56,
             ),
-            const SizedBox(height: 20),
-            Text(
-              "Social Feeds",
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                color: isDark ? Colors.white : Colors.black87,
-                letterSpacing: -0.5,
-              ),
-            ),
+            const SizedBox(height: 24),
+            Text("Social Feeds", style: PUi.title(isDark, size: 24)),
             const SizedBox(height: 12),
             Text(
               "We are building a vibrant community space. Soon, you'll be able to share pictures, events, and school highlights directly with parents and students right here.",
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: isDark ? Colors.white54 : Colors.grey[600],
+                color: PUi.muted(isDark),
                 fontSize: 14,
-                height: 1.5,
+                height: 1.55,
                 fontWeight: FontWeight.w500,
               ),
             ),
-            const SizedBox(height: 30),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.white10 : Colors.grey.shade200,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text(
-                "COMING SOON",
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 10,
-                  letterSpacing: 1.5,
-                  color: Colors.grey,
-                ),
-              ),
-            ),
+            const SizedBox(height: 28),
+            PPill(text: "COMING SOON", color: primaryColor),
           ],
         ),
       ),
@@ -1177,26 +1169,26 @@ class _AlertsScreenState extends State<AlertsScreen>
     child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: d
-                ? Colors.white.withValues(alpha: 0.05)
-                : Colors.grey.shade100,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(i, size: 40, color: Colors.grey.shade400),
+        PIconBadge(
+          icon: i,
+          color: PUi.muted(d),
+          size: 88,
+          iconSize: 40,
         ),
         const SizedBox(height: 20),
         Text(
           t,
-          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+            color: PUi.ink(d),
+          ),
         ),
         const SizedBox(height: 8),
         Text(
           s,
           style: TextStyle(
-            color: Colors.grey.shade500,
+            color: PUi.muted(d),
             fontSize: 13,
             fontWeight: FontWeight.w500,
           ),
@@ -1256,12 +1248,29 @@ class _CollapsibleAlertCardState extends State<_CollapsibleAlertCard> {
       badgeText = "Website";
     }
 
-    return Column(
-      children: [
-        Container(
+    final bool d = widget.isDark;
+    final BorderRadius br = BorderRadius.circular(26);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        decoration: BoxDecoration(
           color: widget.isSelected
-              ? widget.primaryColor.withValues(alpha: 0.1)
-              : Colors.transparent,
+              ? PUi.tint(widget.primaryColor, d, 0.08)
+              : PUi.surface(d),
+          borderRadius: br,
+          border: Border.all(
+            color: widget.isSelected
+                ? widget.primaryColor.withValues(alpha: 0.6)
+                : PUi.border(d),
+            width: widget.isSelected ? 1.6 : 1,
+          ),
+          boxShadow: PUi.softShadow(d),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: br,
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
             onLongPress: () => widget.onToggleSelection(widget.alert),
             onTap: () {
@@ -1272,13 +1281,13 @@ class _CollapsibleAlertCardState extends State<_CollapsibleAlertCard> {
               }
             },
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              padding: const EdgeInsets.all(18),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (widget.isSelecting) ...[
                     Padding(
-                      padding: const EdgeInsets.only(top: 10.0, right: 16.0),
+                      padding: const EdgeInsets.only(top: 6.0, right: 12.0),
                       child: Checkbox(
                         value: widget.isSelected,
                         onChanged: (_) =>
@@ -1294,29 +1303,10 @@ class _CollapsibleAlertCardState extends State<_CollapsibleAlertCard> {
                       children: [
                         Row(
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: typeColor.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(typeIcon, size: 14, color: typeColor),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    badgeText,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: typeColor,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                            PPill(
+                              text: badgeText,
+                              color: typeColor,
+                              icon: typeIcon,
                             ),
                             const Spacer(),
                             Text(
@@ -1328,24 +1318,25 @@ class _CollapsibleAlertCardState extends State<_CollapsibleAlertCard> {
                                     )
                                   : '',
                               style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey.shade500,
-                                fontWeight: FontWeight.bold,
+                                fontSize: 11.5,
+                                color: PUi.muted(d),
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 14),
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(
                               child: Text(
                                 widget.alert['title'] ?? 'Notice',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
                                   fontSize: 16,
-                                  letterSpacing: -0.5,
+                                  letterSpacing: -0.3,
+                                  color: PUi.ink(d),
                                 ),
                               ),
                             ),
@@ -1354,7 +1345,7 @@ class _CollapsibleAlertCardState extends State<_CollapsibleAlertCard> {
                               _isExpanded
                                   ? Icons.keyboard_arrow_up_rounded
                                   : Icons.keyboard_arrow_down_rounded,
-                              color: Colors.grey.shade400,
+                              color: PUi.muted(d),
                             ),
                           ],
                         ),
@@ -1372,11 +1363,9 @@ class _CollapsibleAlertCardState extends State<_CollapsibleAlertCard> {
                             child: Text(
                               widget.alert['message'] ?? '',
                               style: TextStyle(
-                                color: widget.isDark
-                                    ? Colors.white70
-                                    : Colors.grey.shade700,
-                                height: 1.5,
-                                fontSize: 13,
+                                color: d ? Colors.white70 : Colors.black87,
+                                height: 1.55,
+                                fontSize: 13.5,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -1390,11 +1379,7 @@ class _CollapsibleAlertCardState extends State<_CollapsibleAlertCard> {
             ),
           ),
         ),
-        Divider(
-          height: 1,
-          color: widget.isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
-      ],
+      ),
     );
   }
 }

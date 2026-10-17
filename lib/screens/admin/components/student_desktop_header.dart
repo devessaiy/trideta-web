@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 import 'student_quick_actions_box.dart';
 
 class StudentDesktopHeader extends StatelessWidget {
@@ -26,16 +27,15 @@ class StudentDesktopHeader extends StatelessWidget {
     Color color,
   ) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
+        color: PUi.tint(color, isDark, 0.1),
+        borderRadius: BorderRadius.circular(30),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 28, color: color),
+          Icon(icon, size: 26, color: color),
           const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -44,17 +44,17 @@ class StudentDesktopHeader extends StatelessWidget {
                 label,
                 style: TextStyle(
                   fontSize: 11,
-                  color: isDark ? Colors.white70 : Colors.grey.shade600,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
+                  color: PUi.muted(isDark),
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
                 ),
               ),
               Text(
                 value,
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: 20,
                   color: color,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ],
@@ -66,44 +66,23 @@ class StudentDesktopHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(30),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.grey.shade200,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: PCard(
+            radius: 30,
+            padding: const EdgeInsets.all(28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 🚨 FIXED: Title updated to "Status Card"
-                Text(
-                  "Status Card",
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
-                ),
+                Text("Status Card", style: PUi.title(isDark, size: 28)),
                 const SizedBox(height: 8),
                 Text(
                   "Manage enrollments, assign classes, and access full academic records across the institution.",
                   style: TextStyle(
                     fontSize: 14,
-                    color: isDark ? Colors.white70 : Colors.grey.shade600,
+                    color: PUi.muted(isDark),
                     height: 1.5,
                   ),
                 ),
@@ -135,14 +114,14 @@ class StudentDesktopHeader extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 30),
-          StudentQuickActionsBox(
-            primaryColor: primaryColor,
-            isDark: isDark,
-            onRefresh: onRefresh,
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 24),
+        StudentQuickActionsBox(
+          primaryColor: primaryColor,
+          isDark: isDark,
+          onRefresh: onRefresh,
+        ),
+      ],
     );
   }
 }

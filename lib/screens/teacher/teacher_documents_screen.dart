@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/services/docs_storage.dart';
 import 'package:trideta_v2/utils/resilient_request.dart';
 import 'package:trideta_v2/widgets/docs_widgets.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 
 /// Teachers download the syllabus and scheme of work from the admin, and send
 /// their lesson notes (PDF) back for approval.
@@ -145,89 +147,138 @@ class _TeacherDocumentsScreenState extends State<TeacherDocumentsScreen> {
     if (changed == true) await _load();
   }
 
+  // ===========================================================================
+  // 🖼️ UI ONLY — presentation below. Loading, opening files and the two
+  // bottom-sheet launchers above are untouched.
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
+    Color bgColor = PUi.bg(isDark);
     Color primaryColor = Theme.of(context).primaryColor;
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+    Color textColor = PUi.ink(isDark);
 
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         backgroundColor: bgColor,
-        appBar: AppBar(
-          title: const Text(
-            'Lesson Notes & Documents',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-          ),
-          backgroundColor: bgColor,
-          foregroundColor: textColor,
-          elevation: 0,
-          centerTitle: true,
-          // 🚨 UI UPGRADE: Integrated the exact AlertsScreen TabBar layout
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(60),
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : Colors.grey.shade200,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: TabBar(
-                dividerColor: Colors.transparent,
-                indicatorSize: TabBarIndicatorSize.tab,
-                indicator: BoxDecoration(
-                  color: primaryColor,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                labelColor: Colors.white,
-                unselectedLabelColor: isDark
-                    ? Colors.white54
-                    : Colors.grey.shade600,
-                labelStyle: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-                tabs: const [
-                  Tab(text: 'FROM ADMIN', iconMargin: EdgeInsets.zero),
-                  Tab(text: 'MY NOTES', iconMargin: EdgeInsets.zero),
-                ],
-              ),
-            ),
-          ),
-        ),
         floatingActionButton: Builder(
           builder: (ctx) => FloatingActionButton.extended(
             onPressed: _loading ? null : _newNote,
             backgroundColor: primaryColor,
-            elevation: 4,
+            elevation: 3,
+            shape: const StadiumBorder(),
             icon: const Icon(Icons.note_add_rounded, color: Colors.white),
             label: const Text(
-              'NEW LESSON NOTE',
+              'New Lesson Note',
               style: TextStyle(
                 color: Colors.white,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.0,
+                fontWeight: FontWeight.w800,
+                fontSize: 15,
               ),
             ),
           ),
         ),
-        body: _loading
-            ? Center(child: CircularProgressIndicator(color: primaryColor))
-            : TabBarView(
-                children: [
-                  _buildDocs(isDark, primaryColor, textColor),
-                  _buildNotes(isDark, primaryColor, textColor),
-                ],
+        body: PBackdrop(
+          accent: primaryColor,
+          child: SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 860),
+                child: Column(
+                  children: [
+                    // ─── TOP BAR ───
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 20, 0),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            onPressed: () => Navigator.maybePop(context),
+                            style: IconButton.styleFrom(
+                              backgroundColor: PUi.surface(isDark),
+                              side: BorderSide(color: PUi.border(isDark)),
+                              minimumSize: const Size(44, 44),
+                            ),
+                            icon: Icon(
+                              Icons.arrow_back_rounded,
+                              color: textColor,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Lesson Notes & Documents',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: PUi.title(isDark, size: 22),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // ─── PILL TABS ───
+                    Container(
+                      margin: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: PUi.surfaceAlt(isDark),
+                        borderRadius: BorderRadius.circular(40),
+                      ),
+                      child: TabBar(
+                        dividerColor: Colors.transparent,
+                        indicatorSize: TabBarIndicatorSize.tab,
+                        splashBorderRadius: BorderRadius.circular(40),
+                        indicator: BoxDecoration(
+                          color: primaryColor,
+                          borderRadius: BorderRadius.circular(40),
+                        ),
+                        labelColor: Colors.white,
+                        unselectedLabelColor: PUi.muted(isDark),
+                        labelStyle: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13.5,
+                        ),
+                        unselectedLabelStyle: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                        ),
+                        tabs: const [
+                          Tab(
+                            height: 42,
+                            text: 'From Admin',
+                            iconMargin: EdgeInsets.zero,
+                          ),
+                          Tab(
+                            height: 42,
+                            text: 'My Notes',
+                            iconMargin: EdgeInsets.zero,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    Expanded(
+                      child: _loading
+                          ? Center(child: TridetaLoader(color: primaryColor))
+                          : TabBarView(
+                              children: [
+                                _buildDocs(isDark, primaryColor, textColor),
+                                _buildNotes(isDark, primaryColor, textColor),
+                              ],
+                            ),
+                    ),
+                  ],
+                ),
               ),
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  // 🚨 UI UPGRADE: WhatsApp-style Edge-to-Edge List for Curriculum Docs
+  // Curriculum documents sent by the admin
   Widget _buildDocs(bool isDark, Color primaryColor, Color textColor) {
     return RefreshIndicator(
       onRefresh: _load,
@@ -235,100 +286,79 @@ class _TeacherDocumentsScreenState extends State<TeacherDocumentsScreen> {
       child: _docs.isEmpty
           ? ListView(
               children: [
-                const SizedBox(height: 120),
-                Icon(
-                  Icons.folder_open_rounded,
-                  size: 60,
-                  color: Colors.grey.shade400,
-                ),
-                const SizedBox(height: 20),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Text(
-                    'Nothing here yet.\n\nWhen your school admin sends the syllabus or the scheme of work for a subject you teach, it will appear here to download.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.grey.shade500,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
+                const SizedBox(height: 60),
+                PEmptyState(
+                  title: 'Nothing here yet.',
+                  message:
+                      'When your school admin sends the syllabus or the scheme of work for a subject you teach, it will appear here to download.',
+                  accent: primaryColor,
                 ),
               ],
             )
           : ListView(
-              padding: const EdgeInsets.only(top: 16, bottom: 100),
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 110),
               children: [
-                Container(
-                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                  child: Column(
-                    children: [
-                      for (int i = 0; i < _docs.length; i++) ...[
-                        ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 8,
+                for (int i = 0; i < _docs.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: PCard(
+                      radius: 26,
+                      padding: const EdgeInsets.all(16),
+                      onTap: () => _openDoc(
+                        'curriculum_docs',
+                        _docs[i]['id'] as String,
+                      ),
+                      child: Row(
+                        children: [
+                          const PIconBadge(
+                            icon: Icons.picture_as_pdf_rounded,
+                            color: Colors.redAccent,
+                            size: 48,
+                            iconSize: 22,
                           ),
-                          leading: CircleAvatar(
-                            backgroundColor: Colors.redAccent.withValues(
-                              alpha: 0.1,
-                            ),
-                            child: const Icon(
-                              Icons.picture_as_pdf_rounded,
-                              color: Colors.redAccent,
-                              size: 20,
-                            ),
-                          ),
-                          title: Text(
-                            _docs[i]['title'].toString(),
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                              color: textColor,
-                            ),
-                          ),
-                          subtitle: Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              '${_docs[i]['class_name']} · ${_docs[i]['subject_name']}\n${kindLabel(_docs[i]['kind'].toString())} · ${_docs[i]['session']}${_docs[i]['term'] != null ? ' · ${_docs[i]['term']}' : ''} · ${formatShortDate(_docs[i]['created_at'])}',
-                              style: TextStyle(
-                                color: Colors.grey.shade500,
-                                fontSize: 12,
-                                height: 1.4,
-                                fontWeight: FontWeight.w500,
-                              ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _docs[i]['title'].toString(),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 15,
+                                    color: textColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  '${_docs[i]['class_name']} · ${_docs[i]['subject_name']}\n${kindLabel(_docs[i]['kind'].toString())} · ${_docs[i]['session']}${_docs[i]['term'] != null ? ' · ${_docs[i]['term']}' : ''} · ${formatShortDate(_docs[i]['created_at'])}',
+                                  style: TextStyle(
+                                    color: PUi.muted(isDark),
+                                    fontSize: 12.5,
+                                    height: 1.45,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          isThreeLine: true,
-                          trailing: Icon(
-                            Icons.download_rounded,
+                          const SizedBox(width: 8),
+                          PIconBadge(
+                            icon: Icons.download_rounded,
                             color: primaryColor,
+                            size: 40,
+                            iconSize: 20,
                           ),
-                          onTap: () => _openDoc(
-                            'curriculum_docs',
-                            _docs[i]['id'] as String,
-                          ),
-                        ),
-                        if (i < _docs.length - 1)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 80, right: 24),
-                            child: Divider(
-                              height: 1,
-                              color: isDark
-                                  ? Colors.white10
-                                  : Colors.grey.shade200,
-                            ),
-                          ),
-                      ],
-                    ],
+                        ],
+                      ),
+                    ),
                   ),
-                ),
               ],
             ),
     );
   }
 
-  // 🚨 UI UPGRADE: WhatsApp-style Edge-to-Edge List for Teacher Notes
+  // The teacher's own lesson notes
   Widget _buildNotes(bool isDark, Color primaryColor, Color textColor) {
     return RefreshIndicator(
       onRefresh: _load,
@@ -336,72 +366,57 @@ class _TeacherDocumentsScreenState extends State<TeacherDocumentsScreen> {
       child: _notes.isEmpty
           ? ListView(
               children: [
-                const SizedBox(height: 120),
-                Icon(
-                  Icons.inventory_2_outlined,
-                  size: 60,
-                  color: Colors.grey.shade400,
-                ),
-                const SizedBox(height: 20),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Text(
-                    'No lesson notes yet.\n\nTap New lesson note to send a PDF for your admin to approve.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.grey.shade500,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
+                const SizedBox(height: 60),
+                PEmptyState(
+                  title: 'No lesson notes yet.',
+                  message:
+                      'Tap New lesson note to send a PDF for your admin to approve.',
+                  accent: primaryColor,
                 ),
               ],
             )
           : ListView(
-              padding: const EdgeInsets.only(top: 16, bottom: 100),
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 110),
               children: [
-                Container(
-                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                  child: Column(
-                    children: [
-                      for (int i = 0; i < _notes.length; i++) ...[
-                        ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 8,
+                for (int i = 0; i < _notes.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: PCard(
+                      radius: 26,
+                      padding: const EdgeInsets.all(16),
+                      onTap: () => _noteActions(_notes[i]),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          PIconBadge(
+                            icon: Icons.menu_book_rounded,
+                            color: primaryColor,
+                            size: 48,
+                            iconSize: 22,
                           ),
-                          leading: CircleAvatar(
-                            backgroundColor: primaryColor.withValues(
-                              alpha: 0.1,
-                            ),
-                            child: Icon(
-                              Icons.menu_book_rounded,
-                              color: primaryColor,
-                              size: 20,
-                            ),
-                          ),
-                          title: Text(
-                            'Week ${_notes[i]['week_no']}: ${_notes[i]['topic']}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                              color: textColor,
-                            ),
-                          ),
-                          subtitle: Padding(
-                            padding: const EdgeInsets.only(top: 6),
+                          const SizedBox(width: 14),
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
+                                  'Week ${_notes[i]['week_no']}: ${_notes[i]['topic']}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 15,
+                                    color: textColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
                                   '${_notes[i]['class_name']} · ${_notes[i]['subject_name']} · ${_notes[i]['term']}',
                                   style: TextStyle(
-                                    color: Colors.grey.shade500,
-                                    fontSize: 12,
+                                    color: PUi.muted(isDark),
+                                    fontSize: 12.5,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
-                                const SizedBox(height: 6),
+                                const SizedBox(height: 8),
                                 NoteStatusChip(
                                   status: _notes[i]['status'].toString(),
                                 ),
@@ -409,40 +424,31 @@ class _TeacherDocumentsScreenState extends State<TeacherDocumentsScreen> {
                                     (_notes[i]['review_comment'] ?? '')
                                         .toString()
                                         .isNotEmpty) ...[
-                                  const SizedBox(height: 6),
+                                  const SizedBox(height: 8),
                                   Text(
                                     'Admin: ${_notes[i]['review_comment']}',
                                     style: TextStyle(
                                       color: Colors.red.shade700,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                 ],
                               ],
                             ),
                           ),
-                          isThreeLine: true,
-                          trailing: Icon(
-                            Icons.chevron_right_rounded,
-                            color: Colors.grey.shade400,
-                          ),
-                          onTap: () => _noteActions(_notes[i]),
-                        ),
-                        if (i < _notes.length - 1)
+                          const SizedBox(width: 6),
                           Padding(
-                            padding: const EdgeInsets.only(left: 80, right: 24),
-                            child: Divider(
-                              height: 1,
-                              color: isDark
-                                  ? Colors.white10
-                                  : Colors.grey.shade200,
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Icon(
+                              Icons.chevron_right_rounded,
+                              color: PUi.muted(isDark),
                             ),
                           ),
-                      ],
-                    ],
+                        ],
+                      ),
+                    ),
                   ),
-                ),
               ],
             ),
     );
@@ -548,183 +554,152 @@ class _NewNoteSheetState extends State<_NewNoteSheet> {
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color sheetColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    Color textColor = isDark ? Colors.white : Colors.black87;
+    Color sheetColor = PUi.surface(isDark);
+    Color textColor = PUi.ink(isDark);
     Color primaryColor = Theme.of(context).primaryColor;
 
-    return Container(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-        left: 24,
-        right: 24,
-        top: 20,
-      ),
-      decoration: BoxDecoration(
-        color: sheetColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade400,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'New Lesson Note',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                color: textColor,
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${widget.term}, ${widget.session}',
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 24),
-            LabeledDropdown<int>(
-              label: 'Class and subject',
-              value: _pair,
-              items: [
-                for (var i = 0; i < widget.assignments.length; i++)
-                  DropdownMenuItem(
-                    value: i,
-                    child: Text(
-                      '${widget.assignments[i]['class']} · ${widget.assignments[i]['subject']}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-              ],
-              onChanged: _busy ? null : (v) => setState(() => _pair = v ?? 0),
-            ),
-            const SizedBox(height: 16),
-            LabeledDropdown<int>(
-              label: 'Week',
-              value: _week,
-              items: [
-                for (var w = 1; w <= 20; w++)
-                  DropdownMenuItem(
-                    value: w,
-                    child: Text(
-                      'Week $w',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-              ],
-              onChanged: _busy ? null : (v) => setState(() => _week = v ?? 1),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _topic,
-              enabled: !_busy,
-              maxLength: 200,
-              style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
-              decoration: InputDecoration(
-                labelText: 'Topic',
-                labelStyle: TextStyle(
-                  color: Colors.grey.shade500,
-                  fontSize: 14,
-                ),
-                filled: true,
-                fillColor: isDark
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : Colors.grey.shade50,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            PdfPickerTile(pdf: _pdf, onPick: _busy ? null : _pick),
-            const SizedBox(height: 6),
-            Text(
-              'Use a typed PDF of 2 MB or less.',
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 30),
-            Row(
+    return Align(
+      alignment: Alignment.bottomCenter,
+      heightFactor: 1.0,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Container(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            left: 24,
+            right: 24,
+            top: 14,
+          ),
+          decoration: BoxDecoration(
+            color: sheetColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+            border: Border.all(color: PUi.border(isDark)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 55,
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                          color: primaryColor.withValues(alpha: 0.5),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      onPressed: _busy ? null : () => _save(submit: false),
-                      child: Text(
-                        'SAVE DRAFT',
-                        style: TextStyle(
-                          color: primaryColor,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
+                Center(
+                  child: Container(
+                    width: 44,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: PUi.border(isDark),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: SizedBox(
-                    height: 55,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: primaryColor,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                const SizedBox(height: 24),
+                Text('New Lesson Note', style: PUi.title(isDark, size: 24)),
+                const SizedBox(height: 6),
+                Text(
+                  '${widget.term}, ${widget.session}',
+                  style: TextStyle(
+                    color: PUi.muted(isDark),
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                LabeledDropdown<int>(
+                  label: 'Class and subject',
+                  value: _pair,
+                  items: [
+                    for (var i = 0; i < widget.assignments.length; i++)
+                      DropdownMenuItem(
+                        value: i,
+                        child: Text(
+                          '${widget.assignments[i]['class']} · ${widget.assignments[i]['subject']}',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        elevation: 0,
                       ),
-                      onPressed: _busy ? null : () => _save(submit: true),
-                      child: _busy
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text(
-                              'SUBMIT',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                                letterSpacing: 1.0,
-                              ),
-                            ),
+                  ],
+                  onChanged: _busy ? null : (v) => setState(() => _pair = v ?? 0),
+                ),
+                const SizedBox(height: 16),
+                LabeledDropdown<int>(
+                  label: 'Week',
+                  value: _week,
+                  items: [
+                    for (var w = 1; w <= 20; w++)
+                      DropdownMenuItem(
+                        value: w,
+                        child: Text(
+                          'Week $w',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                  ],
+                  onChanged: _busy ? null : (v) => setState(() => _week = v ?? 1),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _topic,
+                  enabled: !_busy,
+                  maxLength: 200,
+                  style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    labelText: 'Topic',
+                    labelStyle: TextStyle(
+                      color: PUi.muted(isDark),
+                      fontSize: 14,
+                    ),
+                    filled: true,
+                    fillColor: PUi.surfaceAlt(isDark),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: BorderSide(color: primaryColor, width: 1.6),
                     ),
                   ),
+                ),
+                const SizedBox(height: 16),
+                PdfPickerTile(pdf: _pdf, onPick: _busy ? null : _pick),
+                const SizedBox(height: 6),
+                Text(
+                  'Use a typed PDF of 2 MB or less.',
+                  style: TextStyle(
+                    color: PUi.muted(isDark),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: PUi.outlinedPill(primaryColor, height: 54),
+                        onPressed: _busy ? null : () => _save(submit: false),
+                        child: const Text('Save Draft'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        style: PUi.filledPill(primaryColor, height: 54),
+                        onPressed: _busy ? null : () => _save(submit: true),
+                        child: _busy
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Submit'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -865,284 +840,243 @@ class _NoteSheetState extends State<_NoteSheet> {
     final editable = _status == 'draft' || _status == 'returned';
 
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color sheetColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    Color textColor = isDark ? Colors.white : Colors.black87;
+    Color sheetColor = PUi.surface(isDark);
+    Color textColor = PUi.ink(isDark);
     Color primaryColor = Theme.of(context).primaryColor;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-      decoration: BoxDecoration(
-        color: sheetColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade400,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Row(
+    return Align(
+      alignment: Alignment.bottomCenter,
+      heightFactor: 1.0,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 14, 24, 24),
+          decoration: BoxDecoration(
+            color: sheetColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+            border: Border.all(color: PUi.border(isDark)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Week ${n['week_no']}: ${n['topic']}',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          color: textColor,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '${n['class_name']} · ${n['subject_name']} · ${n['term']}',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 13,
-                          height: 1.4,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
+                Center(
+                  child: Container(
+                    width: 44,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: PUi.border(isDark),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
-                NoteStatusChip(status: _status),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            if (_status == 'returned' &&
-                (n['review_comment'] ?? '').toString().isNotEmpty) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.redAccent.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.redAccent.withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Column(
+                const SizedBox(height: 24),
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Week ${n['week_no']}: ${n['topic']}',
+                            style: PUi.title(isDark, size: 21),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${n['class_name']} · ${n['subject_name']} · ${n['term']}',
+                            style: TextStyle(
+                              color: PUi.muted(isDark),
+                              fontSize: 13,
+                              height: 1.4,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    NoteStatusChip(status: _status),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                if (_status == 'returned' &&
+                    (n['review_comment'] ?? '').toString().isNotEmpty) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: Colors.redAccent.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.comment_rounded,
-                          color: Colors.redAccent,
-                          size: 16,
+                        const Row(
+                          children: [
+                            Icon(
+                              Icons.comment_rounded,
+                              color: Colors.redAccent,
+                              size: 16,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              'ADMIN FEEDBACK',
+                              style: TextStyle(
+                                color: Colors.redAccent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.0,
+                              ),
+                            ),
+                          ],
                         ),
-                        SizedBox(width: 8),
+                        const SizedBox(height: 8),
                         Text(
-                          'ADMIN FEEDBACK',
-                          style: TextStyle(
+                          n['review_comment'],
+                          style: const TextStyle(
                             color: Colors.redAccent,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.0,
+                            fontWeight: FontWeight.w600,
+                            height: 1.4,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      n['review_comment'],
-                      style: const TextStyle(
-                        color: Colors.redAccent,
-                        fontWeight: FontWeight.w600,
-                        height: 1.4,
+                  ),
+                  const SizedBox(height: 24),
+                ],
+
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () =>
+                              DocsStorage.open('lesson_notes', _id).catchError((e) {
+                                if (mounted) {
+                                  showDocSnack(
+                                    context,
+                                    friendlyDocError(e),
+                                    error: true,
+                                  );
+                                }
+                              }),
+                    style: PUi.outlinedPill(primaryColor, height: 52),
+                    icon: const Icon(Icons.picture_as_pdf_rounded),
+                    label: const Text('Open PDF'),
+                  ),
+                ),
+
+                if (editable) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _busy
+                          ? null
+                          : () => _replaceFile(thenSubmit: false),
+                      style: PUi.outlinedPill(textColor, height: 52).copyWith(
+                        side: WidgetStatePropertyAll(
+                          BorderSide(color: PUi.muted(isDark), width: 1.2),
+                        ),
+                      ),
+                      icon: const Icon(Icons.swap_horiz_rounded),
+                      label: const Text('Replace PDF File'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _busy
+                          ? null
+                          : () => _run(
+                              () => _setStatus('submitted'),
+                              'Sent to your admin for approval.',
+                            ),
+                      style: PUi.filledPill(primaryColor, height: 56),
+                      icon: const Icon(Icons.send_rounded),
+                      label: Text(
+                        _status == 'returned'
+                            ? 'Submit Again'
+                            : 'Submit For Approval',
                       ),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
-
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: OutlinedButton.icon(
-                onPressed: _busy
-                    ? null
-                    : () =>
-                          DocsStorage.open('lesson_notes', _id).catchError((e) {
-                            if (mounted) {
-                              showDocSnack(
-                                context,
-                                friendlyDocError(e),
-                                error: true,
-                              );
-                            }
-                          }),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: primaryColor.withValues(alpha: 0.5)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
                   ),
-                ),
-                icon: Icon(Icons.picture_as_pdf_rounded, color: primaryColor),
-                label: Text(
-                  'OPEN PDF',
-                  style: TextStyle(
-                    color: primaryColor,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.0,
-                  ),
-                ),
-              ),
-            ),
-
-            if (editable) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: OutlinedButton.icon(
-                  onPressed: _busy
-                      ? null
-                      : () => _replaceFile(thenSubmit: false),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: Colors.grey.shade400),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  icon: Icon(Icons.swap_horiz_rounded, color: textColor),
-                  label: Text(
-                    'REPLACE PDF FILE',
-                    style: TextStyle(
-                      color: textColor,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: FilledButton.icon(
-                  onPressed: _busy
-                      ? null
-                      : () => _run(
-                          () => _setStatus('submitted'),
-                          'Sent to your admin for approval.',
+                  const SizedBox(height: 12),
+                  Center(
+                    child: TextButton(
+                      onPressed: _busy ? null : _remove,
+                      child: const Text(
+                        'Delete this note',
+                        style: TextStyle(
+                          color: Colors.redAccent,
+                          fontWeight: FontWeight.w700,
                         ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 0,
-                  ),
-                  icon: const Icon(Icons.send_rounded, color: Colors.white),
-                  label: Text(
-                    _status == 'returned'
-                        ? 'SUBMIT AGAIN'
-                        : 'SUBMIT FOR APPROVAL',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Center(
-                child: TextButton(
-                  onPressed: _busy ? null : _remove,
-                  child: const Text(
-                    'Delete this note',
-                    style: TextStyle(
-                      color: Colors.redAccent,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-
-            if (_status == 'submitted') ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: OutlinedButton.icon(
-                  onPressed: _busy
-                      ? null
-                      : () => _run(
-                          () => _setStatus('draft'),
-                          'Withdrawn. You can edit it now.',
-                        ),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: Colors.orange.shade700),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  icon: Icon(Icons.undo_rounded, color: Colors.orange.shade700),
-                  label: Text(
-                    'WITHDRAW TO EDIT',
-                    style: TextStyle(
-                      color: Colors.orange.shade700,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-
-            if (_status == 'approved')
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.verified_rounded,
-                        color: Colors.green,
-                        size: 20,
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'This note is approved and locked. Quiz questions will be generated from it.',
-                          style: TextStyle(
-                            color: Colors.green.shade800,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+
+                if (_status == 'submitted') ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _busy
+                          ? null
+                          : () => _run(
+                              () => _setStatus('draft'),
+                              'Withdrawn. You can edit it now.',
+                            ),
+                      style: PUi.outlinedPill(Colors.orange.shade700, height: 54),
+                      icon: const Icon(Icons.undo_rounded),
+                      label: const Text('Withdraw To Edit'),
+                    ),
+                  ),
+                ],
+
+                if (_status == 'approved')
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.verified_rounded,
+                            color: Colors.green,
+                            size: 20,
                           ),
-                        ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'This note is approved and locked. Quiz questions will be generated from it.',
+                              style: TextStyle(
+                                color: isDark
+                                    ? Colors.green.shade300
+                                    : Colors.green.shade800,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );

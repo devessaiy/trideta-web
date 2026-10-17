@@ -9,6 +9,7 @@ import 'package:trideta_v2/utils/resilient_request.dart';
 
 // MODULAR UI IMPORTS
 import 'package:trideta_v2/widgets/admin_bottom_nav_bar.dart';
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 import 'package:trideta_v2/screens/admin/admin_dashboard_carousel.dart';
 
 // SCREEN IMPORTS
@@ -181,11 +182,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (index == 0) _fetchSchoolData();
   }
 
+  // ===========================================================================
+  // 🖼️ UI ONLY — presentation below. School data loading/caching, page
+  // switching and the lock-screen gates above are unchanged.
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color navBarColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color bgColor = PUi.bg(isDark);
+    Color navBarColor = PUi.surface(isDark);
     Color primaryColor = Theme.of(context).primaryColor;
 
     final List<Widget> pages = [
@@ -201,65 +206,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth >= 900) {
+          // Full sidebar on large desktops, slim icon rail on smaller ones.
+          final bool expanded = constraints.maxWidth >= 1100;
           return Scaffold(
             backgroundColor: bgColor,
             body: Row(
               children: [
-                Container(
-                  width: 250,
-                  color: navBarColor,
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 40),
-                      _schoolLogoUrl != null
-                          ? CircleAvatar(
-                              radius: 25,
-                              backgroundColor: primaryColor.withValues(
-                                alpha: 0.1,
-                              ),
-                              backgroundImage: NetworkImage(_schoolLogoUrl!),
-                            )
-                          : Icon(
-                              Icons.school_rounded,
-                              size: 50,
-                              color: primaryColor,
-                            ),
-                      const SizedBox(height: 20),
-                      const Text(
-                        "TRIDETA ADMIN",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                      const SizedBox(height: 40),
-                      _buildDesktopNavItem(
-                        Icons.dashboard_rounded,
-                        "Dashboard",
-                        0,
-                        primaryColor,
-                      ),
-                      _buildDesktopNavItem(
-                        Icons.people_alt_rounded,
-                        "Students",
-                        1,
-                        primaryColor,
-                      ),
-                      _buildDesktopNavItem(
-                        Icons.campaign_rounded,
-                        "Action Center",
-                        2,
-                        primaryColor,
-                      ),
-                      _buildDesktopNavItem(
-                        Icons.settings_rounded,
-                        "Settings",
-                        3,
-                        primaryColor,
-                      ),
-                    ],
-                  ),
+                _buildDesktopSidebar(
+                  expanded,
+                  isDark,
+                  primaryColor,
+                  navBarColor,
                 ),
                 Expanded(
                   child: PageView(
@@ -294,236 +251,195 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildDesktopNavItem(
-    IconData icon,
-    String title,
-    int index,
+  // ---------------------------------------------------------------------------
+  // 🖥️ DESKTOP SIDEBAR
+  // ---------------------------------------------------------------------------
+  Widget _buildDesktopSidebar(
+    bool expanded,
+    bool isDark,
     Color primaryColor,
+    Color navBarColor,
   ) {
-    bool isSelected = _selectedIndex == index;
-    return ListTile(
-      leading: Icon(icon, color: isSelected ? primaryColor : Colors.grey),
-      title: Text(
-        title,
-        style: TextStyle(
-          color: isSelected ? primaryColor : Colors.grey,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-        ),
+    final Widget logo = Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: PUi.tint(primaryColor, isDark, 0.12),
+        image: _schoolLogoUrl != null
+            ? DecorationImage(
+                image: NetworkImage(_schoolLogoUrl!),
+                fit: BoxFit.cover,
+              )
+            : null,
       ),
-      selected: isSelected,
-      selectedTileColor: primaryColor.withValues(alpha: 0.1),
-      onTap: () => _onItemTapped(index),
+      child: _schoolLogoUrl == null
+          ? Icon(Icons.school_rounded, color: primaryColor, size: 25)
+          : null,
     );
-  }
 
-  Widget _buildHomeContent(bool isDark, Color primaryColor) {
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
-    Color subTextColor = isDark ? Colors.white70 : const Color(0xFF9098B1);
+    final String initial = _adminName.isNotEmpty && _adminName != "Loading..."
+        ? _adminName[0].toUpperCase()
+        : 'A';
 
-    return SafeArea(
-      bottom: false,
-      child: RefreshIndicator(
-        onRefresh: _fetchSchoolData,
-        color: primaryColor,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 25),
+    return Container(
+      width: expanded ? 264 : 92,
+      decoration: BoxDecoration(
+        color: navBarColor,
+        border: Border(right: BorderSide(color: PUi.border(isDark))),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            expanded ? 20 : 14,
+            28,
+            expanded ? 20 : 14,
+            20,
+          ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: expanded
+                ? CrossAxisAlignment.stretch
+                : CrossAxisAlignment.center,
             children: [
-              const SyncStatusBanner(),
-              _buildAdminHeader(textColor, subTextColor, primaryColor),
-              const SizedBox(height: 30),
-
-              if (_schoolLogoUrl == null)
-                _buildLogoWarning(isDark, primaryColor),
-
-              _buildGlassySessionCard(primaryColor),
-              const SizedBox(height: 35),
-
-              AdminDashboardCarousel(
-                latestAlert: _latestAlert,
-                primaryColor: primaryColor,
-                isDark: isDark,
-              ),
-              const SizedBox(height: 30),
-
-              Text(
-                "ADMINISTRATIVE & FINANCE",
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: Colors.grey.shade500,
-                  fontSize: 12,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const SizedBox(height: 15),
-
-              _buildModuleTile(
-                isDark: isDark,
-                icon: Icons.account_balance_wallet_rounded,
-                color: Colors.green.shade600,
-                title: "Finance Centre",
-                subtitle: "Manage School Finance here!",
-                onTap: () async {
-                  bool auth = await _authenticateAdmin(
-                    'Authenticate to access the Finance Centre.',
-                  );
-                  if (auth && mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const FinanceCentreScreen(),
+              Row(
+                mainAxisAlignment: expanded
+                    ? MainAxisAlignment.start
+                    : MainAxisAlignment.center,
+                children: [
+                  logo,
+                  if (expanded) ...[
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "TRIDETA",
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 18,
+                              letterSpacing: 2,
+                              color: PUi.ink(isDark),
+                            ),
+                          ),
+                          Text(
+                            "ADMIN",
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11,
+                              letterSpacing: 2,
+                              color: PUi.muted(isDark),
+                            ),
+                          ),
+                        ],
                       ),
-                    );
-                  }
-                },
+                    ),
+                  ],
+                ],
               ),
-              _buildModuleTile(
-                isDark: isDark,
-                icon: Icons.badge_rounded,
-                color: Colors.orange.shade600,
-                title: "Staff Directory",
-                subtitle: "Manage teachers & other staff",
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const StaffDirectoryScreen(),
+              const SizedBox(height: 36),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      _buildDesktopNavItem(
+                        Icons.dashboard_rounded,
+                        "Dashboard",
+                        0,
+                        primaryColor,
+                        isDark,
+                        expanded,
+                      ),
+                      _buildDesktopNavItem(
+                        Icons.people_alt_rounded,
+                        "Students",
+                        1,
+                        primaryColor,
+                        isDark,
+                        expanded,
+                      ),
+                      _buildDesktopNavItem(
+                        Icons.campaign_rounded,
+                        "Action Center",
+                        2,
+                        primaryColor,
+                        isDark,
+                        expanded,
+                      ),
+                      _buildDesktopNavItem(
+                        Icons.settings_rounded,
+                        "Settings",
+                        3,
+                        primaryColor,
+                        isDark,
+                        expanded,
+                      ),
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(height: 30),
-              Text(
-                "SCHOOL CURRICULUM",
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: Colors.grey.shade500,
-                  fontSize: 12,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const SizedBox(height: 15),
-
-              _buildModuleTile(
-                isDark: isDark,
-                icon: Icons.folder_copy_rounded,
-                color: Colors.indigo.shade500,
-                title: "Curriculum Documents",
-                subtitle: "Send syllabus & scheme of work to teachers",
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const CurriculumDocsScreen(),
+              if (expanded)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: PUi.surfaceAlt(isDark),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 19,
+                        backgroundColor: PUi.tint(primaryColor, isDark, 0.14),
+                        child: Text(
+                          initial,
+                          style: TextStyle(
+                            color: primaryColor,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _adminName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                color: PUi.ink(isDark),
+                              ),
+                            ),
+                            Text(
+                              _schoolName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: PUi.muted(isDark),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                CircleAvatar(
+                  radius: 21,
+                  backgroundColor: PUi.tint(primaryColor, isDark, 0.14),
+                  child: Text(
+                    initial,
+                    style: TextStyle(
+                      color: primaryColor,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
-              ),
-              _buildModuleTile(
-                isDark: isDark,
-                icon: Icons.fact_check_rounded,
-                color: Colors.green.shade600,
-                title: "Lesson Note Approvals",
-                subtitle: "Review lesson notes sent by teachers",
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const LessonNoteReviewScreen(),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 30),
-
-              Text(
-                "ACADEMIC & RESULTS",
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: Colors.grey.shade500,
-                  fontSize: 12,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const SizedBox(height: 15),
-
-              _buildModuleTile(
-                isDark: isDark,
-                icon: Icons.edit_document,
-                color: primaryColor,
-                title: "Enter Subject Scores",
-                subtitle: "Input CA and Exam scores here",
-                onTap: () async {
-                  bool auth = await _authenticateAdmin(
-                    'Authenticate to modify student examination scores.',
-                  );
-                  if (auth && mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ResultComputationScreen(),
-                      ),
-                    );
-                  }
-                },
-              ),
-              _buildModuleTile(
-                isDark: isDark,
-                icon: Icons.psychology_alt_rounded,
-                color: Colors.purple.shade500,
-                title: "Performance overview",
-                subtitle: "Add behavior & Form Master comments",
-                onTap: () async {
-                  bool auth = await _authenticateAdmin(
-                    'Authenticate to enter affective domains and remarks.',
-                  );
-                  if (auth && mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const AffectiveDomainScreen(),
-                      ),
-                    );
-                  }
-                },
-              ),
-              _buildModuleTile(
-                isDark: isDark,
-                icon: Icons.table_chart_rounded,
-                color: Colors.teal.shade500,
-                title: "Master Broadsheet",
-                subtitle: "Compute and publish term results",
-                onTap: () async {
-                  bool auth = await _authenticateAdmin(
-                    'Authenticate to compute and publish results.',
-                  );
-                  if (auth && mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const MasterBroadsheetScreen(),
-                      ),
-                    );
-                  }
-                },
-              ),
-              _buildModuleTile(
-                isDark: isDark,
-                icon: Icons.print_rounded,
-                color: Colors.redAccent,
-                title: "Report Cards",
-                subtitle: "Generate & Print Report Cards.",
-                onTap: () async {
-                  bool auth = await _authenticateAdmin(
-                    'Authenticate to view and print Report Cards.',
-                  );
-                  if (auth && mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ReportCardScreen(),
-                      ),
-                    );
-                  }
-                },
-              ),
-              const SizedBox(height: 80),
             ],
           ),
         ),
@@ -531,21 +447,322 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildAdminHeader(
-    Color textColor,
-    Color subTextColor,
+  Widget _buildDesktopNavItem(
+    IconData icon,
+    String title,
+    int index,
     Color primaryColor,
+    bool isDark,
+    bool expanded,
   ) {
+    final bool isSelected = _selectedIndex == index;
+    final Color fg = isSelected ? Colors.white : PUi.muted(isDark);
+
+    if (!expanded) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Tooltip(
+          message: title,
+          child: Material(
+            color: isSelected ? primaryColor : Colors.transparent,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => _onItemTapped(index),
+              child: SizedBox(
+                width: 54,
+                height: 54,
+                child: Icon(icon, color: fg, size: 24),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: isSelected ? primaryColor : Colors.transparent,
+        shape: const StadiumBorder(),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: () => _onItemTapped(index),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            child: Row(
+              children: [
+                Icon(icon, color: fg, size: 22),
+                const SizedBox(width: 14),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: fg,
+                    fontSize: 15,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // HOME TAB
+  // ===========================================================================
+  Widget _buildHomeContent(bool isDark, Color primaryColor) {
+    return Container(
+      color: PUi.bg(isDark),
+      child: PBackdrop(
+        accent: primaryColor,
+        child: SafeArea(
+          bottom: false,
+          child: RefreshIndicator(
+            onRefresh: _fetchSchoolData,
+            color: primaryColor,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final bool wide = constraints.maxWidth >= 820;
+
+                final header = _buildAdminHeader(isDark, primaryColor);
+                final session = _buildSessionCard(primaryColor);
+                final carousel = AdminDashboardCarousel(
+                  latestAlert: _latestAlert,
+                  primaryColor: primaryColor,
+                  isDark: isDark,
+                );
+                final modules = _buildModules(isDark, primaryColor);
+
+                final Widget body = wide
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          header,
+                          const SizedBox(height: 28),
+                          if (_schoolLogoUrl == null)
+                            _buildLogoWarning(isDark, primaryColor),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 5,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    session,
+                                    const SizedBox(height: 24),
+                                    carousel,
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 28),
+                              Expanded(flex: 6, child: modules),
+                            ],
+                          ),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          header,
+                          const SizedBox(height: 24),
+                          if (_schoolLogoUrl == null)
+                            _buildLogoWarning(isDark, primaryColor),
+                          session,
+                          const SizedBox(height: 20),
+                          carousel,
+                          const SizedBox(height: 24),
+                          modules,
+                        ],
+                      );
+
+                return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: wide ? 40 : 20,
+                    vertical: wide ? 32 : 16,
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1100),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [const SyncStatusBanner(), body],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModules(bool isDark, Color primaryColor) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("ADMINISTRATIVE & FINANCE", style: PUi.sectionLabel(isDark)),
+        const SizedBox(height: 14),
+
+        _buildModuleTile(
+          isDark: isDark,
+          icon: Icons.account_balance_wallet_rounded,
+          color: Colors.green.shade600,
+          title: "Finance Centre",
+          subtitle: "Manage School Finance here!",
+          onTap: () async {
+            bool auth = await _authenticateAdmin(
+              'Authenticate to access the Finance Centre.',
+            );
+            if (auth && mounted) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const FinanceCentreScreen()),
+              );
+            }
+          },
+        ),
+        _buildModuleTile(
+          isDark: isDark,
+          icon: Icons.badge_rounded,
+          color: Colors.orange.shade600,
+          title: "Staff Directory",
+          subtitle: "Manage teachers & other staff",
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const StaffDirectoryScreen()),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text("SCHOOL CURRICULUM", style: PUi.sectionLabel(isDark)),
+        const SizedBox(height: 14),
+
+        _buildModuleTile(
+          isDark: isDark,
+          icon: Icons.folder_copy_rounded,
+          color: Colors.indigo.shade500,
+          title: "Curriculum Documents",
+          subtitle: "Send syllabus & scheme of work to teachers",
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CurriculumDocsScreen()),
+          ),
+        ),
+        _buildModuleTile(
+          isDark: isDark,
+          icon: Icons.fact_check_rounded,
+          color: Colors.green.shade600,
+          title: "Lesson Note Approvals",
+          subtitle: "Review lesson notes sent by teachers",
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const LessonNoteReviewScreen()),
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        Text("ACADEMIC & RESULTS", style: PUi.sectionLabel(isDark)),
+        const SizedBox(height: 14),
+
+        _buildModuleTile(
+          isDark: isDark,
+          icon: Icons.edit_document,
+          color: primaryColor,
+          title: "Enter Subject Scores",
+          subtitle: "Input CA and Exam scores here",
+          onTap: () async {
+            bool auth = await _authenticateAdmin(
+              'Authenticate to modify student examination scores.',
+            );
+            if (auth && mounted) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ResultComputationScreen(),
+                ),
+              );
+            }
+          },
+        ),
+        _buildModuleTile(
+          isDark: isDark,
+          icon: Icons.psychology_alt_rounded,
+          color: Colors.purple.shade500,
+          title: "Performance overview",
+          subtitle: "Add behavior & Form Master comments",
+          onTap: () async {
+            bool auth = await _authenticateAdmin(
+              'Authenticate to enter affective domains and remarks.',
+            );
+            if (auth && mounted) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AffectiveDomainScreen()),
+              );
+            }
+          },
+        ),
+        _buildModuleTile(
+          isDark: isDark,
+          icon: Icons.table_chart_rounded,
+          color: Colors.teal.shade500,
+          title: "Master Broadsheet",
+          subtitle: "Compute and publish term results",
+          onTap: () async {
+            bool auth = await _authenticateAdmin(
+              'Authenticate to compute and publish results.',
+            );
+            if (auth && mounted) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const MasterBroadsheetScreen(),
+                ),
+              );
+            }
+          },
+        ),
+        _buildModuleTile(
+          isDark: isDark,
+          icon: Icons.print_rounded,
+          color: Colors.redAccent,
+          title: "Report Cards",
+          subtitle: "Generate & Print Report Cards.",
+          onTap: () async {
+            bool auth = await _authenticateAdmin(
+              'Authenticate to view and print Report Cards.',
+            );
+            if (auth && mounted) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ReportCardScreen()),
+              );
+            }
+          },
+        ),
+        // Keeps the last tile clear of the floating navigation bar on phones
+        const SizedBox(height: 100),
+      ],
+    );
+  }
+
+  Widget _buildAdminHeader(bool isDark, Color primaryColor) {
     return Row(
       children: [
         Container(
-          height: 55,
-          width: 55,
+          height: 58,
+          width: 58,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: PUi.surface(isDark),
             shape: BoxShape.circle,
             border: Border.all(
-              color: primaryColor.withValues(alpha: 0.2),
+              color: primaryColor.withValues(alpha: 0.35),
               width: 2,
             ),
             image: _schoolLogoUrl != null
@@ -556,10 +773,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 : null,
           ),
           child: _schoolLogoUrl == null
-              ? Icon(Icons.school_rounded, color: primaryColor, size: 24)
+              ? Icon(Icons.school_rounded, color: primaryColor, size: 26)
               : null,
         ),
-        const SizedBox(width: 15),
+        const SizedBox(width: 16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -568,18 +785,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 "System Administrator",
                 style: TextStyle(
                   fontSize: 13,
-                  color: Colors.grey.shade500,
-                  fontWeight: FontWeight.w600,
+                  color: PUi.muted(isDark),
+                  fontWeight: FontWeight.w700,
                 ),
               ),
+              const SizedBox(height: 2),
               Text(
                 _schoolName,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: textColor,
-                  letterSpacing: -0.5,
-                ),
+                style: PUi.title(isDark, size: 24),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -590,48 +803,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildGlassySessionCard(Color primaryColor) {
+  Widget _buildSessionCard(Color primaryColor) {
     return Container(
       width: double.infinity,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [primaryColor.withValues(alpha: 0.85), primaryColor],
+          colors: [primaryColor.withValues(alpha: 0.88), primaryColor],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(30),
         boxShadow: [
           BoxShadow(
-            color: primaryColor.withValues(alpha: 0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
+            color: primaryColor.withValues(alpha: 0.28),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
           ),
         ],
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.2),
-          width: 1.5,
-        ),
       ),
       child: Stack(
         children: [
           Positioned(
-            right: -30,
-            top: -30,
-            child: CircleAvatar(
-              radius: 70,
-              backgroundColor: Colors.white.withValues(alpha: 0.1),
+            top: 6,
+            right: 8,
+            width: 150,
+            child: IgnorePointer(
+              child: AspectRatio(
+                aspectRatio: 300 / 190,
+                child: CustomPaint(
+                  painter: PScenePainter(
+                    scene: PScene.hero,
+                    line: Colors.white.withValues(alpha: 0.4),
+                    tint: Colors.white.withValues(alpha: 0.08),
+                    paper: primaryColor,
+                  ),
+                ),
+              ),
             ),
           ),
-          Positioned(
-            left: -20,
-            bottom: -40,
-            child: CircleAvatar(
-              radius: 60,
-              backgroundColor: Colors.white.withValues(alpha: 0.05),
-            ),
-          ),
-
           Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -650,27 +860,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       style: TextStyle(
                         color: Colors.white70,
                         fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.3,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 15),
+                const SizedBox(height: 16),
                 Text(
                   _currentSession,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 36,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
+                    horizontal: 14,
+                    vertical: 7,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.2),
@@ -681,7 +891,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
@@ -701,107 +911,96 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
-
-    return InkWell(
-      onTap: onTap,
-      child: Column(
-        children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 0,
-              vertical: 4,
-            ),
-            leading: CircleAvatar(
-              radius: 26,
-              backgroundColor: color.withValues(alpha: 0.12),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            title: Text(
-              title,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: textColor,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: PCard(
+        radius: 26,
+        onTap: onTap,
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          children: [
+            PIconBadge(icon: icon, color: color, size: 52, iconSize: 24),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      letterSpacing: -0.2,
+                      color: PUi.ink(isDark),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 13, color: PUi.muted(isDark)),
+                  ),
+                ],
               ),
             ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isDark ? Colors.white70 : Colors.grey.shade500,
-                ),
-              ),
-            ),
-            trailing: Icon(
-              Icons.chevron_right_rounded,
-              size: 24,
-              color: Colors.grey.shade400,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 68, right: 0),
-            child: Divider(
-              height: 1,
-              color: isDark ? Colors.white10 : Colors.grey.shade200,
-            ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right_rounded, size: 24, color: PUi.muted(isDark)),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildLogoWarning(bool isDark, Color primaryColor) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 30),
-      child: Column(
-        children: [
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: CircleAvatar(
-              radius: 24,
-              backgroundColor: primaryColor.withValues(alpha: 0.1),
-              child: Icon(
-                Icons.add_photo_alternate_rounded,
-                color: primaryColor,
-                size: 24,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 22),
+      child: PCard(
+        radius: 26,
+        padding: const EdgeInsets.all(16),
+        borderColor: primaryColor.withValues(alpha: 0.35),
+        child: Row(
+          children: [
+            PIconBadge(
+              icon: Icons.add_photo_alternate_rounded,
+              color: primaryColor,
+              size: 48,
+              iconSize: 24,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Add School Logo",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      color: PUi.ink(isDark),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    "Enhance your documents by adding your school logo.",
+                    style: TextStyle(fontSize: 12.5, color: PUi.muted(isDark)),
+                  ),
+                ],
               ),
             ),
-            title: const Text(
-              "Add School Logo",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-            ),
-            subtitle: const Text(
-              "Enhance your documents by adding your school logo.",
-              style: TextStyle(fontSize: 12),
-            ),
-            trailing: FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: primaryColor,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            const SizedBox(width: 10),
+            FilledButton(
+              style: PUi.filledPill(primaryColor, height: 42).copyWith(
+                padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 20),
                 ),
               ),
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const SchoolProfileScreen()),
               ).then((_) => _fetchSchoolData()),
-              child: const Text(
-                "Add",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-              ),
+              child: const Text("Add"),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 64),
-            child: Divider(
-              height: 1,
-              color: isDark ? Colors.white10 : Colors.grey.shade200,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

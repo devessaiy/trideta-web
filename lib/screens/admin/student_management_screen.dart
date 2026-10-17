@@ -8,6 +8,7 @@ import 'components/student_mobile_header.dart';
 import 'components/student_controls_bar.dart';
 import 'components/student_list_card.dart';
 import 'components/sticky_controls_delegate.dart';
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 
 class StudentManagementScreen extends StatefulWidget {
   const StudentManagementScreen({super.key});
@@ -450,7 +451,8 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   }
 
   // ===========================================================================
-  // 🚨 UI BUILDERS (WHATSAPP-STYLE LIST TILES)
+  // 🖼️ UI BUILDERS — presentation only. Fetching, filtering, selection and the
+  // reassign dialog above are untouched.
   // ===========================================================================
 
   Widget _buildClassListItem(
@@ -460,7 +462,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     Color primaryColor,
     bool isDark,
   ) {
-    return InkWell(
+    return PCard(
+      radius: 26,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       onTap: () {
         setState(() {
           _selectedClassFilter = className;
@@ -468,85 +472,138 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         });
         _filterAndSortStudents();
       },
-      child: Column(
+      child: Row(
         children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 8,
-            ),
-            leading: CircleAvatar(
-              radius: 26,
-              backgroundColor: primaryColor.withValues(alpha: 0.1),
-              child: Icon(Icons.groups_rounded, color: primaryColor, size: 28),
-            ),
-            title: Text(
-              className,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            subtitle: Row(
-              children: [
-                Icon(
-                  Icons.person_outline_rounded,
-                  size: 14,
-                  color: Colors.grey.shade500,
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    formMaster,
-                    style: TextStyle(
-                      color: Colors.grey.shade500,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 13,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            trailing: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
+          PIconBadge(
+            icon: Icons.groups_rounded,
+            color: primaryColor,
+            size: 52,
+            iconSize: 26,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  "$count",
+                  className,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: primaryColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: PUi.ink(isDark),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  "Students",
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 10),
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.person_outline_rounded,
+                      size: 14,
+                      color: PUi.muted(isDark),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        formMaster,
+                        style: TextStyle(
+                          color: PUi.muted(isDark),
+                          fontWeight: FontWeight.w500,
+                          fontSize: 13,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(left: 76, right: 20),
-            child: Divider(
-              height: 1,
-              color: isDark ? Colors.white10 : Colors.grey.shade200,
-            ),
+          const SizedBox(width: 10),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                "$count",
+                style: TextStyle(
+                  color: primaryColor,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                "Students",
+                style: TextStyle(color: PUi.muted(isDark), fontSize: 11),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color primaryColor = Theme.of(context).primaryColor;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
+  // Cards flow as a list on phones and as a two-column grid on wide panes.
+  Widget _cardsSliver({
+    required int count,
+    required IndexedWidgetBuilder itemBuilder,
+    required bool wideGrid,
+    required double horizontalPadding,
+    required double mainAxisExtent,
+    double bottom = 50,
+  }) {
+    if (wideGrid) {
+      return SliverPadding(
+        padding: EdgeInsets.fromLTRB(
+          horizontalPadding,
+          4,
+          horizontalPadding,
+          bottom,
+        ),
+        sliver: SliverGrid(
+          delegate: SliverChildBuilderDelegate(
+            itemBuilder,
+            childCount: count,
+          ),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            mainAxisExtent: mainAxisExtent,
+          ),
+        ),
+      );
+    }
+    return SliverPadding(
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        4,
+        horizontalPadding,
+        bottom,
+      ),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate((context, index) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: itemBuilder(context, index),
+          );
+        }, childCount: count),
+      ),
+    );
+  }
 
-    bool isDesktop = MediaQuery.of(context).size.width > 800;
-    double horizontalPadding = isDesktop ? 30.0 : 16.0;
-
+  Widget _buildRosterContent({
+    required bool isDark,
+    required Color primaryColor,
+    required Color bgColor,
+    required bool isDesktop,
+    required double horizontalPadding,
+    required bool wideGrid,
+  }) {
     int totalStudents = _students.length;
     int maleCount = _students
         .where((s) => s['gender']?.toString().toLowerCase() == 'male')
@@ -567,9 +624,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
       }
     }
 
-    Widget rosterContent = CustomScrollView(
+    return CustomScrollView(
       slivers: [
-        // ─── 1. GLOBAL STICKY CONTROLS (MOVED TO THE ABSOLUTE TOP) ───
+        // ─── 1. GLOBAL STICKY CONTROLS ───
         SliverPersistentHeader(
           pinned: true,
           delegate: StickyControlsDelegate(
@@ -614,7 +671,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           SliverPadding(
             padding: EdgeInsets.fromLTRB(
               horizontalPadding,
-              10.0, // Reduced top padding since it's now under the search bar
+              10.0,
               horizontalPadding,
               16.0,
             ),
@@ -667,15 +724,15 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                         });
                         _filterAndSortStudents();
                       },
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(30),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
+                          horizontal: 16,
+                          vertical: 10,
                         ),
                         decoration: BoxDecoration(
-                          color: primaryColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
+                          color: PUi.tint(primaryColor, isDark, 0.1),
+                          borderRadius: BorderRadius.circular(30),
                         ),
                         child: Row(
                           children: [
@@ -689,8 +746,8 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                               "Back to Classes",
                               style: TextStyle(
                                 color: primaryColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12.5,
                               ),
                             ),
                           ],
@@ -702,9 +759,10 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                       child: Text(
                         "$_selectedClassFilter Roster",
                         style: TextStyle(
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w800,
                           fontSize: 18,
-                          color: isDark ? Colors.white : Colors.black87,
+                          letterSpacing: -0.3,
+                          color: PUi.ink(isDark),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -719,180 +777,232 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           if (_selectedClassFilter == 'All Classes' &&
               _searchQuery.isEmpty) ...[
             SliverPadding(
-              padding: EdgeInsets.symmetric(
-                horizontal: horizontalPadding,
-                vertical: 10,
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding + 4,
+                6,
+                horizontalPadding,
+                12,
               ),
               sliver: SliverToBoxAdapter(
                 child: Text(
-                  "Select a Class to View Roster",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: Colors.grey.shade500,
-                    letterSpacing: 1.2,
-                  ),
+                  "SELECT A CLASS TO VIEW ROSTER",
+                  style: PUi.sectionLabel(isDark),
                 ),
               ),
             ),
-            SliverPadding(
-              padding: EdgeInsets.zero,
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  String className = classesToShow[index];
-                  int count;
-                  if (className == 'Unassigned') {
-                    count = unassignedCount;
-                  } else {
-                    count = _allStudentsUnfiltered
-                        .where((s) => s['class_level'] == className)
-                        .length;
-                  }
-                  String formMaster =
-                      _formMasters[className] ?? 'No Form Master';
+            _cardsSliver(
+              count: classesToShow.length,
+              wideGrid: wideGrid,
+              horizontalPadding: horizontalPadding,
+              mainAxisExtent: 92,
+              itemBuilder: (context, index) {
+                String className = classesToShow[index];
+                int count;
+                if (className == 'Unassigned') {
+                  count = unassignedCount;
+                } else {
+                  count = _allStudentsUnfiltered
+                      .where((s) => s['class_level'] == className)
+                      .length;
+                }
+                String formMaster = _formMasters[className] ?? 'No Form Master';
 
-                  return _buildClassListItem(
-                    className,
-                    count,
-                    formMaster,
-                    primaryColor,
-                    isDark,
-                  );
-                }, childCount: classesToShow.length),
-              ),
+                return _buildClassListItem(
+                  className,
+                  count,
+                  formMaster,
+                  primaryColor,
+                  isDark,
+                );
+              },
+              bottom: 120,
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 50)),
           ]
           // ─── STATE 2: STUDENT LIST (Global Search Results OR Class Drill-Down) ───
           else ...[
-            SliverPadding(
-              padding: const EdgeInsets.only(bottom: 50.0),
-              sliver: _students.isEmpty
-                  ? SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 50.0),
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.search_off_rounded,
-                                size: 80,
-                                color: Colors.grey.shade300,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                _searchQuery.isEmpty
-                                    ? "No Students in this class"
-                                    : "No Students Found",
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: isDark ? Colors.white : Colors.black87,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              if (_searchQuery.isNotEmpty)
-                                Text(
-                                  "Try adjusting your search.",
-                                  style: TextStyle(color: Colors.grey.shade500),
-                                ),
-                            ],
+            if (_students.isEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 50.0, bottom: 120),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        PIconBadge(
+                          icon: Icons.search_off_rounded,
+                          color: PUi.muted(isDark),
+                          size: 96,
+                          iconSize: 46,
+                        ),
+                        const SizedBox(height: 18),
+                        Text(
+                          _searchQuery.isEmpty
+                              ? "No Students in this class"
+                              : "No Students Found",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: PUi.ink(isDark),
                           ),
                         ),
-                      ),
-                    )
-                  : SliverList(
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        return StudentListCard(
-                          student: _students[index],
-                          isDark: isDark,
-                          primaryColor: primaryColor,
-                          isSelected: _selectedStudentIds.contains(
-                            _students[index]['id'],
+                        const SizedBox(height: 8),
+                        if (_searchQuery.isNotEmpty)
+                          Text(
+                            "Try adjusting your search.",
+                            style: TextStyle(color: PUi.muted(isDark)),
                           ),
-                          isSelecting: _isSelecting,
-                          onToggleSelection: _toggleSelection,
-                          onRefresh: _fetchStudents,
-                        );
-                      }, childCount: _students.length),
+                      ],
                     ),
-            ),
+                  ),
+                ),
+              )
+            else
+              _cardsSliver(
+                count: _students.length,
+                wideGrid: wideGrid,
+                horizontalPadding: horizontalPadding,
+                mainAxisExtent: 94,
+                bottom: 120,
+                itemBuilder: (context, index) {
+                  return StudentListCard(
+                    student: _students[index],
+                    isDark: isDark,
+                    primaryColor: primaryColor,
+                    isSelected: _selectedStudentIds.contains(
+                      _students[index]['id'],
+                    ),
+                    isSelecting: _isSelecting,
+                    onToggleSelection: _toggleSelection,
+                    onRefresh: _fetchStudents,
+                  );
+                },
+              ),
           ],
         ],
       ],
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color primaryColor = Theme.of(context).primaryColor;
+    Color bgColor = PUi.bg(isDark);
+
+    bool isDesktop = MediaQuery.of(context).size.width > 800;
+    double horizontalPadding = isDesktop ? 30.0 : 16.0;
 
     return Scaffold(
       backgroundColor: bgColor,
-      appBar: AppBar(
-        title: const Text(
-          "Student Directory",
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        backgroundColor: bgColor,
-        foregroundColor: isDark ? Colors.white : Colors.black87,
-        elevation: 0,
-        centerTitle: true,
-        actions: [
-          // Reassign now lives at the top (icon only), so it can never be
-          // hidden under the bottom navigation bar.
-          if (_selectedStudentIds.isNotEmpty)
-            IconButton.filled(
-              onPressed: () => _showPromotionDialog(primaryColor),
-              style: IconButton.styleFrom(
-                backgroundColor: primaryColor,
-                foregroundColor: Colors.white,
-              ),
-              icon: const Icon(Icons.move_up_rounded),
-              tooltip: "Reassign",
-            ),
-          if (_isSelecting)
-            IconButton(
-              icon: const Icon(Icons.select_all_rounded),
-              onPressed: _selectAll,
-              tooltip: "Select All",
-            ),
-          if (_isSelecting)
-            IconButton(
-              icon: const Icon(Icons.close_rounded),
-              onPressed: () => setState(() {
-                _selectedStudentIds.clear();
-                _isSelecting = false;
-              }),
-            ),
-          if (!_isSelecting &&
-              !isDesktop &&
-              _selectedClassFilter != 'All Classes')
-            IconButton(
-              icon: const Icon(Icons.checklist_rounded),
-              onPressed: () => setState(() => _isSelecting = true),
-            ),
-        ],
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth > 800) {
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 800),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: bgColor,
-                    border: Border.symmetric(
-                      vertical: BorderSide(
-                        color: isDark ? Colors.white10 : Colors.grey.shade200,
-                      ),
+      body: PBackdrop(
+        accent: primaryColor,
+        child: SafeArea(
+          bottom: false,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1100),
+              child: Column(
+                children: [
+                  // ─── HEADER ───
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding + 8,
+                      20,
+                      horizontalPadding,
+                      6,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            "Student Directory",
+                            style: PUi.title(isDark, size: 30),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        // Reassign lives at the top (icon only), so it can never
+                        // be hidden under the bottom navigation bar.
+                        if (_selectedStudentIds.isNotEmpty)
+                          IconButton.filled(
+                            onPressed: () => _showPromotionDialog(primaryColor),
+                            style: IconButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size(46, 46),
+                            ),
+                            icon: const Icon(Icons.move_up_rounded),
+                            tooltip: "Reassign",
+                          ),
+                        if (_isSelecting) const SizedBox(width: 8),
+                        if (_isSelecting)
+                          IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: PUi.surface(isDark),
+                              side: BorderSide(color: PUi.border(isDark)),
+                              minimumSize: const Size(46, 46),
+                            ),
+                            icon: Icon(
+                              Icons.select_all_rounded,
+                              color: PUi.ink(isDark),
+                            ),
+                            onPressed: _selectAll,
+                            tooltip: "Select All",
+                          ),
+                        if (_isSelecting) const SizedBox(width: 8),
+                        if (_isSelecting)
+                          IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: PUi.surface(isDark),
+                              side: BorderSide(color: PUi.border(isDark)),
+                              minimumSize: const Size(46, 46),
+                            ),
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: PUi.ink(isDark),
+                            ),
+                            onPressed: () => setState(() {
+                              _selectedStudentIds.clear();
+                              _isSelecting = false;
+                            }),
+                          ),
+                        if (!_isSelecting &&
+                            !isDesktop &&
+                            _selectedClassFilter != 'All Classes')
+                          IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: PUi.surface(isDark),
+                              side: BorderSide(color: PUi.border(isDark)),
+                              minimumSize: const Size(46, 46),
+                            ),
+                            icon: Icon(
+                              Icons.checklist_rounded,
+                              color: PUi.ink(isDark),
+                            ),
+                            onPressed: () => setState(() => _isSelecting = true),
+                          ),
+                      ],
                     ),
                   ),
-                  child: rosterContent,
-                ),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return _buildRosterContent(
+                          isDark: isDark,
+                          primaryColor: primaryColor,
+                          bgColor: bgColor,
+                          isDesktop: isDesktop,
+                          horizontalPadding: horizontalPadding,
+                          wideGrid: constraints.maxWidth >= 820,
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-            );
-          } else {
-            return rosterContent;
-          }
-        },
+            ),
+          ),
+        ),
       ),
     );
   }

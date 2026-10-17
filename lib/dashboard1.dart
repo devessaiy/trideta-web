@@ -1,0 +1,808 @@
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:trideta_v2/utils/lock_gate.dart';
+import 'package:trideta_v2/services/offline_queue.dart';
+import 'package:trideta_v2/screens/admin/curriculum_docs_screen.dart';
+import 'package:trideta_v2/screens/admin/lesson_note_review_screen.dart';
+import 'package:trideta_v2/widgets/sync_status_banner.dart';
+import 'package:trideta_v2/utils/resilient_request.dart';
+
+// MODULAR UI IMPORTS
+import 'package:trideta_v2/widgets/admin_bottom_nav_bar.dart';
+import 'package:trideta_v2/screens/admin/admin_dashboard_carousel.dart';
+
+// SCREEN IMPORTS
+import 'package:trideta_v2/screens/admin/profile_menu_screen.dart';
+import 'package:trideta_v2/screens/admin/school_profile_screen.dart';
+import 'package:trideta_v2/screens/admin/alerts_screen.dart';
+import 'package:trideta_v2/screens/admin/student_management_screen.dart';
+import 'package:trideta_v2/screens/admin/finance_centre_screen.dart';
+import 'package:trideta_v2/screens/admin/staff_directory_screen.dart';
+
+// RESULT ENGINE IMPORTS
+import 'package:trideta_v2/screens/admin/result_computation_screen.dart';
+import 'package:trideta_v2/screens/admin/affective_domain_screen.dart';
+import 'package:trideta_v2/screens/admin/master_broadsheet_screen.dart';
+import 'package:trideta_v2/screens/admin/report_card_screen.dart';
+
+class DashboardScreen extends StatefulWidget {
+  final String userRole;
+  const DashboardScreen({super.key, required this.userRole});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  final _supabase = Supabase.instance.client;
+
+  late PageController _pageController;
+
+  int _selectedIndex = 0;
+  // ignore: unused_field
+  bool _isLoading = true;
+
+  // --- SCHOOL DATA STATE ---
+  String _schoolName = "Loading School...";
+  String? _schoolLogoUrl;
+  String _currentSession = "Loading...";
+
+  // --- ADMIN DATA STATE ---
+  // ignore: unused_field
+  String _adminName = "Loading...";
+  Map<String, dynamic>? _latestAlert;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: _selectedIndex);
+    OfflineQueue.instance.start();
+    _fetchSchoolData();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  // Lock-screen gate: true only if the user really unlocked their phone.
+  Future<bool> _authenticateAdmin(String reason) =>
+      requireDeviceLock(context, reason);
+
+  Future<void> _fetchSchoolData() async {
+    final cacheKey = 'dash:admin:${_supabase.auth.currentUser?.id}';
+
+    // Show the last saved copy at once, then refresh from the server below.
+    final cached = await LocalCache.get(cacheKey);
+    if (cached is Map && mounted) {
+      setState(() {
+        _adminName = (cached['adminName'] ?? "Admin").toString();
+        _schoolName = (cached['schoolName'] ?? "My School").toString();
+        _schoolLogoUrl = cached['schoolLogoUrl']?.toString();
+        _currentSession = (cached['currentSession'] ?? "Not Set").toString();
+        final la = cached['latestAlert'];
+        _latestAlert = la is Map ? Map<String, dynamic>.from(la) : null;
+        _isLoading = false;
+      });
+    } else {
+      setState(() => _isLoading = true);
+    }
+
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+
+      final profile = await retryRead(
+        () async => await _supabase
+            .from('profiles')
+            .select('full_name, school_id')
+            .eq('id', user.id)
+            .single(),
+      );
+
+      final schoolId = profile['school_id'];
+
+      if (mounted) {
+        setState(() {
+          _adminName = profile['full_name'] ?? "Admin";
+        });
+      }
+
+      // Load the school and the latest alert at the same time.
+      final schoolFuture = retryRead(
+        () async => await _supabase
+            .from('schools')
+            .select('name, logo_url, current_session')
+            .eq('id', schoolId)
+            .single(),
+      );
+
+      bool alertLoaded = false;
+      Map<String, dynamic>? alertRes;
+      final alertFuture = () async {
+        try {
+          alertRes = await retryRead(
+            () async => await _supabase
+                .from('alerts')
+                .select()
+                .eq('school_id', schoolId)
+                .order('created_at', ascending: false)
+                .limit(1)
+                .maybeSingle(),
+          );
+          alertLoaded = true;
+        } catch (_) {}
+      }();
+
+      final school = await schoolFuture;
+      await alertFuture;
+      if (mounted && alertLoaded) _latestAlert = alertRes;
+
+      if (mounted) {
+        setState(() {
+          _schoolName = school['name'] ?? "My School";
+          // The logo address changes whenever a new logo is uploaded, so it
+          // can be cached safely (no need to re-download on every refresh).
+          _schoolLogoUrl = school['logo_url'];
+          _currentSession = school['current_session'] ?? "Not Set";
+          _isLoading = false;
+        });
+
+        // Keep a saved copy for the next start (works with no internet).
+        await LocalCache.put(cacheKey, {
+          'adminName': _adminName,
+          'schoolName': _schoolName,
+          'schoolLogoUrl': _schoolLogoUrl,
+          'currentSession': _currentSession,
+          'latestAlert': _latestAlert,
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _onItemTapped(int index) {
+    setState(() => _selectedIndex = index);
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+    if (index == 0) _fetchSchoolData();
+  }
+
+  void _onPageChanged(int index) {
+    setState(() => _selectedIndex = index);
+    if (index == 0) _fetchSchoolData();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
+    Color navBarColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    Color primaryColor = Theme.of(context).primaryColor;
+
+    final List<Widget> pages = [
+      _buildHomeContent(isDark, primaryColor),
+      const StudentManagementScreen(),
+      const AlertsScreen(),
+      const ProfileMenuScreen(),
+    ];
+
+    // 🚨 UI FIX: Removed the massive full-screen _isLoading blocker right here!
+    // The screen will now instantly render with "Loading..." text and smoothly snap the data into place.
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 900) {
+          return Scaffold(
+            backgroundColor: bgColor,
+            body: Row(
+              children: [
+                Container(
+                  width: 250,
+                  color: navBarColor,
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 40),
+                      _schoolLogoUrl != null
+                          ? CircleAvatar(
+                              radius: 25,
+                              backgroundColor: primaryColor.withValues(
+                                alpha: 0.1,
+                              ),
+                              backgroundImage: NetworkImage(_schoolLogoUrl!),
+                            )
+                          : Icon(
+                              Icons.school_rounded,
+                              size: 50,
+                              color: primaryColor,
+                            ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        "TRIDETA ADMIN",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+                      _buildDesktopNavItem(
+                        Icons.dashboard_rounded,
+                        "Dashboard",
+                        0,
+                        primaryColor,
+                      ),
+                      _buildDesktopNavItem(
+                        Icons.people_alt_rounded,
+                        "Students",
+                        1,
+                        primaryColor,
+                      ),
+                      _buildDesktopNavItem(
+                        Icons.campaign_rounded,
+                        "Action Center",
+                        2,
+                        primaryColor,
+                      ),
+                      _buildDesktopNavItem(
+                        Icons.settings_rounded,
+                        "Settings",
+                        3,
+                        primaryColor,
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: PageView(
+                    controller: _pageController,
+                    physics: const BouncingScrollPhysics(),
+                    onPageChanged: _onPageChanged,
+                    children: pages,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Scaffold(
+          backgroundColor: bgColor,
+          extendBody: true,
+          body: PageView(
+            controller: _pageController,
+            physics: const BouncingScrollPhysics(),
+            onPageChanged: _onPageChanged,
+            children: pages,
+          ),
+          bottomNavigationBar: AdminBottomNavBar(
+            selectedIndex: _selectedIndex,
+            onItemSelected: _onItemTapped,
+            primaryColor: primaryColor,
+            navBarColor: navBarColor,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDesktopNavItem(
+    IconData icon,
+    String title,
+    int index,
+    Color primaryColor,
+  ) {
+    bool isSelected = _selectedIndex == index;
+    return ListTile(
+      leading: Icon(icon, color: isSelected ? primaryColor : Colors.grey),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: isSelected ? primaryColor : Colors.grey,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+      selected: isSelected,
+      selectedTileColor: primaryColor.withValues(alpha: 0.1),
+      onTap: () => _onItemTapped(index),
+    );
+  }
+
+  Widget _buildHomeContent(bool isDark, Color primaryColor) {
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+    Color subTextColor = isDark ? Colors.white70 : const Color(0xFF9098B1);
+
+    return SafeArea(
+      bottom: false,
+      child: RefreshIndicator(
+        onRefresh: _fetchSchoolData,
+        color: primaryColor,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 25),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SyncStatusBanner(),
+              _buildAdminHeader(textColor, subTextColor, primaryColor),
+              const SizedBox(height: 30),
+
+              if (_schoolLogoUrl == null)
+                _buildLogoWarning(isDark, primaryColor),
+
+              _buildGlassySessionCard(primaryColor),
+              const SizedBox(height: 35),
+
+              AdminDashboardCarousel(
+                latestAlert: _latestAlert,
+                primaryColor: primaryColor,
+                isDark: isDark,
+              ),
+              const SizedBox(height: 30),
+
+              Text(
+                "ADMINISTRATIVE & FINANCE",
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Colors.grey.shade500,
+                  fontSize: 12,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 15),
+
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.account_balance_wallet_rounded,
+                color: Colors.green.shade600,
+                title: "Finance Centre",
+                subtitle: "Manage School Finance here!",
+                onTap: () async {
+                  bool auth = await _authenticateAdmin(
+                    'Authenticate to access the Finance Centre.',
+                  );
+                  if (auth && mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const FinanceCentreScreen(),
+                      ),
+                    );
+                  }
+                },
+              ),
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.badge_rounded,
+                color: Colors.orange.shade600,
+                title: "Staff Directory",
+                subtitle: "Manage teachers & other staff",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const StaffDirectoryScreen(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 30),
+              Text(
+                "SCHOOL CURRICULUM",
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Colors.grey.shade500,
+                  fontSize: 12,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 15),
+
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.folder_copy_rounded,
+                color: Colors.indigo.shade500,
+                title: "Curriculum Documents",
+                subtitle: "Send syllabus & scheme of work to teachers",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const CurriculumDocsScreen(),
+                  ),
+                ),
+              ),
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.fact_check_rounded,
+                color: Colors.green.shade600,
+                title: "Lesson Note Approvals",
+                subtitle: "Review lesson notes sent by teachers",
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const LessonNoteReviewScreen(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 30),
+
+              Text(
+                "ACADEMIC & RESULTS",
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Colors.grey.shade500,
+                  fontSize: 12,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 15),
+
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.edit_document,
+                color: primaryColor,
+                title: "Enter Subject Scores",
+                subtitle: "Input CA and Exam scores here",
+                onTap: () async {
+                  bool auth = await _authenticateAdmin(
+                    'Authenticate to modify student examination scores.',
+                  );
+                  if (auth && mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ResultComputationScreen(),
+                      ),
+                    );
+                  }
+                },
+              ),
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.psychology_alt_rounded,
+                color: Colors.purple.shade500,
+                title: "Performance overview",
+                subtitle: "Add behavior & Form Master comments",
+                onTap: () async {
+                  bool auth = await _authenticateAdmin(
+                    'Authenticate to enter affective domains and remarks.',
+                  );
+                  if (auth && mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const AffectiveDomainScreen(),
+                      ),
+                    );
+                  }
+                },
+              ),
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.table_chart_rounded,
+                color: Colors.teal.shade500,
+                title: "Master Broadsheet",
+                subtitle: "Compute and publish term results",
+                onTap: () async {
+                  bool auth = await _authenticateAdmin(
+                    'Authenticate to compute and publish results.',
+                  );
+                  if (auth && mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const MasterBroadsheetScreen(),
+                      ),
+                    );
+                  }
+                },
+              ),
+              _buildModuleTile(
+                isDark: isDark,
+                icon: Icons.print_rounded,
+                color: Colors.redAccent,
+                title: "Report Cards",
+                subtitle: "Generate & Print Report Cards.",
+                onTap: () async {
+                  bool auth = await _authenticateAdmin(
+                    'Authenticate to view and print Report Cards.',
+                  );
+                  if (auth && mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ReportCardScreen(),
+                      ),
+                    );
+                  }
+                },
+              ),
+              const SizedBox(height: 80),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdminHeader(
+    Color textColor,
+    Color subTextColor,
+    Color primaryColor,
+  ) {
+    return Row(
+      children: [
+        Container(
+          height: 55,
+          width: 55,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: primaryColor.withValues(alpha: 0.2),
+              width: 2,
+            ),
+            image: _schoolLogoUrl != null
+                ? DecorationImage(
+                    image: NetworkImage(_schoolLogoUrl!),
+                    fit: BoxFit.cover,
+                  )
+                : null,
+          ),
+          child: _schoolLogoUrl == null
+              ? Icon(Icons.school_rounded, color: primaryColor, size: 24)
+              : null,
+        ),
+        const SizedBox(width: 15),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "System Administrator",
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade500,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                _schoolName,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: textColor,
+                  letterSpacing: -0.5,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGlassySessionCard(Color primaryColor) {
+    return Container(
+      width: double.infinity,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [primaryColor.withValues(alpha: 0.85), primaryColor],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: primaryColor.withValues(alpha: 0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.2),
+          width: 1.5,
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -30,
+            top: -30,
+            child: CircleAvatar(
+              radius: 70,
+              backgroundColor: Colors.white.withValues(alpha: 0.1),
+            ),
+          ),
+          Positioned(
+            left: -20,
+            bottom: -40,
+            child: CircleAvatar(
+              radius: 60,
+              backgroundColor: Colors.white.withValues(alpha: 0.05),
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(
+                      Icons.security_rounded,
+                      color: Colors.white70,
+                      size: 16,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      "SECURE WORKSPACE",
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 15),
+                Text(
+                  _currentSession,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 36,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  child: const Text(
+                    "All Systems Operational",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModuleTile({
+    required bool isDark,
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+
+    return InkWell(
+      onTap: onTap,
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 0,
+              vertical: 4,
+            ),
+            leading: CircleAvatar(
+              radius: 26,
+              backgroundColor: color.withValues(alpha: 0.12),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            title: Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: textColor,
+              ),
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? Colors.white70 : Colors.grey.shade500,
+                ),
+              ),
+            ),
+            trailing: Icon(
+              Icons.chevron_right_rounded,
+              size: 24,
+              color: Colors.grey.shade400,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 68, right: 0),
+            child: Divider(
+              height: 1,
+              color: isDark ? Colors.white10 : Colors.grey.shade200,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLogoWarning(bool isDark, Color primaryColor) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 30),
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: CircleAvatar(
+              radius: 24,
+              backgroundColor: primaryColor.withValues(alpha: 0.1),
+              child: Icon(
+                Icons.add_photo_alternate_rounded,
+                color: primaryColor,
+                size: 24,
+              ),
+            ),
+            title: const Text(
+              "Add School Logo",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+            subtitle: const Text(
+              "Enhance your documents by adding your school logo.",
+              style: TextStyle(fontSize: 12),
+            ),
+            trailing: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: primaryColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SchoolProfileScreen()),
+              ).then((_) => _fetchSchoolData()),
+              child: const Text(
+                "Add",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 64),
+            child: Divider(
+              height: 1,
+              color: isDark ? Colors.white10 : Colors.grey.shade200,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

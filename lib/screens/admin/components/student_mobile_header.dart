@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 import 'student_quick_actions_box.dart';
 
 class StudentMobileHeader extends StatelessWidget {
@@ -22,72 +23,51 @@ class StudentMobileHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 🚨 UI FIX: Replaced massive gradient card with a sleek, flat ListTile
-        InkWell(
-          onTap: null, // Keeps the layout structure standard
-          child: Column(
+        PCard(
+          radius: 26,
+          padding: const EdgeInsets.all(16),
+          child: Row(
             children: [
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 4,
-                  vertical: 8,
-                ),
-                leading: CircleAvatar(
-                  radius: 26,
-                  backgroundColor: primaryColor.withValues(alpha: 0.1),
-                  child: Icon(
-                    Icons.analytics_rounded,
-                    color: primaryColor,
-                    size: 28,
-                  ),
-                ),
-                title: Text(
-                  "Total Enrolled: $totalStudents",
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 4.0),
-                  child: Text(
-                    "Males: $maleCount  •  Females: $femaleCount",
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
-                  ),
-                ),
-                trailing: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Text(
-                    "Active",
-                    style: TextStyle(
-                      color: Colors.green,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
+              PIconBadge(
+                icon: Icons.analytics_rounded,
+                color: primaryColor,
+                size: 52,
+                iconSize: 26,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Total Enrolled: $totalStudents",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        color: PUi.ink(isDark),
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Males: $maleCount  •  Females: $femaleCount",
+                      style: TextStyle(
+                        color: PUi.muted(isDark),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.only(left: 60, right: 4),
-                child: Divider(
-                  height: 1,
-                  color: isDark ? Colors.white10 : Colors.grey.shade200,
-                ),
-              ),
+              const SizedBox(width: 8),
+              const PPill(text: "ACTIVE", color: Colors.green),
             ],
           ),
         ),
+        const SizedBox(height: 14),
 
-        // 🚨 The Quick Actions Box flows seamlessly underneath
+        // The quick actions flow underneath the status tile
         StudentQuickActionsBox(
           primaryColor: primaryColor,
           isDark: isDark,

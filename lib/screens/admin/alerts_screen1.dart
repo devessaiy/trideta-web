@@ -1,0 +1,1400 @@
+import 'dart:convert';
+import 'package:trideta_v2/services/read_through.dart';
+import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/widgets/trideta_loader.dart';
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
+
+import 'package:trideta_v2/utils/subscription_guard.dart';
+import 'package:trideta_v2/services/app_activity_logger.dart'; // 🚨 INJECTED LOGGER
+
+class AlertsScreen extends StatefulWidget {
+  const AlertsScreen({super.key});
+
+  @override
+  State<AlertsScreen> createState() => _AlertsScreenState();
+}
+
+class _AlertsScreenState extends State<AlertsScreen>
+    with SingleTickerProviderStateMixin, AuthErrorHandler {
+  late TabController _tabController;
+  final _supabase = Supabase.instance.client;
+
+  String? _schoolId;
+  String _currentSession = "";
+  String _currentTerm = "1st Term";
+  bool _isLoading = true;
+
+  // Financial Health Variables
+  double _collectionPercentage = 0.0;
+  double _totalExpectedFees = 0.0;
+  bool _isSendingDebtorAlert = false;
+
+  // WhatsApp-style Selection Engine Variables
+  bool _isSelecting = false;
+  final Set<String> _selectedAlertKeys = {};
+  final List<Map<String, dynamic>> _selectedAlertsData = [];
+
+  // 🚨 ENGINE SWAP: State variables for Alerts (No Streams)
+  List<Map<String, dynamic>> _alerts = [];
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.index != 0 && _isSelecting) {
+        setState(() {
+          _isSelecting = false;
+          _selectedAlertKeys.clear();
+          _selectedAlertsData.clear();
+        });
+      }
+      setState(() {});
+    });
+    _initData();
+  }
+
+  Future<void> _handleRefresh() async {
+    await _initData();
+    if (mounted) {
+      showSuccessDialog("Sync Complete", "Data synchronized successfully!");
+    }
+  }
+
+  // ===========================================================================
+  // 🚨 LOGIC ENGINE: STRICTLY UNTOUCHED
+  // ===========================================================================
+  Future<void> _initData() async {
+    if (mounted) setState(() => _isLoading = true);
+
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user != null) {
+        final profile = await readThrough(
+          'a851cdd3|profiles|${user.id}',
+          () async => await _supabase
+              .from('profiles')
+              .select('school_id')
+              .eq('id', user.id)
+              .single(),
+          fresh: const Duration(minutes: 10),
+        );
+        _schoolId = profile['school_id'];
+
+        final school = await readThrough(
+          'b6eeb681|schools|${_schoolId!}',
+          () async => await _supabase
+              .from('schools')
+              .select('current_session, current_term')
+              .eq('id', _schoolId!)
+              .single(),
+        );
+
+        _currentSession = school['current_session'] ?? "";
+        _currentTerm = school['current_term'] ?? "1st Term";
+
+        await _checkFinancialHealth();
+        await _fetchAlerts();
+      }
+    } catch (e) {
+      debugPrint("Init Error: $e");
+      if (mounted) setState(() => _hasError = true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _fetchAlerts() async {
+    if (_schoolId == null) return;
+    try {
+      final rawAlerts = await readThrough(
+        'a067b476|alerts|${_schoolId!}',
+        () async => await _supabase
+            .from('alerts')
+            .select()
+            .eq('school_id', _schoolId!)
+            .order('created_at', ascending: false),
+      );
+
+      List<Map<String, dynamic>> uniqueAlerts = [];
+      Set<String> seen = {};
+
+      for (var a in rawAlerts) {
+        String key = _getAlertKey(a);
+        if (!seen.contains(key)) {
+          seen.add(key);
+          uniqueAlerts.add(a);
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _alerts = uniqueAlerts;
+          _hasError = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Alerts Fetch Error: $e");
+      if (mounted) setState(() => _hasError = true);
+    }
+  }
+
+  Future<void> _checkFinancialHealth() async {
+    if (_schoolId == null || _currentSession.isEmpty) return;
+    try {
+      final rawFeeData = await _supabase
+          .from('fee_structures')
+          .select(
+            'amount, applicable_classes, applicable_categories, academic_term',
+          )
+          .eq('school_id', _schoolId!)
+          .eq('academic_session', _currentSession);
+
+      List<Map<String, dynamic>> feeData = [];
+      for (var f in rawFeeData) {
+        String t = (f['academic_term'] ?? 'All Terms').toString();
+        if (t == _currentTerm || t == 'All Terms') {
+          feeData.add(f);
+        }
+      }
+
+      final studentsData = await _supabase
+          .from('students')
+          .select('*')
+          .eq('school_id', _schoolId!);
+      double totalExpected = 0.0;
+
+      for (var student in studentsData) {
+        String sClass = (student['class_level'] ?? '').toString();
+        String sCategory = (student['category'] ?? '').toString();
+        for (var fee in feeData) {
+          if (_doesItApply(fee['applicable_classes'], sClass) &&
+              _doesItApply(
+                fee['applicable_categories'],
+                sCategory,
+                isCategory: true,
+              )) {
+            totalExpected += (fee['amount'] ?? 0).toDouble();
+          }
+        }
+      }
+
+      final transactions = await _supabase
+          .from('transactions')
+          .select('*')
+          .eq('school_id', _schoolId!);
+      double totalCollected = 0.0;
+
+      for (var tx in transactions) {
+        String txSession = (tx['academic_session'] ?? '').toString();
+        String txTerm = (tx['academic_term'] ?? 'All Terms').toString();
+        if ((txSession == _currentSession || txSession.isEmpty) &&
+            (txTerm == _currentTerm ||
+                txTerm == 'All Terms' ||
+                _currentTerm == 'All Terms')) {
+          totalCollected += (tx['amount'] ?? 0).toDouble();
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _totalExpectedFees = totalExpected;
+          if (totalExpected > 0) {
+            _collectionPercentage = (totalCollected / totalExpected) * 100;
+          } else {
+            _collectionPercentage = 0.0;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint("Health Check Error: $e");
+    }
+  }
+
+  bool _doesItApply(
+    dynamic columnData,
+    String studentData, {
+    bool isCategory = false,
+  }) {
+    String cleanStudentData = isCategory
+        ? studentData.replaceAll(' ', '').toLowerCase()
+        : _standardizeClass(studentData);
+    if (isCategory && cleanStudentData.isEmpty) cleanStudentData = 'regular';
+    if (cleanStudentData.isEmpty) return false;
+    if (columnData == null) return true;
+
+    if (columnData is String && columnData.startsWith('[')) {
+      try {
+        List<dynamic> parsedList = jsonDecode(columnData);
+        if (parsedList.isEmpty) return true;
+        for (var item in parsedList) {
+          String cleanItem = isCategory
+              ? item.toString().replaceAll(' ', '').toLowerCase()
+              : _standardizeClass(item.toString());
+          if (cleanItem == 'all' || cleanItem == cleanStudentData) return true;
+        }
+        return false;
+      } catch (e) {
+        // Fallback
+      }
+    }
+
+    String colStr = isCategory
+        ? columnData.toString().replaceAll(' ', '').toLowerCase()
+        : _standardizeClass(columnData.toString());
+    return colStr.isEmpty ||
+        colStr == 'all' ||
+        colStr == '[]' ||
+        colStr.contains(cleanStudentData);
+  }
+
+  String _standardizeClass(String val) {
+    return val
+        .replaceAll(' ', '')
+        .toLowerCase()
+        .replaceAll('one', '1')
+        .replaceAll('two', '2')
+        .replaceAll('three', '3')
+        .replaceAll('four', '4')
+        .replaceAll('five', '5')
+        .replaceAll('six', '6');
+  }
+
+  String _getAlertKey(Map<String, dynamic> a) =>
+      '${a['title']}_${a['message']}_${a['type']}';
+
+  void _toggleSelection(Map<String, dynamic> alert) {
+    String key = _getAlertKey(alert);
+    setState(() {
+      if (_selectedAlertKeys.contains(key)) {
+        _selectedAlertKeys.remove(key);
+        _selectedAlertsData.removeWhere((a) => _getAlertKey(a) == key);
+      } else {
+        _selectedAlertKeys.add(key);
+        _selectedAlertsData.add(alert);
+      }
+      _isSelecting = _selectedAlertKeys.isNotEmpty;
+    });
+  }
+
+  Future<void> _deleteSelectedAlerts() async {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          "Delete Alerts?",
+          style: TextStyle(
+            color: Colors.redAccent,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          "Are you sure you want to permanently delete ${_selectedAlertKeys.length} selected alert(s)?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              "Delete",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        for (var alert in _selectedAlertsData) {
+          await _supabase
+              .from('alerts')
+              .delete()
+              .eq('school_id', _schoolId!)
+              .eq('title', alert['title'])
+              .eq('message', alert['message']);
+        }
+
+        if (mounted) {
+          showSuccessDialog("Deleted", "Selected alerts deleted successfully.");
+          setState(() {
+            _isSelecting = false;
+            _selectedAlertKeys.clear();
+            _selectedAlertsData.clear();
+          });
+          _fetchAlerts();
+        }
+      } catch (e) {
+        if (mounted) showAuthErrorDialog("Error deleting alert: $e");
+      }
+    }
+  }
+
+  void _showDebtorOptions() {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+            SizedBox(width: 10),
+            Text(
+              "Targeted Debtor Alert",
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+            ),
+          ],
+        ),
+        content: Text(
+          "The system will automatically calculate the wallet balance of every student. Only parents with an outstanding balance for $_currentTerm, $_currentSession will receive this alert.",
+          style: TextStyle(
+            color: isDark ? Colors.white70 : Colors.black87,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _executeDebtorAlert(sendSms: false);
+            },
+            child: const Text(
+              "Dashboard Only",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _executeDebtorAlert(sendSms: true);
+            },
+            icon: const Icon(Icons.sms_rounded, size: 18),
+            label: const Text(
+              "Dashboard + SMS",
+              style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _executeDebtorAlert({required bool sendSms}) async {
+    final subGuard = SubscriptionGuard();
+    bool canProceed = await subGuard.canPerformAction(context);
+    if (!canProceed) return;
+
+    setState(() => _isSendingDebtorAlert = true);
+    try {
+      final rawFeeData = await _supabase
+          .from('fee_structures')
+          .select(
+            'amount, applicable_classes, applicable_categories, academic_term',
+          )
+          .eq('school_id', _schoolId!)
+          .eq('academic_session', _currentSession);
+
+      List<Map<String, dynamic>> feeData = [];
+      for (var f in rawFeeData) {
+        String t = (f['academic_term'] ?? 'All Terms').toString();
+        if (t == _currentTerm || t == 'All Terms') {
+          feeData.add(f);
+        }
+      }
+
+      final studentsData = await _supabase
+          .from('students')
+          .select('id, class_level, category, wallet_balance')
+          .eq('school_id', _schoolId!);
+
+      final transactions = await _supabase
+          .from('transactions')
+          .select('student_id, amount, academic_session, academic_term')
+          .eq('school_id', _schoolId!);
+
+      List<String> debtorIds = [];
+
+      for (var student in studentsData) {
+        String sId = student['id'].toString();
+        String sClass = (student['class_level'] ?? '').toString();
+        String sCategory = (student['category'] ?? '').toString();
+
+        double walletBalance = (student['wallet_balance'] ?? 0).toDouble();
+
+        double expected = 0.0;
+        for (var fee in feeData) {
+          if (_doesItApply(fee['applicable_classes'], sClass) &&
+              _doesItApply(
+                fee['applicable_categories'],
+                sCategory,
+                isCategory: true,
+              )) {
+            expected += (fee['amount'] ?? 0).toDouble();
+          }
+        }
+
+        double paid = 0.0;
+        for (var tx in transactions) {
+          if (tx['student_id'].toString() == sId) {
+            String txSession = (tx['academic_session'] ?? '').toString();
+            String txTerm = (tx['academic_term'] ?? 'All Terms').toString();
+            if ((txSession == _currentSession || txSession.isEmpty) &&
+                (txTerm == _currentTerm ||
+                    txTerm == 'All Terms' ||
+                    _currentTerm == 'All Terms')) {
+              paid += (tx['amount'] ?? 0).toDouble();
+            }
+          }
+        }
+
+        double balance = expected - paid - walletBalance;
+        if (balance > 0) {
+          debtorIds.add(sId);
+        }
+      }
+
+      if (debtorIds.isEmpty) {
+        if (mounted) {
+          showSuccessDialog(
+            "No Debtors",
+            "There are currently no students with outstanding balances for this term.",
+          );
+        }
+        setState(() => _isSendingDebtorAlert = false);
+        return;
+      }
+
+      await _supabase.from('alerts').insert({
+        'school_id': _schoolId,
+        'title': 'FEE REMINDER: $_currentSession ($_currentTerm)',
+        'message':
+            'Dear Parent, our records show an outstanding balance for the $_currentTerm of the $_currentSession academic session. Kindly arrange for payment to avoid administrative interruptions.',
+        'type': 'fee_urgent',
+      });
+
+      // 🚨 INJECTED LOGGER
+      if (_schoolId != null) {
+        AppActivityLogger.log(
+          schoolId: _schoolId!,
+          module: 'finance',
+          action: 'broadcast_debtor_alert',
+        );
+      }
+
+      if (sendSms) await Future.delayed(const Duration(seconds: 2));
+
+      if (mounted) {
+        showSuccessDialog(
+          "Alerts Dispatched",
+          "Fee Reminders have been successfully published. \n\n(Note: The Parent App handles the hiding of this alert based on individual student financial statuses).",
+        );
+        _handleRefresh();
+      }
+    } catch (e) {
+      if (mounted) showAuthErrorDialog("Error sending alerts: $e");
+    } finally {
+      if (mounted) setState(() => _isSendingDebtorAlert = false);
+    }
+  }
+
+  void _showCreateAlertDialog() {
+    String selectedAudience = 'parent_alert';
+    final titleCtrl = TextEditingController();
+    final msgCtrl = TextEditingController();
+    bool isSubmitting = false;
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color primaryColor = Theme.of(context).primaryColor;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return Container(
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF121212) : Colors.white,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(30),
+              ),
+            ),
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+              left: 24,
+              right: 24,
+              top: 12,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  "Create Custom Alert",
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                DropdownButtonFormField<String>(
+                  initialValue: selectedAudience,
+                  decoration: InputDecoration(
+                    labelText: "Target Audience",
+                    labelStyle: TextStyle(color: Colors.grey.shade500),
+                    prefixIcon: Icon(Icons.group_rounded, color: primaryColor),
+                    filled: true,
+                    fillColor: isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : Colors.grey.shade50,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'parent_alert',
+                      child: Text(
+                        "Parents Only",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: 'teacher_alert',
+                      child: Text(
+                        "Teachers Only",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: 'general',
+                      child: Text(
+                        "General (All Users)",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: 'school_website',
+                      child: Text(
+                        "School Website (Public)",
+                        style: TextStyle(
+                          color: Colors.teal,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                  onChanged: (val) =>
+                      setModalState(() => selectedAudience = val!),
+                ),
+                const SizedBox(height: 16),
+
+                TextField(
+                  controller: titleCtrl,
+                  decoration: InputDecoration(
+                    labelText: "Alert Title",
+                    labelStyle: TextStyle(color: Colors.grey.shade500),
+                    filled: true,
+                    fillColor: isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : Colors.grey.shade50,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                TextField(
+                  controller: msgCtrl,
+                  maxLines: 4,
+                  decoration: InputDecoration(
+                    labelText: "Message Body",
+                    alignLabelWithHint: true,
+                    labelStyle: TextStyle(color: Colors.grey.shade500),
+                    filled: true,
+                    fillColor: isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : Colors.grey.shade50,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 30),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 55,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 0,
+                    ),
+                    onPressed: isSubmitting
+                        ? null
+                        : () async {
+                            if (titleCtrl.text.isEmpty ||
+                                msgCtrl.text.isEmpty) {
+                              showAuthErrorDialog(
+                                "Title and message are required.",
+                              );
+                              return;
+                            }
+
+                            final subGuard = SubscriptionGuard();
+                            bool canProceed = await subGuard.canPerformAction(
+                              context,
+                            );
+                            if (!canProceed) return;
+
+                            setModalState(() => isSubmitting = true);
+                            try {
+                              await _supabase.from('alerts').insert({
+                                'school_id': _schoolId,
+                                'title': titleCtrl.text.trim(),
+                                'message': msgCtrl.text.trim(),
+                                'type': selectedAudience,
+                              });
+
+                              // 🚨 INJECTED LOGGER
+                              if (_schoolId != null) {
+                                AppActivityLogger.log(
+                                  schoolId: _schoolId!,
+                                  module: 'communication',
+                                  action: 'create_alert',
+                                );
+                              }
+
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                showSuccessDialog(
+                                  "Alert Created",
+                                  "Your custom alert has been broadcasted.",
+                                );
+                                _handleRefresh();
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                showAuthErrorDialog("Failed to post alert: $e");
+                              }
+                            } finally {
+                              setModalState(() => isSubmitting = false);
+                            }
+                          },
+                    icon: isSubmitting
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: TridetaLoader(color: Colors.white),
+                          )
+                        : const Icon(Icons.send_rounded, color: Colors.white),
+                    label: Text(
+                      isSubmitting ? "POSTING..." : "POST ALERT",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 30),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
+    Color primaryColor = Theme.of(context).primaryColor;
+
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: bgColor,
+        body: Center(child: TridetaLoader(color: primaryColor)),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: bgColor,
+      appBar: AppBar(
+        title: Text(
+          _isSelecting
+              ? "${_selectedAlertKeys.length} Selected"
+              : "Action Center",
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        backgroundColor: bgColor,
+        foregroundColor: isDark ? Colors.white : Colors.black87,
+        elevation: 0,
+        centerTitle: true,
+        actions: [
+          if (_isSelecting)
+            IconButton(
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                color: Colors.redAccent,
+              ),
+              onPressed: _deleteSelectedAlerts,
+            ),
+          if (_isSelecting)
+            IconButton(
+              icon: const Icon(Icons.close_rounded),
+              onPressed: () => setState(() {
+                _selectedAlertKeys.clear();
+                _selectedAlertsData.clear();
+                _isSelecting = false;
+              }),
+            ),
+          if (!_isSelecting && _tabController.index == 0)
+            IconButton(
+              icon: Icon(
+                Icons.add_circle_outline_rounded,
+                color: primaryColor,
+                size: 28,
+              ),
+              tooltip: "Post New Alert",
+              onPressed: _showCreateAlertDialog,
+            ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              dividerColor: Colors.transparent,
+              indicatorSize: TabBarIndicatorSize.tab,
+              indicator: BoxDecoration(
+                color: primaryColor,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              labelColor: Colors.white,
+              unselectedLabelColor: isDark
+                  ? Colors.white54
+                  : Colors.grey.shade600,
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+              tabs: const [
+                Tab(text: "ALERTS", iconMargin: EdgeInsets.zero),
+                Tab(text: "SOCIAL", iconMargin: EdgeInsets.zero),
+              ],
+            ),
+          ),
+        ),
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth > 800) {
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    border: Border(
+                      left: BorderSide(
+                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                        width: 1,
+                      ),
+                      right: BorderSide(
+                        color: isDark ? Colors.white10 : Colors.grey.shade200,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildAlertsTab(isDark, primaryColor),
+                      _buildSocialFeedsPlaceholderTab(isDark, primaryColor),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          } else {
+            return TabBarView(
+              controller: _tabController,
+              children: [
+                _buildAlertsTab(isDark, primaryColor),
+                _buildSocialFeedsPlaceholderTab(isDark, primaryColor),
+              ],
+            );
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildHealthCard(bool isDark) {
+    if (_totalExpectedFees == 0) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline_rounded, color: Colors.grey.shade600),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                "Awaiting financial data for $_currentTerm, $_currentSession.",
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ignore: unused_local_variable
+    Color cardColor;
+    Color textColor;
+    IconData icon;
+    String title;
+    String subtitle;
+    bool showButton = false;
+
+    if (_collectionPercentage < 50.0) {
+      cardColor = Colors.redAccent.withValues(alpha: 0.05);
+      textColor = Colors.redAccent;
+      icon = Icons.warning_amber_rounded;
+      title = "CRITICAL REVENUE";
+      subtitle =
+          "Collection is only ${_collectionPercentage.toStringAsFixed(1)}%. Expected is 50% or more. High outstanding debt detected.";
+      showButton = true;
+    } else if (_collectionPercentage < 60.0) {
+      cardColor = Colors.orange.withValues(alpha: 0.05);
+      textColor = Colors.orange;
+      icon = Icons.health_and_safety_outlined;
+      title = "SYSTEM STABLE";
+      subtitle =
+          "Collection is at ${_collectionPercentage.toStringAsFixed(1)}%. Minimum operational threshold met.";
+    } else if (_collectionPercentage < 70.0) {
+      cardColor = Colors.teal.withValues(alpha: 0.05);
+      textColor = Colors.teal;
+      icon = Icons.trending_up_rounded;
+      title = "HEALTHY REVENUE";
+      subtitle =
+          "Collection is at ${_collectionPercentage.toStringAsFixed(1)}%. Financial health is looking very good.";
+    } else {
+      cardColor = Colors.green.withValues(alpha: 0.05);
+      textColor = Colors.green;
+      icon = Icons.verified_user_rounded;
+      title = "EXCELLENT REVENUE";
+      subtitle =
+          "Great job! Collection is at ${_collectionPercentage.toStringAsFixed(1)}%. The school's finances are highly stable.";
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: textColor.withValues(alpha: 0.3), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 60,
+                height: 60,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CircularProgressIndicator(
+                      value: _collectionPercentage / 100,
+                      strokeWidth: 6,
+                      backgroundColor: textColor.withValues(alpha: 0.1),
+                      valueColor: AlwaysStoppedAnimation<Color>(textColor),
+                      strokeCap: StrokeCap.round,
+                    ),
+                    Center(child: Icon(icon, color: textColor, size: 24)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: textColor,
+                        fontSize: 16,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white70 : Colors.grey.shade600,
+                        height: 1.4,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (showButton) ...[
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 45,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: textColor,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: _isSendingDebtorAlert ? null : _showDebtorOptions,
+                icon: _isSendingDebtorAlert
+                    ? const SizedBox(
+                        width: 15,
+                        height: 15,
+                        child: TridetaLoader(color: Colors.white),
+                      )
+                    : const Icon(Icons.notifications_active_rounded, size: 18),
+                label: Text(
+                  _isSendingDebtorAlert ? "PROCESSING..." : "ALERT ALL DEBTORS",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAlertsTab(bool isDark, Color primaryColor) {
+    return RefreshIndicator(
+      onRefresh: _handleRefresh,
+      color: primaryColor,
+      child: _hasError && _alerts.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                _buildHealthCard(isDark),
+                SizedBox(
+                  height: 250,
+                  child: _buildEmptyState(
+                    "Connection Lost",
+                    "We couldn't load the alerts. Pull down to refresh.",
+                    Icons.cloud_off_rounded,
+                    isDark,
+                  ),
+                ),
+              ],
+            )
+          : ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 100),
+              children: [
+                _buildHealthCard(isDark),
+                if (_alerts.isEmpty)
+                  SizedBox(
+                    height: 250,
+                    child: _buildEmptyState(
+                      "No Custom Alerts",
+                      "Manual notifications will appear here.",
+                      Icons.campaign_rounded,
+                      isDark,
+                    ),
+                  )
+                else
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    padding: EdgeInsets.zero,
+                    itemCount: _alerts.length,
+                    itemBuilder: (context, index) {
+                      final alert = _alerts[index];
+                      return _CollapsibleAlertCard(
+                        alert: alert,
+                        primaryColor: primaryColor,
+                        isDark: isDark,
+                        isSelected: _selectedAlertKeys.contains(
+                          _getAlertKey(alert),
+                        ),
+                        isSelecting: _isSelecting,
+                        onToggleSelection: _toggleSelection,
+                      );
+                    },
+                  ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildSocialFeedsPlaceholderTab(bool isDark, Color primaryColor) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(30),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: primaryColor.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.dynamic_feed_rounded,
+                size: 60,
+                color: primaryColor,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              "Social Feeds",
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                color: isDark ? Colors.white : Colors.black87,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              "We are building a vibrant community space. Soon, you'll be able to share pictures, events, and school highlights directly with parents and students right here.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: isDark ? Colors.white54 : Colors.grey[600],
+                fontSize: 14,
+                height: 1.5,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 30),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white10 : Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text(
+                "COMING SOON",
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 10,
+                  letterSpacing: 1.5,
+                  color: Colors.grey,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(String t, String s, IconData i, bool d) => Center(
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: d
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.grey.shade100,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(i, size: 40, color: Colors.grey.shade400),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          t,
+          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          s,
+          style: TextStyle(
+            color: Colors.grey.shade500,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    ),
+  );
+}
+
+class _CollapsibleAlertCard extends StatefulWidget {
+  final Map<String, dynamic> alert;
+  final Color primaryColor;
+  final bool isDark;
+  final bool isSelected;
+  final bool isSelecting;
+  final Function(Map<String, dynamic>) onToggleSelection;
+
+  const _CollapsibleAlertCard({
+    required this.alert,
+    required this.primaryColor,
+    required this.isDark,
+    required this.isSelected,
+    required this.isSelecting,
+    required this.onToggleSelection,
+  });
+
+  @override
+  State<_CollapsibleAlertCard> createState() => _CollapsibleAlertCardState();
+}
+
+class _CollapsibleAlertCardState extends State<_CollapsibleAlertCard> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    String type = widget.alert['type'] ?? '';
+    IconData typeIcon = Icons.notifications_rounded;
+    Color typeColor = widget.primaryColor;
+    String badgeText = "General";
+
+    if (type == 'parent_alert') {
+      typeIcon = Icons.family_restroom_rounded;
+      typeColor = Colors.blue;
+      badgeText = "Parents";
+    } else if (type == 'teacher_alert') {
+      typeIcon = Icons.school_rounded;
+      typeColor = Colors.purple;
+      badgeText = "Teachers";
+    } else if (type == 'fee_urgent') {
+      typeIcon = Icons.warning_rounded;
+      typeColor = Colors.redAccent;
+      badgeText = "Debtors";
+    } else if (type == 'school_website') {
+      typeIcon = Icons.public_rounded;
+      typeColor = Colors.teal;
+      badgeText = "Website";
+    }
+
+    return Column(
+      children: [
+        Container(
+          color: widget.isSelected
+              ? widget.primaryColor.withValues(alpha: 0.1)
+              : Colors.transparent,
+          child: InkWell(
+            onLongPress: () => widget.onToggleSelection(widget.alert),
+            onTap: () {
+              if (widget.isSelecting) {
+                widget.onToggleSelection(widget.alert);
+              } else {
+                setState(() => _isExpanded = !_isExpanded);
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (widget.isSelecting) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10.0, right: 16.0),
+                      child: Checkbox(
+                        value: widget.isSelected,
+                        onChanged: (_) =>
+                            widget.onToggleSelection(widget.alert),
+                        activeColor: widget.primaryColor,
+                        shape: const CircleBorder(),
+                      ),
+                    ),
+                  ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: typeColor.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(typeIcon, size: 14, color: typeColor),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    badgeText,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: typeColor,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              widget.alert['created_at'] != null
+                                  ? DateFormat('MMM dd, hh:mm a').format(
+                                      DateTime.parse(
+                                        widget.alert['created_at'],
+                                      ).toLocal(),
+                                    )
+                                  : '',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey.shade500,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                widget.alert['title'] ?? 'Notice',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Icon(
+                              _isExpanded
+                                  ? Icons.keyboard_arrow_up_rounded
+                                  : Icons.keyboard_arrow_down_rounded,
+                              color: Colors.grey.shade400,
+                            ),
+                          ],
+                        ),
+                        AnimatedCrossFade(
+                          duration: const Duration(milliseconds: 300),
+                          crossFadeState: _isExpanded
+                              ? CrossFadeState.showSecond
+                              : CrossFadeState.showFirst,
+                          firstChild: const SizedBox(
+                            width: double.infinity,
+                            height: 0,
+                          ),
+                          secondChild: Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Text(
+                              widget.alert['message'] ?? '',
+                              style: TextStyle(
+                                color: widget.isDark
+                                    ? Colors.white70
+                                    : Colors.grey.shade700,
+                                height: 1.5,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Divider(
+          height: 1,
+          color: widget.isDark ? Colors.white10 : Colors.grey.shade200,
+        ),
+      ],
+    );
+  }
+}

@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trideta_v2/screens/admin/school_data_export_screen.dart';
 import 'package:trideta_v2/widgets/color_picker_sheet.dart';
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 
 import 'package:trideta_v2/screens/auth/login_screen.dart';
 import 'package:trideta_v2/screens/admin/school_profile_screen.dart';
@@ -92,46 +93,51 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
       context: context,
       barrierDismissible: true,
       builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        backgroundColor: PUi.surface(isDark),
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         title: Text(
           "Choose Appearance",
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: isDark ? Colors.white : Colors.black,
+            fontWeight: FontWeight.w800,
+            color: PUi.ink(isDark),
           ),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildThemeOption(
-              ctx,
-              Icons.brightness_auto,
-              "System Default",
-              ThemeMode.system,
-              isDark,
-              primaryColor,
-            ),
-            const Divider(),
-            _buildThemeOption(
-              ctx,
-              Icons.light_mode,
-              "Light Mode",
-              ThemeMode.light,
-              isDark,
-              primaryColor,
-            ),
-            const Divider(),
-            _buildThemeOption(
-              ctx,
-              Icons.dark_mode,
-              "Dark Mode",
-              ThemeMode.dark,
-              isDark,
-              primaryColor,
-            ),
-          ],
+        content: SizedBox(
+          width: 300,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildThemeOption(
+                ctx,
+                Icons.brightness_auto,
+                "System Default",
+                ThemeMode.system,
+                isDark,
+                primaryColor,
+              ),
+              const SizedBox(height: 10),
+              _buildThemeOption(
+                ctx,
+                Icons.light_mode,
+                "Light Mode",
+                ThemeMode.light,
+                isDark,
+                primaryColor,
+              ),
+              const SizedBox(height: 10),
+              _buildThemeOption(
+                ctx,
+                Icons.dark_mode,
+                "Dark Mode",
+                ThemeMode.dark,
+                isDark,
+                primaryColor,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -145,22 +151,36 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
     bool isDark,
     Color primary,
   ) {
-    return ListTile(
-      leading: Icon(icon, color: primary, size: 28),
-      title: Text(
-        title,
-        style: TextStyle(
-          color: isDark ? Colors.white : Colors.black87,
-          fontWeight: FontWeight.w600,
+    return Material(
+      color: PUi.surfaceAlt(isDark),
+      shape: const StadiumBorder(),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: () async {
+          themeNotifier.value = mode;
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('has_chosen_theme', true);
+          await prefs.setString('saved_theme', mode.toString().split('.').last);
+          if (ctx.mounted) Navigator.pop(ctx);
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          child: Row(
+            children: [
+              Icon(icon, color: primary, size: 24),
+              const SizedBox(width: 14),
+              Text(
+                title,
+                style: TextStyle(
+                  color: PUi.ink(isDark),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-      onTap: () async {
-        themeNotifier.value = mode;
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('has_chosen_theme', true);
-        await prefs.setString('saved_theme', mode.toString().split('.').last);
-        if (ctx.mounted) Navigator.pop(ctx);
-      },
     );
   }
 
@@ -172,80 +192,137 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      constraints: const BoxConstraints(maxWidth: 560),
       builder: (ctx) => Container(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(24, 14, 24, 28),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          color: PUi.surface(isDark),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          border: Border.all(color: PUi.border(isDark)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(10),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: PUi.border(isDark),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              "Contact Support",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black87,
+              const SizedBox(height: 24),
+              Text("Contact Support", style: PUi.title(isDark, size: 24)),
+              const SizedBox(height: 8),
+              Text(
+                "Choose how you would like to reach out to our team.",
+                style: TextStyle(color: PUi.muted(isDark), fontSize: 13.5),
               ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              "Choose how you would like to reach out to our team.",
-              style: TextStyle(color: Colors.grey, fontSize: 13),
-            ),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Colors.blue.withValues(alpha: 0.1),
-                child: const Icon(Icons.email, color: Colors.blue),
+              const SizedBox(height: 22),
+              PCard(
+                radius: 22,
+                shadow: false,
+                color: PUi.surfaceAlt(isDark),
+                borderColor: Colors.transparent,
+                padding: const EdgeInsets.all(14),
+                onTap: () {
+                  launchUrl(
+                    Uri(
+                      scheme: 'mailto',
+                      path: 'trideta.app@gmail.com',
+                      query: 'subject=TriDeta Admin Support Request',
+                    ),
+                  );
+                  Navigator.pop(ctx);
+                },
+                child: Row(
+                  children: [
+                    const PIconBadge(
+                      icon: Icons.email,
+                      color: Colors.blue,
+                      size: 46,
+                      iconSize: 22,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Email Us",
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                              color: PUi.ink(isDark),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            "trideta.app@gmail.com",
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: PUi.muted(isDark),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              title: const Text(
-                "Email Us",
-                style: TextStyle(fontWeight: FontWeight.bold),
+              const SizedBox(height: 12),
+              PCard(
+                radius: 22,
+                shadow: false,
+                color: PUi.surfaceAlt(isDark),
+                borderColor: Colors.transparent,
+                padding: const EdgeInsets.all(14),
+                onTap: () {
+                  launchUrl(Uri.parse("https://wa.me/2347040686186"));
+                  Navigator.pop(ctx);
+                },
+                child: Row(
+                  children: [
+                    const PIconBadge(
+                      icon: Icons.chat,
+                      color: Colors.green,
+                      size: 46,
+                      iconSize: 22,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "WhatsApp Us",
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                              color: PUi.ink(isDark),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            "07040686186",
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: PUi.muted(isDark),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              subtitle: const Text("trideta.app@gmail.com"),
-              onTap: () {
-                launchUrl(
-                  Uri(
-                    scheme: 'mailto',
-                    path: 'trideta.app@gmail.com',
-                    query: 'subject=TriDeta Admin Support Request',
-                  ),
-                );
-                Navigator.pop(ctx);
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Colors.green.withValues(alpha: 0.1),
-                child: const Icon(Icons.chat, color: Colors.green),
-              ),
-              title: const Text(
-                "WhatsApp Us",
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: const Text("07040686186"),
-              onTap: () {
-                launchUrl(Uri.parse("https://wa.me/2347040686186"));
-                Navigator.pop(ctx);
-              },
-            ),
-            const SizedBox(height: 20),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -429,37 +506,83 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
     Color subColor = _getSubscriptionColor(_subscriptionStatus);
 
     return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+      backgroundColor: PUi.bg(isDark),
+      body: PBackdrop(
+        accent: primaryColor,
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 680),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
               // --- PROFILE HEADER ---
               Center(
                 child: Column(
                   children: [
-                    const SizedBox(height: 20),
-                    CircleAvatar(
-                      radius: 40,
-                      backgroundColor: primaryColor.withValues(alpha: 0.1),
-                      child: Icon(
-                        Icons.admin_panel_settings,
-                        size: 40,
-                        color: primaryColor,
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: primaryColor.withValues(alpha: 0.4),
+                          width: 2,
+                        ),
+                      ),
+                      child: CircleAvatar(
+                        radius: 46,
+                        backgroundColor: PUi.tint(primaryColor, isDark, 0.12),
+                        child: Icon(
+                          Icons.admin_panel_settings,
+                          size: 44,
+                          color: primaryColor,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 15),
-                    const Text(
+                    const SizedBox(height: 18),
+                    Text(
                       "School Administrator",
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                      style: PUi.title(isDark, size: 26),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: PUi.surface(isDark),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(color: PUi.border(isDark)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.mail_outline_rounded,
+                            size: 16,
+                            color: PUi.muted(isDark),
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              email,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                color: PUi.muted(isDark),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 5),
-                    Text(email, style: const TextStyle(color: Colors.grey)),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
 
                     // 🚨 DYNAMIC SUBSCRIPTION BADGE
                     if (_isLoadingStatus)
@@ -469,38 +592,21 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     else
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: subColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: subColor.withValues(alpha: 0.3),
-                          ),
-                        ),
-                        child: Text(
-                          _subscriptionStatus.toUpperCase(),
-                          style: TextStyle(
-                            color: subColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                      PPill(
+                        text: _subscriptionStatus.toUpperCase(),
+                        color: subColor,
                       ),
                   ],
                 ),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 36),
 
               // --- APP CUSTOMIZATION SECTION ---
-              const Text(
-                "App Customization",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Text("APP CUSTOMIZATION", style: PUi.sectionLabel(isDark)),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               _buildSettingsItem(
                 title: "App Theme",
                 subtitle: "Light, Dark, or System Default",
@@ -531,11 +637,11 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
               const SizedBox(height: 30),
 
               // --- ACCOUNT SETTINGS SECTION ---
-              const Text(
-                "School Management",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Text("SCHOOL MANAGEMENT", style: PUi.sectionLabel(isDark)),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               _buildSettingsItem(
                 title: "Update School Profile",
                 subtitle: "Name, logo, address, and session",
@@ -591,11 +697,11 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
               const SizedBox(height: 30),
 
               // --- DATA & SECURITY SECTION ---
-              const Text(
-                "Data & Security",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Text("DATA & SECURITY", style: PUi.sectionLabel(isDark)),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               _buildSettingsItem(
                 title: "Export All Data (CSV)",
                 subtitle: "Download school records and reports",
@@ -646,11 +752,11 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
               const SizedBox(height: 30),
 
               // --- SUPPORT & LEGAL SECTION ---
-              const Text(
-                "Support & Legal",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Text("SUPPORT & LEGAL", style: PUi.sectionLabel(isDark)),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               _buildSettingsItem(
                 title: "Help Center & Tutorials",
                 subtitle: "Learn how to use TriDeta",
@@ -719,14 +825,13 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
               // --- LOGOUT BUTTON ---
               SizedBox(
                 width: double.infinity,
-                height: 55,
+                height: 56,
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
                     foregroundColor: Colors.redAccent,
                     elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+                    shape: StadiumBorder(
                       side: BorderSide(
                         color: Colors.redAccent.withValues(alpha: 0.3),
                       ),
@@ -737,11 +842,10 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                         await showDialog(
                           context: context,
                           builder: (ctx) => AlertDialog(
-                            backgroundColor: isDark
-                                ? const Color(0xFF1E1E1E)
-                                : Colors.white,
+                            backgroundColor: PUi.surface(isDark),
+                            surfaceTintColor: Colors.transparent,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(15),
+                              borderRadius: BorderRadius.circular(28),
                             ),
                             title: const Text(
                               "Confirm Logout",
@@ -764,6 +868,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                               FilledButton(
                                 style: FilledButton.styleFrom(
                                   backgroundColor: Colors.redAccent,
+                                  shape: const StadiumBorder(),
                                 ),
                                 onPressed: () => Navigator.pop(ctx, true),
                                 child: const Text(
@@ -810,7 +915,10 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                 ),
               ),
               const SizedBox(height: 40),
-            ],
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -827,58 +935,44 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
     required VoidCallback onTap,
     Widget? trailing,
   }) {
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
-
-    return InkWell(
-      onTap: onTap,
-      child: Column(
-        children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 8,
-              vertical: 4,
-            ),
-            leading: CircleAvatar(
-              radius: 24,
-              backgroundColor: color.withValues(alpha: 0.12),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            title: Text(
-              title,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: textColor,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: PCard(
+        radius: 24,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        onTap: onTap,
+        child: Row(
+          children: [
+            PIconBadge(icon: icon, color: color, size: 46, iconSize: 22),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15.5,
+                      letterSpacing: -0.1,
+                      color: PUi.ink(isDark),
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 13, color: PUi.muted(isDark)),
+                    ),
+                  ],
+                ],
               ),
             ),
-            subtitle: subtitle != null
-                ? Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? Colors.white54 : Colors.grey[600],
-                      ),
-                    ),
-                  )
-                : null,
-            trailing:
-                trailing ??
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 24,
-                  color: Colors.grey.shade400,
-                ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 64, right: 8),
-            child: Divider(
-              height: 1,
-              color: isDark ? Colors.white10 : Colors.grey.shade200,
-            ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            trailing ??
+                Icon(Icons.chevron_right_rounded, size: 24, color: PUi.muted(isDark)),
+          ],
+        ),
       ),
     );
   }
@@ -1104,41 +1198,55 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
     Color dynamicPrimaryColor = Theme.of(context).primaryColor;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Security Settings"),
-        backgroundColor: dynamicPrimaryColor,
-        elevation: 0,
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth > 800) {
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 40.0),
-                  child: Card(
-                    elevation: 8,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                    child: _buildSecurityContent(
-                      isDark,
-                      dynamicPrimaryColor,
-                      constraints.maxWidth,
+      backgroundColor: PUi.bg(isDark),
+      body: PBackdrop(
+        accent: dynamicPrimaryColor,
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 680),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 20, 0),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          onPressed: () => Navigator.maybePop(context),
+                          style: IconButton.styleFrom(
+                            backgroundColor: PUi.surface(isDark),
+                            side: BorderSide(color: PUi.border(isDark)),
+                            minimumSize: const Size(44, 44),
+                          ),
+                          icon: Icon(
+                            Icons.arrow_back_rounded,
+                            color: PUi.ink(isDark),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          "Security Settings",
+                          style: PUi.title(isDark, size: 24),
+                        ),
+                      ],
                     ),
                   ),
-                ),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return _buildSecurityContent(
+                          isDark,
+                          dynamicPrimaryColor,
+                          constraints.maxWidth,
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-            );
-          }
-          return _buildSecurityContent(
-            isDark,
-            dynamicPrimaryColor,
-            constraints.maxWidth,
-          );
-        },
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1149,27 +1257,15 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
     double screenWidth,
   ) {
     return SingleChildScrollView(
-      padding: EdgeInsets.all(screenWidth > 800 ? 30.0 : 20.0),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (screenWidth > 800)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 20.0),
-              child: Text(
-                "Account Security",
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
-              ),
-            ),
-          const Text(
-            "Authentication",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Text("AUTHENTICATION", style: PUi.sectionLabel(isDark)),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           _buildSettingsItem(
             title: "Change Password",
             subtitle: "Update your account password",
@@ -1180,58 +1276,44 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
           ),
           if (_canCheckBiometrics) ...[
             const SizedBox(height: 20),
-            const Text(
-              "Device Security",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: Text("DEVICE SECURITY", style: PUi.sectionLabel(isDark)),
             ),
-            const SizedBox(height: 10),
-            // 🚨 UI FIX: Replaced heavy shadow box with edge-to-edge WhatsApp style
-            Column(
-              children: [
-                SwitchListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  title: Text(
-                    "Biometric Login",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: isDark ? Colors.white : const Color(0xFF1A1A2E),
-                    ),
-                  ),
-                  subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      "Use fingerprint or face to login quickly",
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? Colors.white54 : Colors.grey[600],
-                      ),
-                    ),
-                  ),
-                  secondary: CircleAvatar(
-                    radius: 24,
-                    backgroundColor: Colors.green.withValues(alpha: 0.12),
-                    child: const Icon(
-                      Icons.fingerprint,
-                      color: Colors.green,
-                      size: 24,
-                    ),
-                  ),
-                  activeThumbColor: dynamicPrimaryColor,
-                  value: _isBiometricEnabled,
-                  onChanged: _toggleBiometrics,
+            const SizedBox(height: 12),
+            PCard(
+              radius: 24,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: SwitchListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 64, right: 8),
-                  child: Divider(
-                    height: 1,
-                    color: isDark ? Colors.white10 : Colors.grey.shade200,
+                title: Text(
+                  "Biometric Login",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15.5,
+                    color: PUi.ink(isDark),
                   ),
                 ),
-              ],
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Text(
+                    "Use fingerprint or face to login quickly",
+                    style: TextStyle(fontSize: 13, color: PUi.muted(isDark)),
+                  ),
+                ),
+                secondary: const PIconBadge(
+                  icon: Icons.fingerprint,
+                  color: Colors.green,
+                  size: 46,
+                  iconSize: 22,
+                ),
+                activeThumbColor: dynamicPrimaryColor,
+                value: _isBiometricEnabled,
+                onChanged: _toggleBiometrics,
+              ),
             ),
           ],
         ],
@@ -1239,7 +1321,6 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
     );
   }
 
-  // 🚨 UI FIX: Replaced heavy shadow/border container with a sleek, flat ListTile and Divider
   Widget _buildSettingsItem({
     required String title,
     String? subtitle,
@@ -1249,58 +1330,44 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen>
     required VoidCallback onTap,
     Widget? trailing,
   }) {
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
-
-    return InkWell(
-      onTap: onTap,
-      child: Column(
-        children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 8,
-              vertical: 4,
-            ),
-            leading: CircleAvatar(
-              radius: 24,
-              backgroundColor: color.withValues(alpha: 0.12),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            title: Text(
-              title,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: textColor,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: PCard(
+        radius: 24,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        onTap: onTap,
+        child: Row(
+          children: [
+            PIconBadge(icon: icon, color: color, size: 46, iconSize: 22),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15.5,
+                      letterSpacing: -0.1,
+                      color: PUi.ink(isDark),
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 13, color: PUi.muted(isDark)),
+                    ),
+                  ],
+                ],
               ),
             ),
-            subtitle: subtitle != null
-                ? Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? Colors.white54 : Colors.grey[600],
-                      ),
-                    ),
-                  )
-                : null,
-            trailing:
-                trailing ??
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 24,
-                  color: Colors.grey.shade400,
-                ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 64, right: 8),
-            child: Divider(
-              height: 1,
-              color: isDark ? Colors.white10 : Colors.grey.shade200,
-            ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            trailing ??
+                Icon(Icons.chevron_right_rounded, size: 24, color: PUi.muted(isDark)),
+          ],
+        ),
       ),
     );
   }

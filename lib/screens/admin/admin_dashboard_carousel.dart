@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 
 class AdminDashboardCarousel extends StatefulWidget {
   final Map<String, dynamic>? latestAlert;
@@ -133,41 +134,31 @@ class _AdminDashboardCarouselState extends State<AdminDashboardCarousel> {
     required String description,
     required bool isAlert,
   }) {
-    Color bgColor = widget.isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    Color textColor = widget.isDark ? Colors.white : const Color(0xFF1A1A2E);
+    final bool d = widget.isDark;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
       decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(24),
+        color: PUi.surface(d),
+        borderRadius: BorderRadius.circular(26),
         border: Border.all(
-          color: isAlert
-              ? color.withValues(alpha: 0.5)
-              : (widget.isDark ? Colors.white10 : Colors.grey.shade200),
-          width: 1.5,
+          color: isAlert ? color.withValues(alpha: 0.45) : PUi.border(d),
+          width: isAlert ? 1.5 : 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: isAlert ? 0.2 : 0.05),
-            blurRadius: 15,
+            color: color.withValues(alpha: isAlert ? 0.16 : 0.05),
+            blurRadius: 18,
             offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(18),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: color, size: 32),
-            ),
-            const SizedBox(width: 20),
+            PIconBadge(icon: icon, color: color, size: 58, iconSize: 28),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -176,10 +167,10 @@ class _AdminDashboardCarouselState extends State<AdminDashboardCarousel> {
                   Text(
                     title,
                     style: TextStyle(
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w800,
                       fontSize: 15,
-                      color: isAlert ? color : textColor,
-                      letterSpacing: -0.3,
+                      color: isAlert ? color : PUi.ink(d),
+                      letterSpacing: -0.2,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -189,9 +180,7 @@ class _AdminDashboardCarouselState extends State<AdminDashboardCarousel> {
                     description,
                     style: TextStyle(
                       fontSize: 13,
-                      color: widget.isDark
-                          ? Colors.white70
-                          : Colors.grey.shade600,
+                      color: PUi.muted(d),
                       height: 1.4,
                     ),
                     maxLines: 2,
@@ -233,7 +222,7 @@ class _AdminDashboardCarouselState extends State<AdminDashboardCarousel> {
               decoration: BoxDecoration(
                 color: _currentPage == index
                     ? widget.primaryColor
-                    : Colors.grey.shade300,
+                    : PUi.border(widget.isDark),
                 borderRadius: BorderRadius.circular(3),
               ),
             );

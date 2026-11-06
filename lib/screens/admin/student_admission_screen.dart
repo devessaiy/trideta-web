@@ -112,10 +112,10 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
       final profile = await readThrough(
         'a851cdd3|profiles|${user.id}',
         () async => await _supabase
-            .from('profiles')
-            .select('school_id')
-            .eq('id', user.id)
-            .single(),
+          .from('profiles')
+          .select('school_id')
+          .eq('id', user.id)
+          .single(),
         fresh: const Duration(minutes: 10),
       );
       final sId = profile['school_id'];
@@ -124,10 +124,10 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
       final school = await readThrough(
         '4befc1ae|schools|$sId',
         () async => await _supabase
-            .from('schools')
-            .select('name, current_session, current_term')
-            .eq('id', sId)
-            .single(),
+          .from('schools')
+          .select('name, current_session, current_term')
+          .eq('id', sId)
+          .single(),
       );
       final classesData = await readThrough(
         'c1a55e5a|classes|$sId',

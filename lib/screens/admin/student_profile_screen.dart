@@ -18,6 +18,7 @@ import 'package:trideta_v2/screens/admin/components/student_profile/profile_hero
 import 'package:trideta_v2/screens/admin/components/student_profile/profile_records_tab.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ParentSecurityCard extends StatelessWidget {
@@ -40,6 +41,56 @@ class ParentSecurityCard extends StatelessWidget {
     required this.isDark,
   });
 
+  Widget _row({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    bool chevron = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: PCard(
+        radius: 24,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        onTap: onTap,
+        child: Row(
+          children: [
+            PIconBadge(icon: icon, color: color, size: 46, iconSize: 22),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15.5,
+                      color: PUi.ink(isDark),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 13, color: PUi.muted(isDark)),
+                  ),
+                ],
+              ),
+            ),
+            if (chevron)
+              Icon(Icons.chevron_right_rounded, color: PUi.muted(isDark)),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (isCheckingStatus) {
@@ -52,63 +103,23 @@ class ParentSecurityCard extends StatelessWidget {
     }
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (dbParentPhone != null && dbParentPhone!.isNotEmpty) ...[
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 24,
-              vertical: 8,
-            ),
-            leading: const Icon(
-              Icons.phone_in_talk_rounded,
-              color: Colors.green,
-              size: 28,
-            ),
-            title: const Text(
-              "Call Parent",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            subtitle: Text(
-              dbParentPhone!,
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
-            ),
+        if (dbParentPhone != null && dbParentPhone!.isNotEmpty)
+          _row(
+            icon: Icons.phone_in_talk_rounded,
+            color: Colors.green,
+            title: "Call Parent",
+            subtitle: dbParentPhone!,
             onTap: onCallTap,
           ),
-          Padding(
-            padding: const EdgeInsets.only(left: 72, right: 24),
-            child: Divider(
-              height: 1,
-              color: isDark ? Colors.white10 : Colors.grey.shade200,
-            ),
-          ),
-        ],
-        ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 8,
-          ),
-          leading: Icon(Icons.shield_rounded, color: primaryColor, size: 28),
-          title: const Text(
-            "Parent App Security",
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          subtitle: Text(
-            "Manage portal access & passwords",
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
-          ),
-          trailing: Icon(
-            Icons.chevron_right_rounded,
-            color: Colors.grey.shade400,
-          ),
+        _row(
+          icon: Icons.shield_rounded,
+          color: primaryColor,
+          title: "Parent App Security",
+          subtitle: "Manage portal access & passwords",
           onTap: onSecurityTap,
-        ),
-        Padding(
-          padding: const EdgeInsets.only(left: 72, right: 24),
-          child: Divider(
-            height: 1,
-            color: isDark ? Colors.white10 : Colors.grey.shade200,
-          ),
+          chevron: true,
         ),
       ],
     );
@@ -1083,84 +1094,145 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     if (await canLaunchUrl(url)) await launchUrl(url);
   }
 
-  // 🚨 UI FIX: Flattened into pure WhatsApp ListTiles
+  // 🖼️ UI ONLY — presentation below (wallet / debt cards, page layout and tab
+  // bar). Student data loading, photo editing, saving, the dossier PDF and the
+  // delete flow above are untouched.
   Widget _buildFinancialCard(bool isDark, Color primaryColor) {
     if (_isCheckingStatus) return const SizedBox.shrink();
 
     final currencyFmt = NumberFormat.currency(symbol: '₦', decimalDigits: 0);
 
+    Widget tile({
+      required IconData icon,
+      required Color color,
+      required String title,
+      required String subtitle,
+      required String amount,
+    }) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: PCard(
+          radius: 24,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              PIconBadge(icon: icon, color: color, size: 46, iconSize: 22),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15.5,
+                        color: PUi.ink(isDark),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13, color: PUi.muted(isDark)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                amount,
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color: color,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 4,
-          ),
-          leading: const Icon(
-            Icons.account_balance_wallet_rounded,
-            color: Colors.blue,
-            size: 28,
-          ),
-          title: const Text(
-            "Wallet Balance",
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          subtitle: Text(
-            "Available credit",
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
-          ),
-          trailing: Text(
-            currencyFmt.format(_walletBalance),
-            style: const TextStyle(
-              fontWeight: FontWeight.w900,
-              color: Colors.blue,
-              fontSize: 16,
+        tile(
+          icon: Icons.account_balance_wallet_rounded,
+          color: Colors.blue,
+          title: "Wallet Balance",
+          subtitle: "Available credit",
+          amount: currencyFmt.format(_walletBalance),
+        ),
+        tile(
+          icon: _outstandingDebt > 0
+              ? Icons.warning_rounded
+              : Icons.check_circle_rounded,
+          color: _outstandingDebt > 0 ? Colors.redAccent : Colors.green,
+          title: "Outstanding Debt",
+          subtitle: "For $_currentTerm",
+          amount: currencyFmt.format(_outstandingDebt),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRemoveTile(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: PCard(
+        radius: 24,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        borderColor: Colors.red.withValues(alpha: 0.3),
+        onTap: () => _confirmDeletion(isDark),
+        child: const Row(
+          children: [
+            PIconBadge(
+              icon: Icons.delete_outline_rounded,
+              color: Colors.red,
+              size: 46,
+              iconSize: 22,
             ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(left: 72, right: 24),
-          child: Divider(
-            height: 1,
-            color: isDark ? Colors.white10 : Colors.grey.shade200,
-          ),
-        ),
-        ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 4,
-          ),
-          leading: Icon(
-            _outstandingDebt > 0
-                ? Icons.warning_rounded
-                : Icons.check_circle_rounded,
-            color: _outstandingDebt > 0 ? Colors.redAccent : Colors.green,
-            size: 28,
-          ),
-          title: const Text(
-            "Outstanding Debt",
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          subtitle: Text(
-            "For $_currentTerm",
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
-          ),
-          trailing: Text(
-            currencyFmt.format(_outstandingDebt),
-            style: TextStyle(
-              fontWeight: FontWeight.w900,
-              color: _outstandingDebt > 0 ? Colors.redAccent : Colors.green,
-              fontSize: 16,
+            SizedBox(width: 14),
+            Text(
+              "Remove Student",
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.red,
+                fontSize: 15.5,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
+          ],
         ),
-        Padding(
-          padding: const EdgeInsets.only(left: 72, right: 24),
-          child: Divider(
-            height: 1,
-            color: isDark ? Colors.white10 : Colors.grey.shade200,
-          ),
-        ),
+      ),
+    );
+  }
+
+  TabBar _buildPillTabBar(Color primaryColor, bool isDark) {
+    return TabBar(
+      controller: _tabController,
+      dividerColor: Colors.transparent,
+      indicatorSize: TabBarIndicatorSize.tab,
+      splashBorderRadius: BorderRadius.circular(40),
+      indicator: BoxDecoration(
+        color: primaryColor,
+        borderRadius: BorderRadius.circular(40),
+      ),
+      labelColor: Colors.white,
+      unselectedLabelColor: PUi.muted(isDark),
+      labelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+      unselectedLabelStyle: const TextStyle(
+        fontWeight: FontWeight.w700,
+        fontSize: 13.5,
+      ),
+      tabs: const [
+        Tab(height: 42, text: "Academics"),
+        Tab(height: 42, text: "Records"),
       ],
     );
   }
@@ -1170,350 +1242,257 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color primaryColor = Theme.of(context).primaryColor;
 
-    // 🚨 UI FIX: Pure Material Matte Backgrounds globally forced
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+    Color bgColor = PUi.bg(isDark);
+    Color textColor = PUi.ink(isDark);
 
     return Scaffold(
       backgroundColor: bgColor,
-      appBar: AppBar(
-        title: Text(
-          _isEditing ? "Edit Profile" : "Student Info",
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        backgroundColor: bgColor,
-        foregroundColor: textColor,
-        elevation: 0,
-        centerTitle: true,
-        actions: [
-          if (_isEditing)
-            IconButton(
-              icon: _isSaving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: TridetaLoader(color: Colors.blue),
-                    )
-                  : const Icon(Icons.check_circle_outline, color: Colors.green),
-              onPressed: _isSaving ? null : _saveProfileChanges,
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.edit_rounded, color: Colors.blue),
-              onPressed: () => setState(() => _isEditing = true),
-            ),
-          // 🚨 UI FIX: Delete icon removed from Top App Bar (moved to bottom)
-        ],
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          bool isDesktop = constraints.maxWidth > 800;
-
-          if (_isEditing) {
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 850),
-                child: ProfileEditForm(
-                  webImage: _webImage,
-                  displayImagePath: _currentImagePath ?? widget.imagePath ?? "",
-                  onPickImage: _pickImage,
-                  firstNameController: _firstNameController,
-                  middleNameController: _middleNameController,
-                  lastNameController: _lastNameController,
-                  dobController: _dobController,
-                  addressController: _addressController,
-                  studentClass: widget.studentClass,
-                  selectedGender: _selectedGender,
-                  onGenderChanged: (v) => setState(() => _selectedGender = v),
-                  selectedDepartment: _selectedDepartment,
-                  onDepartmentChanged: (v) =>
-                      setState(() => _selectedDepartment = v),
-                  studentCategory: _studentCategory,
-                  onCategoryChanged: (v) =>
-                      setState(() => _studentCategory = v),
-                  onDateTap: () async {
-                    final DateTime? picked = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime.now().subtract(
-                        const Duration(days: 365 * 3),
+      body: PBackdrop(
+        accent: primaryColor,
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              // ─── TOP BAR ───
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 16, 0),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.maybePop(context),
+                      style: IconButton.styleFrom(
+                        backgroundColor: PUi.surface(isDark),
+                        side: BorderSide(color: PUi.border(isDark)),
+                        minimumSize: const Size(44, 44),
                       ),
-                      firstDate: DateTime(1990),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null) {
-                      setState(
-                        () => _dobController.text =
-                            "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}",
-                      );
-                    }
-                  },
-                  primaryColor: primaryColor,
-                  cardColor: bgColor,
-                  textColor: textColor,
-                  isDark: isDark,
+                      icon: Icon(Icons.arrow_back_rounded, color: textColor),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _isEditing ? "Edit Profile" : "Student Info",
+                        style: PUi.title(isDark, size: 22),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (_isEditing)
+                      IconButton(
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          minimumSize: const Size(46, 46),
+                        ),
+                        icon: _isSaving
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: TridetaLoader(color: Colors.white),
+                              )
+                            : const Icon(
+                                Icons.check_rounded,
+                                color: Colors.white,
+                              ),
+                        onPressed: _isSaving ? null : _saveProfileChanges,
+                      )
+                    else
+                      IconButton(
+                        style: IconButton.styleFrom(
+                          backgroundColor: PUi.tint(primaryColor, isDark, 0.12),
+                          minimumSize: const Size(46, 46),
+                        ),
+                        icon: Icon(Icons.edit_rounded, color: primaryColor),
+                        onPressed: () => setState(() => _isEditing = true),
+                      ),
+                  ],
                 ),
               ),
-            );
-          }
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    bool isDesktop = constraints.maxWidth > 800;
 
-          if (isDesktop) {
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 850),
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-                      child: IntrinsicHeight(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Expanded(
-                              flex: 5,
-                              child: ProfileHeroHeader(
-                                id: widget.id,
-                                displayName: _currentNameDisplay.isEmpty
-                                    ? widget.name
-                                    : _currentNameDisplay,
-                                studentClass: widget.studentClass,
-                                admissionNo: _admissionNo,
-                                displayImagePath:
-                                    _currentImagePath ?? widget.imagePath ?? "",
-                                primaryColor: primaryColor,
-                                cardColor: bgColor,
-                                isDark: isDark,
-                                isDesktop: true,
-                                onImageTap: () {
-                                  if (_currentImagePath != null &&
-                                      _currentImagePath!.startsWith('http')) {
-                                    _showImagePreview(_currentImagePath!);
-                                  } else if (widget.imagePath != null &&
-                                      widget.imagePath!.startsWith('http')) {
-                                    _showImagePreview(widget.imagePath!);
-                                  } else {
-                                    _pickImage().then((_) {
-                                      if (_pickedFile != null) {
-                                        _saveQuickPhotoChange();
-                                      }
-                                    });
-                                  }
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              flex: 4,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _buildFinancialCard(isDark, primaryColor),
-                                  ParentSecurityCard(
-                                    isCheckingStatus: _isCheckingStatus,
-                                    dbParentPhone: _dbParentPhone,
-                                    onSecurityTap: () =>
-                                        _handleSecurityTap(primaryColor),
-                                    onCallTap: _callParent,
-                                    primaryColor: primaryColor,
-                                    isDesktop: true,
-                                    isDark: isDark,
-                                  ),
-                                  // 🚨 UI FIX: WhatsApp Delete Tile (Desktop Column)
-                                  InkWell(
-                                    onTap: () => _confirmDeletion(isDark),
-                                    child: const ListTile(
-                                      contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 24,
-                                        vertical: 12,
-                                      ),
-                                      leading: Icon(
-                                        Icons.delete_outline_rounded,
-                                        color: Colors.red,
-                                        size: 28,
-                                      ),
-                                      title: Text(
-                                        "Remove Student",
-                                        style: TextStyle(
-                                          color: Colors.red,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Container(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 8,
-                      ),
-                      child: TabBar(
-                        controller: _tabController,
-                        indicatorColor: primaryColor,
-                        indicatorWeight: 3,
-                        labelColor: primaryColor,
-                        unselectedLabelColor: Colors.grey,
-                        labelStyle: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                        tabs: const [
-                          Tab(text: "ACADEMICS"),
-                          Tab(text: "RECORDS"),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: TabBarView(
-                        controller: _tabController,
-                        children: [
-                          ProfileAcademicTab(
-                            isFetchingAcademics: _isFetchingAcademics,
-                            attendancePercentage: _attendancePercentage,
-                            gradeAverage: _gradeAverage,
-                            subjectGrades: _subjectGrades,
+                    if (_isEditing) {
+                      return Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 850),
+                          child: ProfileEditForm(
+                            webImage: _webImage,
+                            displayImagePath:
+                                _currentImagePath ?? widget.imagePath ?? "",
+                            onPickImage: _pickImage,
+                            firstNameController: _firstNameController,
+                            middleNameController: _middleNameController,
+                            lastNameController: _lastNameController,
+                            dobController: _dobController,
+                            addressController: _addressController,
+                            studentClass: widget.studentClass,
+                            selectedGender: _selectedGender,
+                            onGenderChanged: (v) =>
+                                setState(() => _selectedGender = v),
+                            selectedDepartment: _selectedDepartment,
+                            onDepartmentChanged: (v) =>
+                                setState(() => _selectedDepartment = v),
+                            studentCategory: _studentCategory,
+                            onCategoryChanged: (v) =>
+                                setState(() => _studentCategory = v),
+                            onDateTap: () async {
+                              final DateTime? picked = await showDatePicker(
+                                context: context,
+                                initialDate: DateTime.now().subtract(
+                                  const Duration(days: 365 * 3),
+                                ),
+                                firstDate: DateTime(1990),
+                                lastDate: DateTime.now(),
+                              );
+                              if (picked != null) {
+                                setState(
+                                  () => _dobController.text =
+                                      "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}",
+                                );
+                              }
+                            },
                             primaryColor: primaryColor,
                             cardColor: bgColor,
                             textColor: textColor,
                             isDark: isDark,
                           ),
-                          ProfileRecordsTab(
-                            isGeneratingRecord: _isGeneratingRecord,
-                            onGenerateTap: _generateComprehensiveRecord,
-                            primaryColor: primaryColor,
-                            cardColor: bgColor,
-                            isDark: isDark,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
+                        ),
+                      );
+                    }
 
-          return NestedScrollView(
-            headerSliverBuilder: (context, innerBoxIsScrolled) {
-              return [
-                SliverToBoxAdapter(
-                  child: Column(
-                    children: [
-                      ProfileHeroHeader(
-                        id: widget.id,
-                        displayName: _currentNameDisplay.isEmpty
-                            ? widget.name
-                            : _currentNameDisplay,
-                        studentClass: widget.studentClass,
-                        admissionNo: _admissionNo,
-                        displayImagePath:
-                            _currentImagePath ?? widget.imagePath ?? "",
-                        primaryColor: primaryColor,
-                        cardColor: bgColor,
-                        isDark: isDark,
-                        isDesktop: false,
-                        onImageTap: () {
-                          if (_currentImagePath != null &&
-                              _currentImagePath!.startsWith('http')) {
-                            _showImagePreview(_currentImagePath!);
-                          } else if (widget.imagePath != null &&
-                              widget.imagePath!.startsWith('http')) {
-                            _showImagePreview(widget.imagePath!);
-                          } else {
-                            _pickImage().then((_) {
-                              if (_pickedFile != null) _saveQuickPhotoChange();
-                            });
+                    // One verbatim copy of the photo-tap behaviour (preview an
+                    // existing photo, otherwise pick + quick-save a new one).
+                    void onHeroImageTap() {
+                      if (_currentImagePath != null &&
+                          _currentImagePath!.startsWith('http')) {
+                        _showImagePreview(_currentImagePath!);
+                      } else if (widget.imagePath != null &&
+                          widget.imagePath!.startsWith('http')) {
+                        _showImagePreview(widget.imagePath!);
+                      } else {
+                        _pickImage().then((_) {
+                          if (_pickedFile != null) {
+                            _saveQuickPhotoChange();
                           }
-                        },
-                      ),
-                      // 🚨 UI FIX: Removed thick 12px divider blocks
-                      _buildFinancialCard(isDark, primaryColor),
-                      ParentSecurityCard(
-                        isCheckingStatus: _isCheckingStatus,
-                        dbParentPhone: _dbParentPhone,
-                        onSecurityTap: () => _handleSecurityTap(primaryColor),
-                        onCallTap: _callParent,
-                        primaryColor: primaryColor,
-                        isDesktop: false,
-                        isDark: isDark,
-                      ),
-                      // 🚨 UI FIX: WhatsApp Delete Tile securely appended to the bottom
-                      InkWell(
-                        onTap: () => _confirmDeletion(isDark),
-                        child: const ListTile(
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 12,
-                          ),
-                          leading: Icon(
-                            Icons.delete_outline_rounded,
-                            color: Colors.red,
-                            size: 28,
-                          ),
-                          title: Text(
-                            "Remove Student",
-                            style: TextStyle(
-                              color: Colors.red,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                        });
+                      }
+                    }
+
+                    final Widget hero = ProfileHeroHeader(
+                      id: widget.id,
+                      displayName: _currentNameDisplay.isEmpty
+                          ? widget.name
+                          : _currentNameDisplay,
+                      studentClass: widget.studentClass,
+                      admissionNo: _admissionNo,
+                      displayImagePath:
+                          _currentImagePath ?? widget.imagePath ?? "",
+                      primaryColor: primaryColor,
+                      cardColor: bgColor,
+                      isDark: isDark,
+                      isDesktop: isDesktop,
+                      onImageTap: onHeroImageTap,
+                    );
+
+                    final Widget infoCards = Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildFinancialCard(isDark, primaryColor),
+                        ParentSecurityCard(
+                          isCheckingStatus: _isCheckingStatus,
+                          dbParentPhone: _dbParentPhone,
+                          onSecurityTap: () => _handleSecurityTap(primaryColor),
+                          onCallTap: _callParent,
+                          primaryColor: primaryColor,
+                          isDesktop: isDesktop,
+                          isDark: isDark,
+                        ),
+                        _buildRemoveTile(isDark),
+                      ],
+                    );
+
+                    // The whole page is ONE scrollable (so the mouse wheel or a
+                    // swipe works anywhere), with the tab bar pinned on top.
+                    return CustomScrollView(
+                      slivers: [
+                        SliverToBoxAdapter(
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 900),
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                                child: isDesktop
+                                    ? Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          SizedBox(width: 340, child: hero),
+                                          const SizedBox(width: 18),
+                                          Expanded(child: infoCards),
+                                        ],
+                                      )
+                                    : Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          hero,
+                                          const SizedBox(height: 14),
+                                          infoCards,
+                                        ],
+                                      ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _SliverAppBarDelegate(
-                    TabBar(
-                      controller: _tabController,
-                      indicatorColor: primaryColor,
-                      indicatorWeight: 3,
-                      labelColor: primaryColor,
-                      unselectedLabelColor: Colors.grey,
-                      labelStyle: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                      tabs: const [
-                        Tab(text: "ACADEMICS"),
-                        Tab(text: "RECORDS"),
+                        SliverPersistentHeader(
+                          pinned: true,
+                          delegate: _SliverAppBarDelegate(
+                            _buildPillTabBar(primaryColor, isDark),
+                          ),
+                        ),
+                        SliverToBoxAdapter(
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 900),
+                              child: AnimatedBuilder(
+                                animation: _tabController,
+                                builder: (context, _) {
+                                  return _tabController.index == 0
+                                      ? ProfileAcademicTab(
+                                          isFetchingAcademics:
+                                              _isFetchingAcademics,
+                                          attendancePercentage:
+                                              _attendancePercentage,
+                                          gradeAverage: _gradeAverage,
+                                          subjectGrades: _subjectGrades,
+                                          primaryColor: primaryColor,
+                                          cardColor: bgColor,
+                                          textColor: textColor,
+                                          isDark: isDark,
+                                        )
+                                      : ProfileRecordsTab(
+                                          isGeneratingRecord:
+                                              _isGeneratingRecord,
+                                          onGenerateTap:
+                                              _generateComprehensiveRecord,
+                                          primaryColor: primaryColor,
+                                          cardColor: bgColor,
+                                          isDark: isDark,
+                                        );
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SliverToBoxAdapter(child: SizedBox(height: 40)),
                       ],
-                    ),
-                  ),
+                    );
+                  },
                 ),
-              ];
-            },
-            body: TabBarView(
-              controller: _tabController,
-              children: [
-                ProfileAcademicTab(
-                  isFetchingAcademics: _isFetchingAcademics,
-                  attendancePercentage: _attendancePercentage,
-                  gradeAverage: _gradeAverage,
-                  subjectGrades: _subjectGrades,
-                  primaryColor: primaryColor,
-                  cardColor: bgColor,
-                  textColor: textColor,
-                  isDark: isDark,
-                ),
-                ProfileRecordsTab(
-                  isGeneratingRecord: _isGeneratingRecord,
-                  onGenerateTap: _generateComprehensiveRecord,
-                  primaryColor: primaryColor,
-                  cardColor: bgColor,
-                  isDark: isDark,
-                ),
-              ],
-            ),
-          );
-        },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1524,10 +1503,11 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
 
   final TabBar _tabBar;
 
+  // Tab bar height + the padding around the pill track
   @override
-  double get minExtent => _tabBar.preferredSize.height;
+  double get minExtent => _tabBar.preferredSize.height + 26;
   @override
-  double get maxExtent => _tabBar.preferredSize.height;
+  double get maxExtent => _tabBar.preferredSize.height + 26;
 
   @override
   Widget build(
@@ -1536,9 +1516,25 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
     bool overlapsContent,
   ) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
 
-    return Container(color: bgColor, child: _tabBar);
+    return Container(
+      color: PUi.bg(isDark),
+      alignment: Alignment.center,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 900),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+          child: Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: PUi.surfaceAlt(isDark),
+              borderRadius: BorderRadius.circular(40),
+            ),
+            child: _tabBar,
+          ),
+        ),
+      ),
+    );
   }
 
   @override

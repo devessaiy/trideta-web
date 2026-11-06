@@ -4,6 +4,8 @@ import 'package:trideta_v2/services/docs_storage.dart';
 import 'package:trideta_v2/utils/resilient_request.dart';
 import 'package:trideta_v2/widgets/docs_widgets.dart';
 
+/// The school admin sends the syllabus and the scheme of work (PDF) to the
+/// teachers of each subject and class.
 class CurriculumDocsScreen extends StatefulWidget {
   const CurriculumDocsScreen({super.key});
 
@@ -90,44 +92,16 @@ class _CurriculumDocsScreenState extends State<CurriculumDocsScreen> {
   }
 
   Future<void> _remove(Map<String, dynamic> doc) async {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Remove Document?',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.redAccent,
-          ),
-        ),
+        title: const Text('Remove this document?'),
         content: const Text(
           'Teachers will no longer see it. You can send a new one at any time.',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
-            ),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'Remove',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Back')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove')),
         ],
       ),
     );
@@ -150,7 +124,9 @@ class _CurriculumDocsScreenState extends State<CurriculumDocsScreen> {
     final created = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (_) => _IssueDocSheet(
         schoolId: _schoolId!,
         session: _session,
@@ -159,20 +135,13 @@ class _CurriculumDocsScreenState extends State<CurriculumDocsScreen> {
       ),
     );
     if (created == true) {
-      if (mounted) {
-        showDocSnack(context, 'Sent to the teachers of that subject.');
-      }
+      if (mounted) showDocSnack(context, 'Sent to the teachers of that subject.');
       await _load();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF8FAFC);
-    Color primaryColor = Theme.of(context).primaryColor;
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
-
     final grouped = <String, List<Map<String, dynamic>>>{};
     for (final d in _docs) {
       if (d['deleted_at'] != null) continue;
@@ -180,196 +149,60 @@ class _CurriculumDocsScreenState extends State<CurriculumDocsScreen> {
     }
 
     return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        title: const Text(
-          'Curriculum Documents',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        backgroundColor: bgColor,
-        foregroundColor: textColor,
-        elevation: 0,
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('Curriculum Documents')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _loading ? null : _issue,
-        backgroundColor: primaryColor,
-        elevation: 4,
-        icon: const Icon(Icons.upload_file_rounded, color: Colors.white),
-        label: const Text(
-          'SEND DOCUMENT',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1.0,
-          ),
-        ),
+        icon: const Icon(Icons.upload_file_rounded),
+        label: const Text('Send document'),
       ),
       body: _loading
-          ? Center(child: CircularProgressIndicator(color: primaryColor))
+          ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _load,
-              color: primaryColor,
               child: grouped.isEmpty
                   ? ListView(
-                      children: [
-                        const SizedBox(height: 120),
-                        Icon(
-                          Icons.folder_open_rounded,
-                          size: 60,
-                          color: Colors.grey.shade400,
-                        ),
-                        const SizedBox(height: 20),
-                        const Padding(
+                      children: const [
+                        SizedBox(height: 120),
+                        Padding(
                           padding: EdgeInsets.symmetric(horizontal: 32),
                           child: Text(
-                            'No documents yet.\n\nTap Send document to send a syllabus or a scheme of work to the teachers of a subject.',
+                            'No documents yet.\n\nTap Send document to send a syllabus or a scheme of work to the teachers of a subject. They will be able to download it.',
                             textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.grey,
-                              height: 1.5,
-                              fontWeight: FontWeight.w500,
-                            ),
                           ),
                         ),
                       ],
                     )
-                  // 🚨 UI UPGRADE: WhatsApp-style Edge-to-Edge List
                   : ListView(
-                      padding: const EdgeInsets.only(bottom: 100),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                       children: [
                         for (final entry in grouped.entries) ...[
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                            padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
                             child: Text(
-                              entry.key.toUpperCase(),
-                              style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12,
-                                color: primaryColor,
-                                letterSpacing: 1.2,
+                              entry.key,
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                            ),
+                          ),
+                          for (final d in entry.value)
+                            Card(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              child: ListTile(
+                                leading: const Icon(Icons.picture_as_pdf_rounded, color: Colors.redAccent),
+                                title: Text(d['title'].toString()),
+                                subtitle: Text(
+                                  '${d['subject_name']} · ${kindLabel(d['kind'].toString())} · ${d['session']}${d['term'] != null ? ' · ${d['term']}' : ''}\nSent ${formatShortDate(d['created_at'])}',
+                                ),
+                                isThreeLine: true,
+                                onTap: () => _open(d),
+                                trailing: PopupMenuButton<String>(
+                                  onSelected: (v) => v == 'open' ? _open(d) : _remove(d),
+                                  itemBuilder: (_) => const [
+                                    PopupMenuItem(value: 'open', child: Text('Open')),
+                                    PopupMenuItem(value: 'remove', child: Text('Remove')),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                          Container(
-                            color: isDark
-                                ? const Color(0xFF1E1E1E)
-                                : Colors.white,
-                            child: Column(
-                              children: [
-                                for (
-                                  int i = 0;
-                                  i < entry.value.length;
-                                  i++
-                                ) ...[
-                                  ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 24,
-                                      vertical: 8,
-                                    ),
-                                    leading: CircleAvatar(
-                                      backgroundColor: Colors.redAccent
-                                          .withValues(alpha: 0.1),
-                                      child: const Icon(
-                                        Icons.picture_as_pdf_rounded,
-                                        color: Colors.redAccent,
-                                        size: 20,
-                                      ),
-                                    ),
-                                    title: Text(
-                                      entry.value[i]['title'].toString(),
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15,
-                                        color: textColor,
-                                      ),
-                                    ),
-                                    subtitle: Padding(
-                                      padding: const EdgeInsets.only(top: 4),
-                                      child: Text(
-                                        '${entry.value[i]['subject_name']} · ${kindLabel(entry.value[i]['kind'].toString())}\nSent ${formatShortDate(entry.value[i]['created_at'])}',
-                                        style: TextStyle(
-                                          color: Colors.grey.shade500,
-                                          fontSize: 12,
-                                          height: 1.4,
-                                        ),
-                                      ),
-                                    ),
-                                    isThreeLine: true,
-                                    onTap: () => _open(entry.value[i]),
-                                    trailing: PopupMenuButton<String>(
-                                      icon: Icon(
-                                        Icons.more_vert_rounded,
-                                        color: Colors.grey.shade400,
-                                      ),
-                                      color: isDark
-                                          ? const Color(0xFF1E1E1E)
-                                          : Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      onSelected: (v) => v == 'open'
-                                          ? _open(entry.value[i])
-                                          : _remove(entry.value[i]),
-                                      itemBuilder: (_) => const [
-                                        PopupMenuItem(
-                                          value: 'open',
-                                          child: Row(
-                                            children: [
-                                              Icon(
-                                                Icons.open_in_new_rounded,
-                                                size: 18,
-                                              ),
-                                              SizedBox(width: 8),
-                                              Text(
-                                                'Open PDF',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        PopupMenuItem(
-                                          value: 'remove',
-                                          child: Row(
-                                            children: [
-                                              Icon(
-                                                Icons.delete_outline_rounded,
-                                                size: 18,
-                                                color: Colors.redAccent,
-                                              ),
-                                              SizedBox(width: 8),
-                                              Text(
-                                                'Delete',
-                                                style: TextStyle(
-                                                  color: Colors.redAccent,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  if (i < entry.value.length - 1)
-                                    Padding(
-                                      padding: const EdgeInsets.only(
-                                        left: 80,
-                                        right: 24,
-                                      ),
-                                      child: Divider(
-                                        height: 1,
-                                        color: isDark
-                                            ? Colors.white10
-                                            : Colors.grey.shade200,
-                                      ),
-                                    ),
-                                ],
-                              ],
-                            ),
-                          ),
                         ],
                       ],
                     ),
@@ -452,9 +285,7 @@ class _IssueDocSheetState extends State<_IssueDocSheet> {
 
   Future<void> _pick() async {
     try {
-      final p = await DocsStorage.pickPdf(
-        maxBytes: DocsStorage.maxCurriculumBytes,
-      );
+      final p = await DocsStorage.pickPdf(maxBytes: DocsStorage.maxCurriculumBytes);
       if (p != null && mounted) setState(() => _pdf = p);
     } catch (e) {
       if (mounted) showDocSnack(context, friendlyDocError(e), error: true);
@@ -462,15 +293,8 @@ class _IssueDocSheetState extends State<_IssueDocSheet> {
   }
 
   Future<void> _send() async {
-    if (_className == null ||
-        _subject == null ||
-        _pdf == null ||
-        _titleController.text.trim().isEmpty) {
-      showDocSnack(
-        context,
-        'Choose the class, the subject and a PDF file first.',
-        error: true,
-      );
+    if (_className == null || _subject == null || _pdf == null || _titleController.text.trim().isEmpty) {
+      showDocSnack(context, 'Choose the class, the subject and a PDF file first.', error: true);
       return;
     }
     setState(() => _busy = true);
@@ -508,116 +332,48 @@ class _IssueDocSheetState extends State<_IssueDocSheet> {
 
   @override
   Widget build(BuildContext context) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color sheetColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    Color textColor = isDark ? Colors.white : Colors.black87;
-    Color primaryColor = Theme.of(context).primaryColor;
-
-    return Container(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-        left: 24,
-        right: 24,
-        top: 20,
-      ),
-      decoration: BoxDecoration(
-        color: sheetColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-      ),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade400,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Send Document',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                color: textColor,
-                letterSpacing: -0.5,
-              ),
-            ),
+            const Text('Send a document to teachers',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
             Text(
               'Teachers assigned to that subject and class can download it.',
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 13,
-                height: 1.4,
-              ),
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5),
             ),
-            const SizedBox(height: 20),
-
-            // 🚨 UI UPGRADE: Replaced SegmentedButton with AlertsScreen-style Pill Toggle
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : Colors.grey.shade200,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                children: [
-                  _buildPillToggle(
-                    'syllabus',
-                    'Syllabus',
-                    isDark,
-                    primaryColor,
-                  ),
-                  _buildPillToggle(
-                    'scheme',
-                    'Scheme of Work',
-                    isDark,
-                    primaryColor,
-                  ),
-                ],
-              ),
+            const SizedBox(height: 16),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'syllabus', label: Text('Syllabus')),
+                ButtonSegment(value: 'scheme', label: Text('Scheme of work')),
+              ],
+              selected: {_kind},
+              onSelectionChanged: (s) => setState(() {
+                _kind = s.first;
+                _autoTitle();
+              }),
             ),
-
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
             LabeledDropdown<String>(
-              label: 'Select Class',
+              label: 'Class',
               value: _classId,
               items: [
                 for (final c in widget.classes)
-                  DropdownMenuItem(
-                    value: c['id'] as String,
-                    child: Text(
-                      c['name'].toString(),
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
+                  DropdownMenuItem(value: c['id'] as String, child: Text(c['name'].toString())),
               ],
               onChanged: _busy ? null : _onClassChanged,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             LabeledDropdown<String>(
-              label: _loadingSubjects
-                  ? 'Subject (loading...)'
-                  : 'Select Subject',
+              label: _loadingSubjects ? 'Subject (loading...)' : 'Subject',
               value: _subject,
               items: [
-                for (final s in _subjects)
-                  DropdownMenuItem(
-                    value: s,
-                    child: Text(
-                      s,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
+                for (final s in _subjects) DropdownMenuItem(value: s, child: Text(s)),
               ],
               onChanged: _busy
                   ? null
@@ -626,109 +382,42 @@ class _IssueDocSheetState extends State<_IssueDocSheet> {
                       _autoTitle();
                     }),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            Text(
+              _kind == 'scheme'
+                  ? 'For ${widget.term}, ${widget.session}'
+                  : 'For the ${widget.session} session',
+              style: TextStyle(color: Colors.grey.shade700, fontSize: 12.5),
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: _titleController,
               enabled: !_busy,
               maxLength: 200,
-              style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
               decoration: InputDecoration(
-                labelText: 'Document Title',
-                labelStyle: TextStyle(
-                  color: Colors.grey.shade500,
-                  fontSize: 14,
-                ),
-                filled: true,
-                fillColor: isDark
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : Colors.grey.shade50,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-                suffixText: _kind == 'scheme'
-                    ? '${widget.term}, ${widget.session}'
-                    : '${widget.session} session',
-                suffixStyle: TextStyle(
-                  color: Colors.grey.shade400,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
+                labelText: 'Title',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 4),
             PdfPickerTile(pdf: _pdf, onPick: _busy ? null : _pick),
-            const SizedBox(height: 30),
+            const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
-              height: 55,
+              height: 50,
               child: FilledButton.icon(
                 onPressed: _busy ? null : _send,
-                style: FilledButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  elevation: 0,
-                ),
                 icon: _busy
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
-                    : const Icon(Icons.send_rounded, color: Colors.white),
-                label: Text(
-                  _busy ? 'SENDING...' : 'SEND TO TEACHERS',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    letterSpacing: 1.0,
-                  ),
-                ),
+                    : const Icon(Icons.send_rounded),
+                label: Text(_busy ? 'Sending...' : 'Send to teachers'),
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPillToggle(
-    String value,
-    String label,
-    bool isDark,
-    Color primaryColor,
-  ) {
-    bool isSelected = _kind == value;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() {
-          _kind = value;
-          _autoTitle();
-        }),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: isSelected ? primaryColor : Colors.transparent,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: isSelected
-                    ? Colors.white
-                    : (isDark ? Colors.white54 : Colors.grey.shade600),
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-            ),
-          ),
         ),
       ),
     );

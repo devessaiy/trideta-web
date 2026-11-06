@@ -155,6 +155,7 @@ class PCard extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         borderRadius: br,
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
           borderRadius: br,

@@ -89,6 +89,52 @@ class NotificationService {
     }
   }
 
+  /// Takes THIS phone's push token off the signed-in user's profile (and off
+  /// Firebase), so a phone that has signed out stops receiving that user's
+  /// notifications. Call it BEFORE signing out. It never throws and never waits
+  /// longer than 8 seconds.
+  static Future<void> removeThisDeviceToken() async {
+    try {
+      await _removeToken().timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint("Could not remove the push token on sign-out: $e");
+    }
+  }
+
+  static Future<void> _removeToken() async {
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
+    String? token;
+    try {
+      token = await FirebaseMessaging.instance.getToken();
+    } catch (_) {}
+
+    if (userId != null && token != null) {
+      try {
+        final profile = await client
+            .from('profiles')
+            .select('fcm_tokens')
+            .eq('id', userId)
+            .maybeSingle();
+        if (profile != null) {
+          final tokens = List<String>.from(profile['fcm_tokens'] ?? []);
+          if (tokens.remove(token)) {
+            await client
+                .from('profiles')
+                .update({'fcm_tokens': tokens})
+                .eq('id', userId);
+          }
+        }
+      } catch (e) {
+        debugPrint("Could not update the saved tokens: $e");
+      }
+    }
+    try {
+      // A new token is created the next time someone signs in on this phone.
+      await FirebaseMessaging.instance.deleteToken();
+    } catch (_) {}
+  }
+
   Future<void> _updateTokenInSupabase(String token) async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return;

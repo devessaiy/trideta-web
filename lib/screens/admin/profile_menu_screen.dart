@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/services/notification_service.dart';
 import 'package:trideta_v2/screens/shared/about_trideta_screen.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
@@ -656,7 +657,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                 ),
               ),
               _buildSettingsItem(
-                title: "School Configuration",
+                title: "System Configuration",
                 subtitle: "Manage terms, active classes, and subjects",
                 icon: Icons.settings_applications,
                 color: Colors.orange,
@@ -894,6 +895,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen>
                       );
                     }
 
+                    await NotificationService.removeThisDeviceToken();
                     await Supabase.instance.client.auth.signOut();
 
                     if (context.mounted) {

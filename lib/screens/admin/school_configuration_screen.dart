@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 // 🚨 IMPORT: Points to the separated UI components
 import '../school_configuration_widgets.dart';
+import 'package:trideta_v2/services/read_through.dart';
 
 class SchoolConfigurationScreen extends StatefulWidget {
   const SchoolConfigurationScreen({super.key});
@@ -363,6 +364,7 @@ class _SchoolConfigurationScreenState extends State<SchoolConfigurationScreen>
           _deletedSubjectIds.clear();
         });
 
+        ReadThrough.invalidateAll(); // classes may have changed
         if (hasDeleteConflicts) {
           _showDeleteConflictDialog();
           _fetchRelationalConfig();

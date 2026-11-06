@@ -1,6 +1,6 @@
 name: trideta_v2
 description: "A new Flutter project."
-publish_to: 'none' 
+publish_to: 'none'
 
 version: 2.1.0+10
 
@@ -9,26 +9,26 @@ environment:
 
 dependencies:
   flutter:
-    sdk: flutter    
-  
+    sdk: flutter
+
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.2.0
   screenshot: ^3.0.0
   permission_handler: ^12.0.1
-  printing: ^5.12.0   # To preview and print the PDF natively
+  printing: ^5.12.0 # To preview and print the PDF natively
   firebase_core: ^4.5.0
   firebase_messaging: ^16.1.2
   flutter_local_notifications: ^21.0.0
   file_picker: ^10.0.0
-  
+
   # SUPABASE (Use the newer version)
   supabase_flutter: ^2.12.0
   app_links: ^7.2.1
-  
+
   # BIOMETRICS & SECURITY
   local_auth: ^3.0.1
   flutter_secure_storage: ^10.0.0
-  
+
   # UTILS
   cupertino_icons: ^1.0.8
   image_picker: ^1.2.1
@@ -54,27 +54,32 @@ dev_dependencies:
     sdk: flutter
   flutter_launcher_icons: ^0.14.4
   flutter_lints: ^6.0.0
+
 flutter:
   uses-material-design: true
+
   assets:
     - assets/icon/
 
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
-  image_path: "assets/icon/app_icon.png"
+
+  image_path: "assets/icon/trideta_icon.png"
+
   min_sdk_android: 21
-  adaptive_icon_background: "#ffffff"
-  adaptive_icon_foreground: "assets/icon/app_icon.png"
+
+  adaptive_icon_background: "#4CAF00"
+  adaptive_icon_foreground: "assets/icon/trideta_icon.png"
 
 flutter_native_splash:
-  color: "#F8F9FA"       # Trideta Blue
-  color_dark: "#007ACC"  # Keeps it blue even in dark mode
-  
+  color: "#F8F9FA" # Trideta Blue
+  color_dark: "#007ACC" # Keeps it blue even in dark mode
+
   android: true
   ios: true
   web: false
-  
+
   android_12:
     color: "#007ACC"
     color_dark: "#007ACC"

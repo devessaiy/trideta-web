@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/services/docs_storage.dart';
 import 'package:trideta_v2/utils/resilient_request.dart';
 import 'package:trideta_v2/widgets/docs_widgets.dart';
+import 'package:trideta_v2/screens/shared/quiz_questions_screen.dart';
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 
 class LessonNoteReviewScreen extends StatefulWidget {
   const LessonNoteReviewScreen({super.key});
@@ -150,7 +152,11 @@ class _LessonNoteReviewScreenState extends State<LessonNoteReviewScreen> {
         ),
         body: _loading
             ? Center(child: CircularProgressIndicator(color: primaryColor))
-            : TabBarView(
+            : Column(
+                children: [
+                  const _AiQuizSwitch(),
+                  Expanded(
+                    child: TabBarView(
                 children: [
                   _list(
                     _by('submitted'),
@@ -169,6 +175,9 @@ class _LessonNoteReviewScreenState extends State<LessonNoteReviewScreen> {
                     'No returned lesson notes.',
                     isDark,
                     primaryColor,
+                  ),
+                ],
+              ),
                   ),
                 ],
               ),
@@ -462,6 +471,40 @@ class _ReviewSheetState extends State<_ReviewSheet> {
                 ),
               ),
             ),
+            if (_status == 'approved') ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => QuizQuestionsScreen(
+                        noteId: _id,
+                        title:
+                            '${n['class_name']} · ${n['subject_name']} · Week ${n['week_no']}: ${n['topic']}',
+                      ),
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: primaryColor.withValues(alpha: 0.5)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  icon: Icon(Icons.quiz_rounded, color: primaryColor),
+                  label: Text(
+                    'QUIZ QUESTIONS',
+                    style: TextStyle(
+                      color: primaryColor,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
 
             if (_status == 'submitted' || _status == 'approved') ...[
@@ -640,6 +683,133 @@ class _ReviewSheetState extends State<_ReviewSheet> {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+
+/// The admin switches AI quiz generation on or off for the school.
+class _AiQuizSwitch extends StatefulWidget {
+  const _AiQuizSwitch();
+
+  @override
+  State<_AiQuizSwitch> createState() => _AiQuizSwitchState();
+}
+
+class _AiQuizSwitchState extends State<_AiQuizSwitch> {
+  final _supabase = Supabase.instance.client;
+  bool _loaded = false;
+  bool _busy = false;
+  bool _on = false;
+  String? _schoolId;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) return;
+      final profile = await retryRead(
+        () async => await _supabase
+            .from('profiles')
+            .select('school_id')
+            .eq('id', user.id)
+            .single(),
+      );
+      final id = profile['school_id'] as String;
+      final school = await retryRead(
+        () async => await _supabase
+            .from('schools')
+            .select('ai_quiz_enabled')
+            .eq('id', id)
+            .single(),
+      );
+      if (mounted) {
+        setState(() {
+          _schoolId = id;
+          _on = school['ai_quiz_enabled'] == true;
+          _loaded = true;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _toggle(bool value) async {
+    if (_schoolId == null) return;
+    if (value) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Switch on AI quiz generation?'),
+          content: const Text(
+            'When a lesson note is approved, its PDF is sent to Google\'s Gemini to write quiz questions. '
+            'Only the lesson note is sent, never student names or answers. '
+            'On Google\'s free service, Google may use what it receives to improve its products.\n\n'
+            'Teachers check every question before students can see it. '
+            'Approved notes of the current term are queued now.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Switch on')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+    setState(() => _busy = true);
+    try {
+      await retryIdempotent(
+        () async => await _supabase
+            .from('schools')
+            .update({'ai_quiz_enabled': value})
+            .eq('id', _schoolId!),
+        maxAttempts: 2,
+      );
+      if (mounted) setState(() => _on = value);
+    } catch (e) {
+      if (mounted) showDocSnack(context, friendlyDocError(e), error: true);
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded) return const SizedBox.shrink();
+    final bool d = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 6, 20, 8),
+      decoration: BoxDecoration(
+        color: PUi.surface(d),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: PUi.border(d)),
+        boxShadow: PUi.softShadow(d),
+      ),
+      child: SwitchListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        value: _on,
+        onChanged: _busy ? null : _toggle,
+        secondary: const PIconBadge(
+          icon: Icons.auto_awesome_rounded,
+          color: Colors.indigo,
+          size: 46,
+          iconSize: 22,
+        ),
+        title: Text(
+          'AI quiz generation',
+          style: TextStyle(fontWeight: FontWeight.w800, color: PUi.ink(d)),
+        ),
+        subtitle: Text(
+          _on
+              ? 'On. Approved lesson notes get quiz questions for teachers to review.'
+              : 'Off. Switch on to make quiz questions from approved lesson notes.',
+          style: TextStyle(fontSize: 12.5, color: PUi.muted(d)),
         ),
       ),
     );

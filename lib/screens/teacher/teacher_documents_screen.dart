@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/services/docs_storage.dart';
 import 'package:trideta_v2/utils/resilient_request.dart';
 import 'package:trideta_v2/widgets/docs_widgets.dart';
+import 'package:trideta_v2/screens/shared/quiz_questions_screen.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 
@@ -1037,6 +1038,28 @@ class _NoteSheetState extends State<_NoteSheet> {
                       style: PUi.outlinedPill(Colors.orange.shade700, height: 54),
                       icon: const Icon(Icons.undo_rounded),
                       label: const Text('Withdraw To Edit'),
+                    ),
+                  ),
+                ],
+
+                if (_status == 'approved') ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => QuizQuestionsScreen(
+                            noteId: _id,
+                            title:
+                                '${n['class_name']} · ${n['subject_name']} · Week ${n['week_no']}: ${n['topic']}',
+                          ),
+                        ),
+                      ),
+                      style: PUi.outlinedPill(primaryColor, height: 52),
+                      icon: const Icon(Icons.quiz_rounded),
+                      label: const Text('Quiz Questions'),
                     ),
                   ),
                 ],

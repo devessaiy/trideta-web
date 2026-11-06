@@ -1,4 +1,5 @@
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/services/notification_service.dart';
 import 'package:trideta_v2/utils/resilient_request.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
@@ -1354,6 +1355,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
                           ),
                         );
                         if (confirm == true) {
+                          await NotificationService.removeThisDeviceToken();
                           await Supabase.instance.client.auth.signOut();
                           if (mounted) {
                             Navigator.of(

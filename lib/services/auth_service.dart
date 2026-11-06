@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:trideta_v2/services/notification_service.dart';
 
 class AuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -110,6 +111,7 @@ class AuthService {
   }
 
   Future<void> logout() async {
+    await NotificationService.removeThisDeviceToken();
     await _supabase.auth.signOut();
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:trideta_v2/services/notification_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // 🚨 IMPORT YOUR MAIN.DART SO WE CAN TALK TO YOUR THEME NOTIFIER!
@@ -109,6 +110,7 @@ class _ParentProfileTabState extends State<ParentProfileTab> {
 
     if (confirm == true) {
       // 🚨 FIX: Forcefully sign out, then manually rip them back to the Login Screen
+      await NotificationService.removeThisDeviceToken();
       await _supabase.auth.signOut();
 
       if (context.mounted) {

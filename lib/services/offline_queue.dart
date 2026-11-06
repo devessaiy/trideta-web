@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/services/secure_store.dart';
@@ -16,23 +17,15 @@ class LocalCache {
   static Future<void> _migrateLegacy() async {
     if (_migrated) return;
     _migrated = true;
-    final text = await SecureStore.instance.readLegacyPlain(
-      'trideta_cache.json',
-    );
+    final text = await SecureStore.instance.readLegacyPlain('trideta_cache.json');
     if (text == null) return;
     try {
       final decoded = jsonDecode(text);
       var allSaved = true;
       if (decoded is Map) {
         for (final e in decoded.entries) {
-          final name = await SecureStore.instance.hashName(
-            'tc_',
-            e.key.toString(),
-          );
-          final ok = await SecureStore.instance.writeText(
-            name,
-            jsonEncode(e.value),
-          );
+          final name = await SecureStore.instance.hashName('tc_', e.key.toString());
+          final ok = await SecureStore.instance.writeText(name, jsonEncode(e.value));
           if (!ok) allSaved = false;
         }
       }
@@ -96,30 +89,30 @@ class PendingJob {
   String? lastError;
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'userId': userId,
-    'label': label,
-    'table': table,
-    'onConflict': onConflict,
-    'rows': rows,
-    'createdAt': createdAt.toIso8601String(),
-    'status': status,
-    'lastError': lastError,
-  };
+        'id': id,
+        'userId': userId,
+        'label': label,
+        'table': table,
+        'onConflict': onConflict,
+        'rows': rows,
+        'createdAt': createdAt.toIso8601String(),
+        'status': status,
+        'lastError': lastError,
+      };
 
   factory PendingJob.fromJson(Map<String, dynamic> j) => PendingJob(
-    id: j['id'] as String,
-    userId: j['userId'] as String,
-    label: (j['label'] ?? '') as String,
-    table: j['table'] as String,
-    onConflict: j['onConflict'] as String,
-    rows: (j['rows'] as List)
-        .map((r) => Map<String, dynamic>.from(r as Map))
-        .toList(),
-    createdAt: DateTime.parse(j['createdAt'] as String),
-    status: (j['status'] ?? 'pending') as String,
-    lastError: j['lastError'] as String?,
-  );
+        id: j['id'] as String,
+        userId: j['userId'] as String,
+        label: (j['label'] ?? '') as String,
+        table: j['table'] as String,
+        onConflict: j['onConflict'] as String,
+        rows: (j['rows'] as List)
+            .map((r) => Map<String, dynamic>.from(r as Map))
+            .toList(),
+        createdAt: DateTime.parse(j['createdAt'] as String),
+        status: (j['status'] ?? 'pending') as String,
+        lastError: j['lastError'] as String?,
+      );
 }
 
 /// Keeps saves that could not reach the server (weak or no internet) safely
@@ -187,9 +180,7 @@ class OfflineQueue with WidgetsBindingObserver {
         if (decoded is List) {
           for (final item in decoded) {
             try {
-              _jobs.add(
-                PendingJob.fromJson(Map<String, dynamic>.from(item as Map)),
-              );
+              _jobs.add(PendingJob.fromJson(Map<String, dynamic>.from(item as Map)));
             } catch (e) {
               debugPrint('Skipped unreadable pending job: $e');
             }
@@ -212,12 +203,10 @@ class OfflineQueue with WidgetsBindingObserver {
 
   void _updateCounts() {
     final uid = _userId;
-    pendingCount.value = _jobs
-        .where((j) => j.userId == uid && j.status == 'pending')
-        .length;
-    failedCount.value = _jobs
-        .where((j) => j.userId == uid && j.status == 'failed')
-        .length;
+    pendingCount.value =
+        _jobs.where((j) => j.userId == uid && j.status == 'pending').length;
+    failedCount.value =
+        _jobs.where((j) => j.userId == uid && j.status == 'failed').length;
   }
 
   /// Saves a change on the phone to be uploaded later.
@@ -241,7 +230,15 @@ class OfflineQueue with WidgetsBindingObserver {
         createdAt: DateTime.now(),
       ),
     );
-    await _persist();
+    final saved = await _persist();
+    if (!saved) {
+      // It could not be stored on this device (for example in a web browser
+      // that blocks storage). Never claim it was saved: refuse, so the
+      // screen shows its normal "could not save, try again" message.
+      _jobs.removeLast();
+      _updateCounts();
+      throw StateError('Could not store the change on this device');
+    }
     _updateCounts();
   }
 

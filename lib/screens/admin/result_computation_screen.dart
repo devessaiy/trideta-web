@@ -135,10 +135,10 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
       final profile = await readThrough(
         '350688ab|profiles|${user.id}',
         () async => await _supabase
-            .from('profiles')
-            .select('school_id, role')
-            .eq('id', user.id)
-            .single(),
+          .from('profiles')
+          .select('school_id, role')
+          .eq('id', user.id)
+          .single(),
         fresh: const Duration(minutes: 10),
       );
       _schoolId = profile['school_id'];
@@ -147,10 +147,10 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
       final school = await readThrough(
         'b6eeb681|schools|${_schoolId!}',
         () async => await _supabase
-            .from('schools')
-            .select('current_session, current_term')
-            .eq('id', _schoolId!)
-            .single(),
+          .from('schools')
+          .select('current_session, current_term')
+          .eq('id', _schoolId!)
+          .single(),
       );
 
       int currentYr = DateTime.now().year;
@@ -167,10 +167,10 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
       final allClasses = await readThrough(
         'a623c3c2|classes|${_schoolId!}',
         () async => await _supabase
-            .from('classes')
-            .select('id, name')
-            .eq('school_id', _schoolId!)
-            .order('list_order', ascending: true),
+          .from('classes')
+          .select('id, name')
+          .eq('school_id', _schoolId!)
+          .order('list_order', ascending: true),
         fresh: const Duration(minutes: 2),
       );
 
@@ -178,13 +178,13 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
         fetchedClasses = List<Map<String, dynamic>>.from(allClasses);
       } else {
         final assignments = await readThrough(
-          'dab6aead|staff_assignments|${user.id}',
-          () async => await _supabase
-              .from('staff_assignments')
-              .select('class_assigned')
-              .eq('staff_id', user.id),
-          fresh: const Duration(minutes: 2),
-        );
+        'dab6aead|staff_assignments|${user.id}',
+        () async => await _supabase
+            .from('staff_assignments')
+            .select('class_assigned')
+            .eq('staff_id', user.id),
+        fresh: const Duration(minutes: 2),
+      );
 
         final Set<String> assignedClasses = {};
         for (var a in assignments) {
@@ -234,11 +234,11 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
       final allSubjects = await readThrough(
         '6389e4f8|class_subjects|${_schoolId!}|$classId',
         () async => await _supabase
-            .from('class_subjects')
-            .select('id, subject_name')
-            .eq('school_id', _schoolId!)
-            .eq('class_id', classId)
-            .order('subject_name'),
+          .from('class_subjects')
+          .select('id, subject_name')
+          .eq('school_id', _schoolId!)
+          .eq('class_id', classId)
+          .order('subject_name'),
         fresh: const Duration(minutes: 2),
       );
 
@@ -246,13 +246,13 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
         subjects = List<Map<String, dynamic>>.from(allSubjects);
       } else {
         final assignments = await readThrough(
-          '170af377|staff_assignments|${_userId!}',
-          () async => await _supabase
-              .from('staff_assignments')
-              .select('class_assigned, subject_assigned')
-              .eq('staff_id', _userId!),
-          fresh: const Duration(minutes: 2),
-        );
+        '170af377|staff_assignments|${_userId!}',
+        () async => await _supabase
+            .from('staff_assignments')
+            .select('class_assigned, subject_assigned')
+            .eq('staff_id', _userId!),
+        fresh: const Duration(minutes: 2),
+      );
 
         final Set<String> assignedSubjects = {};
         bool isFormMasterForThisClass = false;
@@ -428,7 +428,10 @@ class _ResultComputationScreenState extends State<ResultComputationScreen>
 
       // Keep a copy of this list on the phone (as the server has it), then
       // show any unsent entries on top.
-      await LocalCache.put(cacheKey, combinedList.map(_scoreToJson).toList());
+      await LocalCache.put(
+        cacheKey,
+        combinedList.map(_scoreToJson).toList(),
+      );
       await _applyQueuedScores(combinedList);
 
       if (mounted) {

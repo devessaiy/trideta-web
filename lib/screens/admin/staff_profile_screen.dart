@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:trideta_v2/services/read_through.dart';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
@@ -905,6 +906,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen>
       }).toList();
 
       await _supabase.from('staff_assignments').insert(updates);
+      ReadThrough.invalidateAll(); // class assignments changed
       if (mounted) {
         _fetchData();
         showSuccessDialog(

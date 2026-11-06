@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:trideta_v2/services/read_through.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -194,6 +195,7 @@ class _AddStaffScreenState extends State<AddStaffScreen> with AuthErrorHandler {
       );
 
       if (mounted) {
+        ReadThrough.invalidateAll(); // staff lists changed
         setState(() => _isLoading = false);
         showSuccessDialog(
           "Staff Added",

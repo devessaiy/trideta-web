@@ -59,10 +59,10 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
       final profile = await readThrough(
         '350688ab|profiles|${user.id}',
         () async => await _supabase
-            .from('profiles')
-            .select('school_id, role')
-            .eq('id', user.id)
-            .single(),
+          .from('profiles')
+          .select('school_id, role')
+          .eq('id', user.id)
+          .single(),
         fresh: const Duration(minutes: 10),
       );
       _schoolId = profile['school_id'];
@@ -71,10 +71,10 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
       final school = await readThrough(
         'b6eeb681|schools|${_schoolId!}',
         () async => await _supabase
-            .from('schools')
-            .select('current_session, current_term')
-            .eq('id', _schoolId!)
-            .single(),
+          .from('schools')
+          .select('current_session, current_term')
+          .eq('id', _schoolId!)
+          .single(),
       );
 
       int currentYr = DateTime.now().year;
@@ -91,14 +91,14 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
 
       if (_userRole == 'admin' || _userRole == 'principal') {
         final classesData = await readThrough(
-          'a623c3c2|classes|${_schoolId!}',
-          () async => await _supabase
-              .from('classes')
-              .select('id, name')
-              .eq('school_id', _schoolId!)
-              .order('list_order', ascending: true),
-          fresh: const Duration(minutes: 2),
-        );
+        'a623c3c2|classes|${_schoolId!}',
+        () async => await _supabase
+            .from('classes')
+            .select('id, name') 
+            .eq('school_id', _schoolId!)
+            .order('list_order', ascending: true),
+        fresh: const Duration(minutes: 2),
+      );
         for (var c in classesData) {
           String cName = c['name'].toString();
           _classNameToIdMap[cName] = c['id'].toString();
@@ -106,23 +106,23 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
         }
       } else {
         final classesData = await readThrough(
-          'a623c3c2|classes|${_schoolId!}',
-          () async => await _supabase
-              .from('classes')
-              .select('id, name')
-              .eq('school_id', _schoolId!)
-              .order('list_order', ascending: true),
-          fresh: const Duration(minutes: 2),
-        );
+        'a623c3c2|classes|${_schoolId!}',
+        () async => await _supabase
+            .from('classes')
+            .select('id, name') 
+            .eq('school_id', _schoolId!)
+            .order('list_order', ascending: true),
+        fresh: const Duration(minutes: 2),
+      );
 
         final assignments = await readThrough(
-          '5804df06|staff_assignments|${user.id}',
-          () async => await _supabase
-              .from('staff_assignments')
-              .select('class_id, class_assigned')
-              .eq('staff_id', user.id),
-          fresh: const Duration(minutes: 2),
-        );
+        '5804df06|staff_assignments|${user.id}',
+        () async => await _supabase
+            .from('staff_assignments')
+            .select('class_id, class_assigned')
+            .eq('staff_id', user.id),
+        fresh: const Duration(minutes: 2),
+      );
 
         final Set<String> assignedKeys = {};
         for (var a in assignments) {
@@ -168,32 +168,32 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
       final studentsData = await readThrough(
         '0482a9f4|students|${_schoolId!}|${_classNameToIdMap[_selectedClass]!}',
         () async => await _supabase
-            .from('students')
-            .select('id, first_name, last_name')
-            .eq('school_id', _schoolId!)
-            .eq('class_id', _classNameToIdMap[_selectedClass]!)
-            .order('first_name', ascending: true),
+          .from('students')
+          .select('id, first_name, last_name')
+          .eq('school_id', _schoolId!)
+          .eq('class_id', _classNameToIdMap[_selectedClass]!)
+          .order('first_name', ascending: true),
       );
 
       final traitsData = await readThrough(
         '2922a5a8|affective_traits|${_schoolId!}|${_selectedSession!}|${_selectedTerm!}|${_classNameToIdMap[_selectedClass]!}',
         () async => await _supabase
-            .from('affective_traits')
-            .select()
-            .eq('school_id', _schoolId!)
-            .eq('academic_session', _selectedSession!)
-            .eq('term', _selectedTerm!)
-            .eq('class_id', _classNameToIdMap[_selectedClass]!),
+          .from('affective_traits')
+          .select()
+          .eq('school_id', _schoolId!)
+          .eq('academic_session', _selectedSession!)
+          .eq('term', _selectedTerm!)
+          .eq('class_id', _classNameToIdMap[_selectedClass]!),
       );
       final resultsData = await readThrough(
         '622e2f8a|term_results|${_schoolId!}|${_selectedSession!}|${_selectedTerm!}|${_classNameToIdMap[_selectedClass]!}',
         () async => await _supabase
-            .from('term_results')
-            .select('student_id, principal_remark')
-            .eq('school_id', _schoolId!)
-            .eq('academic_session', _selectedSession!)
-            .eq('term', _selectedTerm!)
-            .eq('class_id', _classNameToIdMap[_selectedClass]!),
+          .from('term_results')
+          .select('student_id, principal_remark')
+          .eq('school_id', _schoolId!)
+          .eq('academic_session', _selectedSession!)
+          .eq('term', _selectedTerm!)
+          .eq('class_id', _classNameToIdMap[_selectedClass]!),
       );
 
       Map<String, dynamic> existingTraits = {
@@ -330,12 +330,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
         SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.only(
-              left: 10,
-              top: 16,
-              bottom: 16,
-              right: 24,
-            ),
+            padding: const EdgeInsets.only(left: 10, top: 16, bottom: 16, right: 24),
             child: Row(
               children: [
                 BackButton(color: textColor),
@@ -488,13 +483,10 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 800),
                   child: Container(
-                    width: MediaQuery.of(context).size.width > 800
-                        ? 800
+                    width: MediaQuery.of(context).size.width > 800 
+                        ? 800 
                         : MediaQuery.of(context).size.width,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 16,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                     decoration: BoxDecoration(
                       color: cardColor,
                       border: Border(
@@ -516,10 +508,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
                             ),
                           ),
                           onPressed: _isLoading ? null : _saveAllTraits,
-                          icon: const Icon(
-                            Icons.save_rounded,
-                            color: Colors.white,
-                          ),
+                          icon: const Icon(Icons.save_rounded, color: Colors.white),
                           label: const Text(
                             "SAVE TRAITS",
                             style: TextStyle(
@@ -540,7 +529,11 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
     );
   }
 
-  Widget _buildInfoField(String label, String value, bool isDark) {
+  Widget _buildInfoField(
+    String label,
+    String value,
+    bool isDark,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -648,11 +641,7 @@ class _AffectiveDomainScreenState extends State<AffectiveDomainScreen>
             "Tap to rate behaviors & add remarks",
             style: TextStyle(fontSize: 11, color: Colors.grey),
           ),
-          childrenPadding: const EdgeInsets.only(
-            left: 24,
-            right: 24,
-            bottom: 20,
-          ),
+          childrenPadding: const EdgeInsets.only(left: 24, right: 24, bottom: 20),
           children: [
             _buildRatingRow("Punctuality", sId, 'punctuality', primaryColor),
             _buildRatingRow("Neatness", sId, 'neatness', primaryColor),

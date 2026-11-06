@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:trideta_v2/services/notification_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/main.dart' show navigatorKey;
 import 'package:trideta_v2/screens/auth/login_screen.dart';
@@ -57,9 +58,7 @@ class SessionGuard {
       final profile = await retryRead(
         () async => await client
             .from('profiles')
-            .select(
-              'role, is_suspended, schools(brand_color, subscription_status)',
-            )
+            .select('role, is_suspended, schools(brand_color, subscription_status)')
             .eq('id', user.id)
             .maybeSingle(),
         maxAttempts: 2,
@@ -100,13 +99,11 @@ class SessionGuard {
   }
 
   static Future<void> _forceLogout(String message) async {
+    await NotificationService.removeThisDeviceToken(); // best effort
     try {
       await Supabase.instance.client.auth.signOut();
     } catch (_) {}
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId != null) {
-      await LocalCache.put('route:$userId', null);
-    }
+    await LocalCache.clearAll();
     navigatorKey.currentState?.pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (_) => false,

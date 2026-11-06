@@ -72,10 +72,10 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
       final profile = await readThrough(
         '350688ab|profiles|${user.id}',
         () async => await _supabase
-            .from('profiles')
-            .select('school_id, role')
-            .eq('id', user.id)
-            .single(),
+          .from('profiles')
+          .select('school_id, role')
+          .eq('id', user.id)
+          .single(),
         fresh: const Duration(minutes: 10),
       );
 
@@ -85,10 +85,10 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
       final school = await readThrough(
         'b6eeb681|schools|${_schoolId!}',
         () async => await _supabase
-            .from('schools')
-            .select('current_session, current_term')
-            .eq('id', _schoolId!)
-            .single(),
+          .from('schools')
+          .select('current_session, current_term')
+          .eq('id', _schoolId!)
+          .single(),
       );
 
       int currentYr = DateTime.now().year;
@@ -105,14 +105,14 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
 
       if (_userRole == 'admin' || _userRole == 'principal') {
         final classesData = await readThrough(
-          '6a9467c4|classes|${_schoolId!}',
-          () async => await _supabase
-              .from('classes')
-              .select('id, name, list_order')
-              .eq('school_id', _schoolId!)
-              .order('list_order', ascending: true),
-          fresh: const Duration(minutes: 2),
-        );
+        '6a9467c4|classes|${_schoolId!}',
+        () async => await _supabase
+            .from('classes')
+            .select('id, name, list_order')
+            .eq('school_id', _schoolId!)
+            .order('list_order', ascending: true),
+        fresh: const Duration(minutes: 2),
+      );
         for (var c in classesData) {
           String cName = c['name'].toString();
           _classNameToIdMap[cName] = c['id'].toString();
@@ -120,26 +120,26 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
         }
       } else {
         final assignments = await readThrough(
-          'f97a3639|staff_assignments|${user.id}',
-          () async => await _supabase
-              .from('staff_assignments')
-              .select('class_id')
-              .eq('staff_id', user.id),
-          fresh: const Duration(minutes: 2),
-        );
+        'f97a3639|staff_assignments|${user.id}',
+        () async => await _supabase
+            .from('staff_assignments')
+            .select('class_id')
+            .eq('staff_id', user.id),
+        fresh: const Duration(minutes: 2),
+      );
         final Set<String> uniqueIds = {};
         for (var a in assignments) {
           if (a['class_id'] != null) uniqueIds.add(a['class_id'].toString());
         }
         if (uniqueIds.isNotEmpty) {
           final freshClasses = await readThrough(
-            '4977419b|classes|${uniqueIds.toList()}',
-            () async => await _supabase
-                .from('classes')
-                .select('id, name')
-                .inFilter('id', uniqueIds.toList()),
-            fresh: const Duration(minutes: 2),
-          );
+        '4977419b|classes|${uniqueIds.toList()}',
+        () async => await _supabase
+              .from('classes')
+              .select('id, name')
+              .inFilter('id', uniqueIds.toList()),
+        fresh: const Duration(minutes: 2),
+      );
           for (var c in freshClasses) {
             String cName = c['name'].toString();
             _classNameToIdMap[cName] = c['id'].toString();
@@ -184,11 +184,11 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
       final studentsData = await readThrough(
         '8411e4aa|students|${_schoolId!}|${_classNameToIdMap[_selectedClass]!}',
         () async => await _supabase
-            .from('students')
-            .select('id, first_name, last_name, admission_no')
-            .eq('school_id', _schoolId!)
-            .eq('class_id', _classNameToIdMap[_selectedClass]!)
-            .order('first_name', ascending: true),
+          .from('students')
+          .select('id, first_name, last_name, admission_no')
+          .eq('school_id', _schoolId!)
+          .eq('class_id', _classNameToIdMap[_selectedClass]!)
+          .order('first_name', ascending: true),
       );
 
       if (studentsData.isEmpty) {
@@ -199,12 +199,12 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
       final scoresData = await readThrough(
         'a6aa6aff|exam_scores|${_schoolId!}|${_selectedSession!}|${_selectedTerm!}|${_classNameToIdMap[_selectedClass]!}',
         () async => await _supabase
-            .from('exam_scores')
-            .select('student_id, subject_name, total_score')
-            .eq('school_id', _schoolId!)
-            .eq('academic_session', _selectedSession!)
-            .eq('term', _selectedTerm!)
-            .eq('class_id', _classNameToIdMap[_selectedClass]!),
+          .from('exam_scores')
+          .select('student_id, subject_name, total_score')
+          .eq('school_id', _schoolId!)
+          .eq('academic_session', _selectedSession!)
+          .eq('term', _selectedTerm!)
+          .eq('class_id', _classNameToIdMap[_selectedClass]!),
       );
 
       Set<String> uniqueSubjects = {};
@@ -219,14 +219,14 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
       final termResultsData = await readThrough(
         '98e8374d|term_results|${_schoolId!}|${_selectedSession!}|${_selectedTerm!}|${_classNameToIdMap[_selectedClass]!}',
         () async => await _supabase
-            .from('term_results')
-            .select(
-              'student_id, total_score, average_score, position, position_suffix',
-            )
-            .eq('school_id', _schoolId!)
-            .eq('academic_session', _selectedSession!)
-            .eq('term', _selectedTerm!)
-            .eq('class_id', _classNameToIdMap[_selectedClass]!),
+          .from('term_results')
+          .select(
+            'student_id, total_score, average_score, position, position_suffix',
+          )
+          .eq('school_id', _schoolId!)
+          .eq('academic_session', _selectedSession!)
+          .eq('term', _selectedTerm!)
+          .eq('class_id', _classNameToIdMap[_selectedClass]!),
       );
 
       Map<String, dynamic> existingResults = {
@@ -517,10 +517,13 @@ class _MasterBroadsheetScreenState extends State<MasterBroadsheetScreen>
   Future<void> _changeResumptionDate() async {
     final date = await _pickResumptionDate(current: _resumesOn);
     if (date == null || !mounted) return;
-    await _saveHoliday({
-      'holiday_resumes_on': HolidayGate.isoDate(date),
-      'holiday_last_reminder_on': null,
-    }, "Resumption date changed to ${HolidayGate.formatDate(date)}.");
+    await _saveHoliday(
+      {
+        'holiday_resumes_on': HolidayGate.isoDate(date),
+        'holiday_last_reminder_on': null,
+      },
+      "Resumption date changed to ${HolidayGate.formatDate(date)}.",
+    );
   }
 
   Future<void> _saveHoliday(

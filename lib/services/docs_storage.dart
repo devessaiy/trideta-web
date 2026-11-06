@@ -33,16 +33,17 @@ class DocsStorage {
   static const int maxLessonNoteBytes = 2 * 1024 * 1024;
 
   static SupabaseClient get _client => Supabase.instance.client;
-  static String get _endpoint =>
-      '${Supabase.instance.client.rest.url.replaceFirst(RegExp(r'/rest/v1/?$'), '')}/functions/v1/docs-storage';
+  static String get _endpoint => Uri.parse(
+    _client.rest.url,
+  ).replace(path: '/functions/v1/docs-storage').toString();
 
   static Map<String, String> _headers({String? contentType}) {
     final token = _client.auth.currentSession?.accessToken;
     if (token == null) throw DocsStorageException('Please sign in again.');
     return {
       'Authorization': 'Bearer $token',
-      'apikey': Supabase.instance.client.rest.headers['apikey'] ?? '',
-      'Content-Type': ?contentType,
+      'apikey': _client.rest.headers['apikey']!,
+      if (contentType != null) 'Content-Type': contentType,
     };
   }
 
@@ -106,8 +107,8 @@ class DocsStorage {
         'table': table,
         'doc_id': docId,
         'school_id': schoolId,
-        'class_name': ?className,
-        'subject_name': ?subjectName,
+        if (className != null) 'class_name': className,
+        if (subjectName != null) 'subject_name': subjectName,
       },
     );
     final http.Response res;

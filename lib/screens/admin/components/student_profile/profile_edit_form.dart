@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 
 class ProfileEditForm extends StatelessWidget {
   final Uint8List? webImage;
@@ -58,9 +59,10 @@ class ProfileEditForm extends StatelessWidget {
 
     // 🚨 UI FIX: Flattened background wrapper
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Container(
-        color: cardColor,
+      padding: const EdgeInsets.all(16),
+      child: PCard(
+        radius: 30,
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -74,7 +76,7 @@ class ProfileEditForm extends StatelessWidget {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: primaryColor.withValues(alpha: 0.3),
+                          color: primaryColor.withValues(alpha: 0.4),
                           width: 2,
                         ),
                       ),
@@ -106,7 +108,7 @@ class ProfileEditForm extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: primaryColor,
                           shape: BoxShape.circle,
-                          border: Border.all(color: cardColor, width: 2),
+                          border: Border.all(color: PUi.surface(isDark), width: 2),
                         ),
                         child: const Icon(
                           Icons.camera_alt_rounded,
@@ -241,7 +243,7 @@ class ProfileEditForm extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.orange.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: const Row(
                 children: [
@@ -314,19 +316,14 @@ class ProfileEditForm extends StatelessWidget {
             ? Icon(icon, color: primaryColor.withValues(alpha: 0.5), size: 18)
             : null,
         filled: true,
-        fillColor: isDark
-            ? Colors.white.withValues(alpha: 0.05)
-            : Colors.grey.shade100,
+        fillColor: PUi.surfaceAlt(isDark),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(24),
           borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
-            color: primaryColor.withValues(alpha: 0.5),
-            width: 2,
-          ),
+          borderRadius: BorderRadius.circular(24),
+          borderSide: BorderSide(color: primaryColor, width: 1.6),
         ),
       ),
     );
@@ -341,10 +338,8 @@ class ProfileEditForm extends StatelessWidget {
     if (value != null && !items.contains(value)) items.add(value);
     return Container(
       decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.05)
-            : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(16),
+        color: PUi.surfaceAlt(isDark),
+        borderRadius: BorderRadius.circular(24),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -354,11 +349,13 @@ class ProfileEditForm extends StatelessWidget {
             padding: const EdgeInsets.only(left: 16),
             child: Text(
               hint,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
             ),
           ),
           icon: Padding(
-            padding: const EdgeInsets.only(right: 16),
+            padding: const EdgeInsets.only(right: 10),
             child: Icon(Icons.keyboard_arrow_down_rounded, color: primaryColor),
           ),
           items: items
@@ -369,6 +366,8 @@ class ProfileEditForm extends StatelessWidget {
                     padding: const EdgeInsets.only(left: 16),
                     child: Text(
                       e,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
@@ -379,7 +378,8 @@ class ProfileEditForm extends StatelessWidget {
               )
               .toList(),
           onChanged: onChanged,
-          dropdownColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+          dropdownColor: PUi.surface(isDark),
+          borderRadius: BorderRadius.circular(20),
         ),
       ),
     );

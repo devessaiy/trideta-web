@@ -1,8 +1,21 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:trideta_v2/services/notification_service.dart';
 
 class AuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
+
+  // 🚨 GOOGLE SIGN-IN CONFIG
+  // Paste the *Web application* OAuth client ID from Google Cloud Console
+  // (the same one entered in Supabase > Authentication > Providers > Google).
+  static const String _googleWebClientId =
+      '141687394764-abmtvvcfmf38pmhhnb5cbfdtg9agpqh6.apps.googleusercontent.com';
+
+  /// Returned by [signInWithGoogle] when the user closes the Google picker.
+  static const String googleCancelled = '__google_cancelled__';
+
+  static bool _googleInitialised = false;
 
   // 1. LOGIN
   Future<String?> login(String email, String password) async {
@@ -17,6 +30,52 @@ class AuthService {
       return "Login Error: ${e.message}";
     } catch (e) {
       return "System Error: $e";
+    }
+  }
+
+  // 1b. SIGN IN WITH GOOGLE (login only - never creates a Trideta profile)
+  // Returns null on success, [googleCancelled] if the user backed out,
+  // or an error message. After success the caller MUST run the normal
+  // routing check (_checkAndNavigate), which signs the user straight back
+  // out if no Trideta profile exists for this Google email.
+  Future<String?> signInWithGoogle() async {
+    try {
+      if (kIsWeb) {
+        // Web uses Supabase's redirect flow; the app resumes with a session
+        // and the login screen's existing session-resume path routes it.
+        await _supabase.auth.signInWithOAuth(
+          OAuthProvider.google,
+          redirectTo: Uri.base.origin,
+        );
+        return googleCancelled; // page navigates away; nothing more to do
+      }
+
+      if (!_googleInitialised) {
+        await GoogleSignIn.instance.initialize(
+          serverClientId: _googleWebClientId,
+        );
+        _googleInitialised = true;
+      }
+
+      final account = await GoogleSignIn.instance.authenticate();
+      final idToken = account.authentication.idToken;
+      if (idToken == null) {
+        return "Google Sign-In Failed: no ID token was returned.";
+      }
+
+      final response = await _supabase.auth.signInWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: idToken,
+      );
+      if (response.user == null) return "Google Sign-In Failed: Unknown error.";
+      return null;
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) return googleCancelled;
+      return "Google Sign-In Error: ${e.description ?? e.code.name}";
+    } on AuthException catch (e) {
+      return "Google Sign-In Error: ${e.message}";
+    } catch (e) {
+      return "Google Sign-In Error: $e";
     }
   }
 
@@ -110,8 +169,29 @@ class AuthService {
     return acronym.length < 2 ? name.substring(0, 3).toUpperCase() : acronym;
   }
 
+  /// Ends the Supabase session AND forgets the chosen Google account, so the next
+  /// Google tap shows the account picker. Used when access is denied after a
+  /// successful sign-in (suspended, terminated subscription, no account).
+  Future<void> signOutSession() async {
+    if (!kIsWeb) {
+      try {
+        if (!_googleInitialised) {
+          await GoogleSignIn.instance.initialize(
+            serverClientId: _googleWebClientId,
+          );
+          _googleInitialised = true;
+        }
+        await GoogleSignIn.instance.signOut();
+      } catch (_) {}
+    }
+    await _supabase.auth.signOut();
+  }
+
   Future<void> logout() async {
     await NotificationService.removeThisDeviceToken();
+    try {
+      if (!kIsWeb && _googleInitialised) await GoogleSignIn.instance.signOut();
+    } catch (_) {}
     await _supabase.auth.signOut();
   }
 }

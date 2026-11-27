@@ -40,6 +40,10 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
   // session and route straight to the right dashboard, skipping the form.
   bool _isResumingSession = false;
 
+  // true only while a Google sign-in is being routed (controls the wording
+  // of the "no account found" message).
+  bool _signedInViaGoogle = false;
+
   final _authService = AuthService();
   final _biometricService = BiometricService();
   final _supabase = Supabase.instance.client;
@@ -254,46 +258,29 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
     setState(() => _canCheckBiometrics = canCheck);
   }
 
+  // 🚨 GOOGLE SIGN-IN (login only). It can never create an account here:
+  // _checkAndNavigate() signs the user straight back out when no Trideta
+  // profile exists for the Google email.
   Future<void> _loginWithGoogle() async {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color primaryColor = Theme.of(context).primaryColor;
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+    _signedInViaGoogle = true;
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Row(
-          children: [
-            Icon(Icons.info_outline, color: primaryColor),
-            const SizedBox(width: 10),
-            Text(
-              "Coming Soon",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black,
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          "Google Sign-In integration is currently in progress. Please use your Login ID and password to sign in for now.",
-          style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              "Got it",
-              style: TextStyle(
-                color: primaryColor,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    final error = await _authService.signInWithGoogle();
+    if (!mounted) return;
+
+    if (error == AuthService.googleCancelled) {
+      _signedInViaGoogle = false;
+      setState(() => _isLoading = false);
+      return;
+    }
+    if (error != null) {
+      _signedInViaGoogle = false;
+      setState(() => _isLoading = false);
+      showAuthErrorDialog(error);
+      return;
+    }
+    await _checkAndNavigate();
   }
 
   Future<void> _handleLogin() async {
@@ -545,18 +532,32 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
       setState(() => _isLoading = false);
 
       if (profile == null) {
-        _supabase.auth.signOut();
-        showAuthErrorDialog(
-          "Your TriDeta profile hasn't been created yet. Please contact your School Administrator.",
-        );
+        final googleEmail = user.email ?? '';
+        await _authService.signOutSession();
+        if (_signedInViaGoogle) {
+          _signedInViaGoogle = false;
+          showAuthErrorDialog(
+            "No Trideta account was found for this Google email${googleEmail.isEmpty ? '' : ' ($googleEmail)'}.\n\n"
+            "• Parents and teachers: ask your school to register this exact email address, or sign in with the Login ID / phone number and password your school gave you.\n\n"
+            "• School owners: tap \"Register your school\" to create a new school.",
+          );
+        } else {
+          showAuthErrorDialog(
+            "Your TriDeta profile hasn't been created yet. Please contact your School Administrator.",
+          );
+        }
         return;
       }
 
       if (profile['is_suspended'] == true) {
-        await _supabase.auth.signOut();
+        await _authService.signOutSession();
+        final tryAnother = _signedInViaGoogle
+            ? "\n\nYou can go back and sign in with a different Google account."
+            : "";
+        _signedInViaGoogle = false;
         if (mounted) {
           showAuthErrorDialog(
-            "Access Denied. Your account has been suspended for violating community guidelines. Please contact support.",
+            "Access Denied. Your account has been suspended for violating community guidelines. Please contact support.$tryAnother",
           );
         }
         return;
@@ -565,10 +566,14 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
       if (profile['schools'] != null) {
         final subStatus = profile['schools']['subscription_status'];
         if (subStatus == 'terminated') {
-          await _supabase.auth.signOut();
+          await _authService.signOutSession();
+          final tryAnother = _signedInViaGoogle
+              ? "\n\nYou can go back and sign in with a different Google account."
+              : "";
+          _signedInViaGoogle = false;
           if (mounted) {
             showAuthErrorDialog(
-              "Access Denied. Your school's Trideta subscription has been terminated. Please contact your school administrator.",
+              "Access Denied. Your school's Trideta subscription has been terminated. Please contact your school administrator.$tryAnother",
             );
           }
           return;
@@ -814,7 +819,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
           duration: const Duration(milliseconds: 250),
           layoutBuilder: (current, previous) => Stack(
             fit: StackFit.expand,
-            children: [...previous, ?current],
+            children: [...previous, if (current != null) current],
           ),
           child: KeyedSubtree(
             key: ValueKey<bool>(_showWelcome),

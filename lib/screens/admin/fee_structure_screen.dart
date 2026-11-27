@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:trideta_v2/utils/auth_error_handler.dart';
+import 'package:trideta_v2/utils/resilient_request.dart';
 import 'package:trideta_v2/widgets/trideta_loader.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -255,43 +256,25 @@ class _FeeStructureScreenState extends State<FeeStructureScreen>
     setState(() => _isLoading = true);
 
     try {
-      if (action == 2) {
-        final txs = await _supabase
-            .from('transactions')
-            .select('student_id, amount')
-            .eq('fee_id', id);
-
-        if (txs.isNotEmpty) {
-          Map<String, double> refunds = {};
-          for (var tx in txs) {
-            String sId = tx['student_id'].toString();
-            double amt = (tx['amount'] ?? 0).toDouble();
-            refunds[sId] = (refunds[sId] ?? 0) + amt;
-          }
-
-          for (String sId in refunds.keys) {
-            final student = await _supabase
-                .from('students')
-                .select('wallet_balance')
-                .eq('id', sId)
-                .single();
-            double currentBalance = (student['wallet_balance'] ?? 0).toDouble();
-            double newBalance = currentBalance + refunds[sId]!;
-            await _supabase
-                .from('students')
-                .update({'wallet_balance': newBalance})
-                .eq('id', sId);
-          }
-        }
-      }
-
-      await _supabase.from('transactions').delete().eq('fee_id', id);
-      await _supabase.from('fee_structures').delete().eq('id', id);
+      // One all-or-nothing database step: credits the wallets (refund only)
+      // and removes the payments and the fee together. If the connection
+      // drops and this is retried, the second call finds the fee already
+      // gone and changes nothing, so nobody is credited twice.
+      final result = await retryIdempotent(
+        () async => await _supabase.rpc(
+          'delete_fee',
+          params: {'p_fee_id': id, 'p_refund': action == 2},
+        ),
+        timeout: const Duration(seconds: 30),
+      );
+      final bool notFound = result is Map && result['status'] == 'not_found';
 
       if (mounted) {
         showSuccessDialog(
-          "Fee Removed",
-          action == 2
+          notFound ? "Nothing Changed" : "Fee Removed",
+          notFound
+              ? "This fee was already removed. Nothing was changed and nobody was credited twice."
+              : action == 2
               ? "'$feeName' has been deleted and payments were safely credited to the students' wallets."
               : "'$feeName' has been force-deleted without refunds.",
         );

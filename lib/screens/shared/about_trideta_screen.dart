@@ -101,9 +101,12 @@ class AboutTridetaScreen extends StatelessWidget {
                         ],
                       ),
                       child: Image.asset(
-                        'assets/icon/app_icon.png',
-                        errorBuilder: (_, _, _) =>
-                            Icon(Icons.school_rounded, color: primary, size: 48),
+                        'assets/icon/trideta_icon.png',
+                        errorBuilder: (_, _, _) => Icon(
+                          Icons.school_rounded,
+                          color: primary,
+                          size: 48,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -136,7 +139,9 @@ class AboutTridetaScreen extends StatelessWidget {
                             ListTile(
                               leading: CircleAvatar(
                                 radius: 20,
-                                backgroundColor: primary.withValues(alpha: 0.12),
+                                backgroundColor: primary.withValues(
+                                  alpha: 0.12,
+                                ),
                                 child: Icon(f.icon, color: primary, size: 20),
                               ),
                               title: Text(
@@ -149,7 +154,10 @@ class AboutTridetaScreen extends StatelessWidget {
                               ),
                               subtitle: Text(
                                 f.subtitle,
-                                style: TextStyle(fontSize: 12.5, color: subColor),
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: subColor,
+                                ),
                               ),
                             ),
                         ],
@@ -163,7 +171,10 @@ class AboutTridetaScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: ListTile(
-                        leading: Icon(Icons.privacy_tip_outlined, color: primary),
+                        leading: Icon(
+                          Icons.privacy_tip_outlined,
+                          color: primary,
+                        ),
                         title: Text(
                           'Privacy Policy',
                           style: TextStyle(

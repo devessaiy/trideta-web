@@ -9,10 +9,15 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:trideta_v2/services/notification_service.dart';
 import 'package:trideta_v2/firebase_options.dart';
 import 'package:trideta_v2/main.dart'; // Imports notifiers
+import 'package:trideta_v2/widgets/trideta_ui_kit.dart';
 
 // ROUTING IMPORTS
 import 'package:trideta_v2/screens/auth/onboarding_screen.dart';
 import 'package:trideta_v2/screens/auth/login_screen.dart';
+
+// Trideta Blue — the splash always uses this, because the school colour is
+// still being loaded while the splash is showing.
+const Color _kSplashBlue = Color(0xFF007ACC);
 
 class BootSplashScreen extends StatefulWidget {
   const BootSplashScreen({super.key});
@@ -25,22 +30,37 @@ class _BootSplashScreenState extends State<BootSplashScreen>
     with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _scaleAnimation;
+  bool _logoPrecached = false;
 
   @override
   void initState() {
     super.initState();
 
-    // Controls the pulsing background/logo effect
+    // Controls the gentle pulsing of the logo
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2500),
+      duration: const Duration(milliseconds: 1800),
     )..repeat(reverse: true);
 
-    _scaleAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
+    _scaleAnimation = Tween<double>(begin: 0.96, end: 1.04).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
     _startBootSequence();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // ⚡ Decode the logo up-front so it never pops in late.
+    if (!_logoPrecached) {
+      _logoPrecached = true;
+      precacheImage(
+        const AssetImage('assets/icon/trideta_icon.png'),
+        context,
+        onError: (e, s) {},
+      );
+    }
   }
 
   @override
@@ -50,43 +70,58 @@ class _BootSplashScreenState extends State<BootSplashScreen>
   }
 
   Future<void> _startBootSequence() async {
-    // Wait for BOTH the initialization logic AND a short, smooth display
+    // Wait for BOTH the initialization logic AND a short, smooth display.
+    // ⚡ The display time was 1500ms; 700ms is enough to show the brand.
     await Future.wait([
       _initializeAllServices(),
-      Future.delayed(const Duration(milliseconds: 1500)),
+      Future.delayed(const Duration(milliseconds: 700)),
     ]);
 
     _navigateNext();
   }
 
   Future<void> _initializeAllServices() async {
-    // 1. FIREBASE INIT
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    // ⚡ Start reading the saved preferences straight away — it needs nothing
+    // else, so it can finish while Firebase and Supabase are starting.
+    final prefsFuture = SharedPreferences.getInstance();
 
-    // 2. SUPABASE INIT
-    await Supabase.initialize(
-      url: 'https://tkuupmyrodazfrrembsc.supabase.co',
-      anonKey:
-          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRrdXVwbXlyb2RhemZycmVtYnNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2MzE2MTAsImV4cCI6MjA4NjIwNzYxMH0.D46NbF3tu7Eaq2HreH4auh0flNNggubZZdKs9xgZQ4k',
-    );
+    // 1 + 2. FIREBASE and SUPABASE do not depend on each other, so they now
+    // start together instead of one after the other.
+    await Future.wait([
+      Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      ).then((_) {
+        FirebaseMessaging.onBackgroundMessage(
+          firebaseMessagingBackgroundHandler,
+        );
+      }),
+      Supabase.initialize(
+        url: 'https://tkuupmyrodazfrrembsc.supabase.co',
+        anonKey:
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRrdXVwbXlyb2RhemZycmVtYnNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2MzE2MTAsImV4cCI6MjA4NjIwNzYxMH0.D46NbF3tu7Eaq2HreH4auh0flNNggubZZdKs9xgZQ4k',
+      ),
+    ]);
 
     // 3. SMART NOTIFICATIONS
+    // ⚡ These need Firebase AND Supabase, so they start only after both are
+    // ready — but they no longer block the theme and colour work below. We
+    // still wait for them before leaving the splash, exactly as before.
     final session = Supabase.instance.client.auth.currentSession;
+    Future<void> notificationsFuture = Future<void>.value();
     if (!kIsWeb || session != null) {
       // Never let a slow connection hold the app on the splash screen.
-      await NotificationService().initialize().timeout(
+      notificationsFuture = NotificationService().initialize().timeout(
         const Duration(seconds: 5),
         onTimeout: () {},
       );
+      // An early error is still delivered at the `await` further down.
+      notificationsFuture.ignore();
     }
 
     // ==========================================
     // 4. LOAD SAVED PREFERENCES & BRAND COLOR
     // ==========================================
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await prefsFuture;
     final savedTheme = prefs.getString('saved_theme');
 
     if (savedTheme == 'light') {
@@ -98,12 +133,14 @@ class _BootSplashScreenState extends State<BootSplashScreen>
     }
 
     // DATABASE COLOR LOGIC
-    Color finalColor = const Color(0xFF007ACC); // Default Trideta Blue
+    Color finalColor = _kSplashBlue; // Default Trideta Blue
 
     // Use the colour saved on this phone first: no waiting on the internet.
-    final cachedColorInt = prefs.getInt('app_primary_color');
+    final int? cachedColorInt = prefs.getInt('app_primary_color');
     final bool useCachedColor = session != null && cachedColorInt != null;
-    if (useCachedColor) finalColor = Color(cachedColorInt);
+    if (useCachedColor && cachedColorInt != null) {
+      finalColor = Color(cachedColorInt);
+    }
 
     if (session != null && !useCachedColor) {
       try {
@@ -144,6 +181,10 @@ class _BootSplashScreenState extends State<BootSplashScreen>
     }
 
     appColorNotifier.value = finalColor;
+
+    // Notifications were running in the background of the work above;
+    // make sure they have finished (or timed out) before we continue.
+    await notificationsFuture;
   }
 
   void _navigateNext() async {
@@ -159,7 +200,8 @@ class _BootSplashScreenState extends State<BootSplashScreen>
 
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          transitionDuration: const Duration(milliseconds: 700),
+          // ⚡ Was 700ms; a quicker fade feels snappier.
+          transitionDuration: const Duration(milliseconds: 350),
           pageBuilder: (_, _, _) => nextScreen,
           transitionsBuilder: (_, animation, _, child) =>
               FadeTransition(opacity: animation, child: child),
@@ -170,104 +212,129 @@ class _BootSplashScreenState extends State<BootSplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    // 🚨 THE FIX: Listen to the active theme from the MaterialApp
+    // Listen to the active theme from the MaterialApp
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-
-    // Swap colors dynamically
-    Color bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FC);
-    Color textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
-    Color shadowColor = const Color(
-      0xFF007ACC,
-    ).withValues(alpha: isDark ? 0.3 : 0.15);
+    final double screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
-      backgroundColor: bgColor, // Dynamic Background
-      body: Stack(
-        children: [
-          // ─── BACKGROUND DECORATIVE PAINTER ───────────────────────────
-          Positioned.fill(
-            child: CustomPaint(
-              painter: _SplashBackgroundPainter(isDark: isDark),
-            ), // Pass theme to doodles
-          ),
-
-          // ─── CENTER CONTENT ───────────────────────────────────────────
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 🚨 TRUE APP LOGO WRAPPED IN A CIRCLE
-                AnimatedBuilder(
-                  animation: _scaleAnimation,
-                  builder: (context, child) {
-                    return Transform.scale(
-                      scale: _scaleAnimation.value,
-                      child: child,
-                    );
-                  },
-                  child: Container(
-                    width: 110,
-                    height: 110,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors
-                          .white, // Keep the circle background white for logo pop
-                      boxShadow: [
-                        BoxShadow(
-                          color: shadowColor, // Dynamic shadow intensity
-                          blurRadius: 24,
-                          spreadRadius: 4,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: Image.asset(
-                        'assets/icon/app_icon.png',
-                        fit: BoxFit.cover,
+      backgroundColor: PUi.bg(isDark),
+      body: PBackdrop(
+        accent: _kSplashBlue,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // ─── FAINT STUDY ILLUSTRATION (static, painted once) ─────────
+            Positioned(
+              right: 0,
+              bottom: 96,
+              width: math.min(screenWidth * 0.62, 300.0),
+              child: IgnorePointer(
+                child: RepaintBoundary(
+                  child: AspectRatio(
+                    aspectRatio: 300 / 190,
+                    child: CustomPaint(
+                      painter: PScenePainter(
+                        scene: PScene.corner,
+                        line: _kSplashBlue.withValues(alpha: 0.4),
+                        tint: _kSplashBlue.withValues(alpha: 0.08),
+                        paper: PUi.bg(isDark),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
-
-                // App Name
-                Text(
-                  'Trideta',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    color: textColor, // Dynamic Text Color
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 6),
-
-                // Tagline
-                const Text(
-                  'Powerful and Intuitive School\nManagement Software',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Color(
-                      0xFF9098B1,
-                    ), // This grey looks good on both light & dark
-                    height: 1.5,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
 
-          // ─── BOTTOM BRANDING ───────
-          const Positioned(
-            bottom: 40,
-            left: 0,
-            right: 0,
-            child: SkynexAnimatedBranding(),
-          ),
-        ],
+            // ─── CENTER CONTENT ───────────────────────────────────────────
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // TRUE APP LOGO IN A RINGED CIRCLE (only this part animates)
+                    RepaintBoundary(
+                      child: AnimatedBuilder(
+                        animation: _scaleAnimation,
+                        builder: (context, child) {
+                          return Transform.scale(
+                            scale: _scaleAnimation.value,
+                            child: child,
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: _kSplashBlue.withValues(alpha: 0.4),
+                              width: 2,
+                            ),
+                          ),
+                          child: Container(
+                            width: 112,
+                            height: 112,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: _kSplashBlue.withValues(
+                                    alpha: isDark ? 0.3 : 0.18,
+                                  ),
+                                  blurRadius: 26,
+                                  spreadRadius: 2,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: ClipOval(
+                              child: Image.asset(
+                                'assets/icon/trideta_icon.png',
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stack) =>
+                                    const Icon(
+                                      Icons.school_rounded,
+                                      size: 52,
+                                      color: _kSplashBlue,
+                                    ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 26),
+
+                    // App Name
+                    Text('Trideta', style: PUi.title(isDark, size: 36)),
+                    const SizedBox(height: 10),
+
+                    // Tagline
+                    Text(
+                      'Powerful and Intuitive School\nManagement Software',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        color: PUi.muted(isDark),
+                        height: 1.5,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // ─── BOTTOM BRANDING ───────
+            const Positioned(
+              bottom: 40,
+              left: 0,
+              right: 0,
+              child: SkynexAnimatedBranding(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -304,48 +371,52 @@ class _SkynexAnimatedBrandingState extends State<SkynexAnimatedBranding>
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
+        Text(
           'from',
           style: TextStyle(
             fontSize: 12,
-            color: Color(0xFF9098B1),
+            color: PUi.muted(isDark),
             letterSpacing: 0.5,
             fontWeight: FontWeight.w500,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            AnimatedBuilder(
-              animation: _sweepController,
-              builder: (context, child) {
-                return ShaderMask(
-                  shaderCallback: (Rect bounds) {
-                    return SweepGradient(
-                      startAngle: 0.0,
-                      endAngle: math.pi * 2,
-                      colors: const [
-                        Color(0xFF007ACC),
-                        Color(0xFF66C2FF),
-                        Color(0xFF007ACC),
-                      ],
-                      stops: const [0.0, 0.5, 1.0],
-                      transform: GradientRotation(
-                        _sweepController.value * 2 * math.pi,
-                      ),
-                    ).createShader(bounds);
-                  },
-                  child: const Icon(
-                    Icons.all_inclusive_rounded,
-                    size: 26,
-                    color: Colors.white,
-                  ),
-                );
-              },
+            RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _sweepController,
+                builder: (context, child) {
+                  return ShaderMask(
+                    shaderCallback: (Rect bounds) {
+                      return SweepGradient(
+                        startAngle: 0.0,
+                        endAngle: math.pi * 2,
+                        colors: const [
+                          Color(0xFF007ACC),
+                          Color(0xFF66C2FF),
+                          Color(0xFF007ACC),
+                        ],
+                        stops: const [0.0, 0.5, 1.0],
+                        transform: GradientRotation(
+                          _sweepController.value * 2 * math.pi,
+                        ),
+                      ).createShader(bounds);
+                    },
+                    child: const Icon(
+                      Icons.all_inclusive_rounded,
+                      size: 26,
+                      color: Colors.white,
+                    ),
+                  );
+                },
+              ),
             ),
             const SizedBox(width: 8),
             const Text(
@@ -362,131 +433,4 @@ class _SkynexAnimatedBrandingState extends State<SkynexAnimatedBranding>
       ],
     );
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Scattered geometric doodles
-// ─────────────────────────────────────────────────────────────────────────────
-class _SplashBackgroundPainter extends CustomPainter {
-  final bool isDark; // 🚨 Added theme awareness
-
-  _SplashBackgroundPainter({required this.isDark});
-
-  static const _strokeW = 1.2;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // 🚨 Soften the doodles drastically on Dark Mode so they don't look muddy
-    final paint = Paint()
-      ..color = isDark
-          ? Colors.white.withValues(alpha: 0.05)
-          : const Color(0xFFCDD0E3)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _strokeW;
-
-    final circles = [
-      [0.12, 0.18, 0.04],
-      [0.78, 0.35, 0.03],
-      [0.55, 0.72, 0.035],
-    ];
-    final diamonds = [
-      [0.25, 0.65, 0.025, 0.0],
-      [0.85, 0.15, 0.02, 0.3],
-      [0.82, 0.85, 0.03, -0.2],
-    ];
-    final chevrons = [
-      [0.15, 0.45, 0.03, 0.5],
-      [0.70, 0.60, 0.035, -0.4],
-      [0.35, 0.82, 0.025, 1.2],
-    ];
-    final brackets = [
-      [0.45, 0.12, 0.04, 0.8],
-      [0.10, 0.80, 0.03, -0.5],
-      [0.90, 0.50, 0.045, 0.2],
-    ];
-
-    final minDim = math.min(size.width, size.height);
-
-    for (var c in circles) {
-      _drawCircle(canvas, paint, _pos(size, c), minDim * c[2]);
-    }
-    for (var d in diamonds) {
-      _drawDiamond(canvas, paint, _pos(size, d), minDim * d[2], d[3]);
-    }
-    for (var cv in chevrons) {
-      _drawChevron(canvas, paint, _pos(size, cv), minDim * cv[2], cv[3]);
-    }
-    for (var b in brackets) {
-      _drawArcBracket(canvas, paint, _pos(size, b), minDim * b[2], b[3]);
-    }
-  }
-
-  Offset _pos(Size size, List<double> cfg) {
-    return Offset(size.width * cfg[0], size.height * cfg[1]);
-  }
-
-  void _drawCircle(Canvas canvas, Paint paint, Offset center, double radius) {
-    canvas.drawCircle(center, radius, paint);
-  }
-
-  void _drawDiamond(
-    Canvas canvas,
-    Paint paint,
-    Offset center,
-    double r,
-    double rotation,
-  ) {
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(rotation);
-    final path = Path()
-      ..moveTo(0, -r)
-      ..lineTo(r, 0)
-      ..lineTo(0, r)
-      ..lineTo(-r, 0)
-      ..close();
-    canvas.drawPath(path, paint);
-    canvas.restore();
-  }
-
-  void _drawChevron(
-    Canvas canvas,
-    Paint paint,
-    Offset center,
-    double r,
-    double rotation,
-  ) {
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(rotation);
-    final path = Path()
-      ..moveTo(-r, -r * 0.5)
-      ..lineTo(0, r * 0.5)
-      ..lineTo(r, -r * 0.5);
-    canvas.drawPath(path, paint);
-    canvas.restore();
-  }
-
-  void _drawArcBracket(
-    Canvas canvas,
-    Paint paint,
-    Offset center,
-    double radius,
-    double rotation,
-  ) {
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(rotation);
-    canvas.drawArc(
-      Rect.fromCircle(center: Offset.zero, radius: radius),
-      -math.pi / 3,
-      math.pi * (2 / 3),
-      false,
-      paint,
-    );
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

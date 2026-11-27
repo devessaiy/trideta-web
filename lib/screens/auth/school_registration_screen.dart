@@ -30,6 +30,11 @@ class _SchoolRegistrationScreenState extends State<SchoolRegistrationScreen>
   final _authService = AuthService();
   bool _isLoading = false;
 
+  // Google registration mode (email comes from the verified Google account)
+  bool _googleMode = false;
+  bool _keepSession = false; // true once the school was created
+  String _googleEmail = '';
+
   // Privacy Agreement State
   bool _isAgreed = false;
   bool _isFreeTierAgreed = false;
@@ -43,7 +48,20 @@ class _SchoolRegistrationScreenState extends State<SchoolRegistrationScreen>
   Color _matchColor = Colors.transparent;
 
   @override
+  void initState() {
+    super.initState();
+    // Web: returning from Google's page with a session but no profile yet
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _resumeGoogleIfSignedIn(),
+    );
+  }
+
+  @override
   void dispose() {
+    // Leaving mid-way must never leave a half-registered Google session behind
+    if (_googleMode && !_keepSession) {
+      _authService.signOutSession();
+    }
     _schoolNameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
@@ -162,6 +180,221 @@ class _SchoolRegistrationScreenState extends State<SchoolRegistrationScreen>
     }
   }
 
+  Future<void> _resumeGoogleIfSignedIn() async {
+    final email = _authService.currentEmail;
+    if (email == null || _googleMode) return;
+    if (await _authService.currentUserHasProfile()) return;
+    if (!mounted) return;
+    setState(() {
+      _googleMode = true;
+      _googleEmail = email;
+      _emailController.text = email;
+    });
+  }
+
+  Future<void> _startGoogle() async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+
+    final error = await _authService.signInWithGoogle(forRegistration: true);
+    if (!mounted) return;
+
+    if (error == AuthService.googleCancelled) {
+      setState(() => _isLoading = false);
+      return;
+    }
+    if (error != null) {
+      setState(() => _isLoading = false);
+      showAuthErrorDialog(error);
+      return;
+    }
+
+    // Existing account? Then just sign in. A second account is never created.
+    if (await _authService.currentUserHasProfile()) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      showSuccessDialog(
+        "Welcome back!",
+        "This Google account already has a Trideta account, so we are signing you in instead of creating a new school.",
+      );
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+          );
+        }
+      });
+      return;
+    }
+
+    final email = _authService.currentEmail ?? '';
+    if (!mounted) return;
+    setState(() {
+      _googleMode = true;
+      _googleEmail = email;
+      _emailController.text = email;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _cancelGoogleMode() async {
+    await _authService.signOutSession();
+    if (!mounted) return;
+    setState(() {
+      _googleMode = false;
+      _googleEmail = '';
+      _emailController.clear();
+    });
+  }
+
+  Future<bool> _confirmNewSchool() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        final primary = Theme.of(ctx).primaryColor;
+        final bg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+        final textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+        final hint = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+        return Dialog(
+          backgroundColor: bg,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: primary.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.domain_add, color: primary, size: 32),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  "Create a new school?",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: textColor,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  "You are about to create a brand-new school account with $_googleEmail.\n\nParents and teachers do not register here. Their school adds them, and they sign in from the login screen.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: hint, height: 1.4),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text(
+                          "Cancel",
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: primary,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text(
+                          "Yes, create school",
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    return result == true;
+  }
+
+  Future<void> _handleGoogleRegistration() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (!_isAgreed) {
+      showAuthErrorDialog(
+        "You must agree to the Terms & Privacy Policy to register.",
+      );
+      return;
+    }
+    if (!_isFreeTierAgreed) {
+      showAuthErrorDialog(
+        "You must acknowledge the Free Trial Limitations to register.",
+      );
+      return;
+    }
+
+    final confirmed = await _confirmNewSchool();
+    if (!confirmed || !mounted) return;
+
+    setState(() => _isLoading = true);
+
+    String formattedPhone = _phoneController.text.trim().replaceAll(' ', '');
+    if (formattedPhone.startsWith('0')) {
+      formattedPhone = '+234${formattedPhone.substring(1)}';
+    } else if (!formattedPhone.startsWith('+')) {
+      formattedPhone = '+234$formattedPhone';
+    }
+
+    try {
+      final error = await _authService.registerSchoolWithGoogle(
+        schoolName: _schoolNameController.text.trim(),
+        phone: formattedPhone,
+      );
+
+      if (error == null) {
+        _keepSession = true;
+        if (mounted) {
+          showSuccessDialog(
+            "Registration Successful!",
+            "Your school has been registered and is active on the Free Tier. Taking you to complete setup.",
+          );
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+            }
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoading = false);
+        showAuthErrorDialog(error);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+      showAuthErrorDialog(e.toString());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -209,7 +442,120 @@ class _SchoolRegistrationScreenState extends State<SchoolRegistrationScreen>
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 16, color: hintColor),
                   ),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 30),
+
+                  if (!_googleMode) ...[
+                    SizedBox(
+                      height: 55,
+                      child: OutlinedButton.icon(
+                        onPressed: _isLoading ? null : _startGoogle,
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          side: BorderSide(
+                            color: isDark
+                                ? Colors.white24
+                                : Colors.grey.shade300,
+                          ),
+                        ),
+                        icon: const Icon(
+                          Icons.g_mobiledata_rounded,
+                          size: 32,
+                          color: Colors.blue,
+                        ),
+                        label: Text(
+                          "Register with Google",
+                          style: TextStyle(
+                            color: textColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Divider(
+                            color: isDark
+                                ? Colors.white24
+                                : Colors.grey.shade300,
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            "OR FILL IN THE FORM",
+                            style: TextStyle(
+                              color: hintColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Divider(
+                            color: isDark
+                                ? Colors.white24
+                                : Colors.grey.shade300,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 30),
+                  ] else ...[
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color: primaryColor.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.verified_user, color: primaryColor),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "Signed in with Google",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: textColor,
+                                  ),
+                                ),
+                                Text(
+                                  _googleEmail,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: hintColor,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _isLoading ? null : _cancelGoogleMode,
+                            child: Text(
+                              "Change",
+                              style: TextStyle(
+                                color: primaryColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+                  ],
 
                   // School Name Field
                   _buildTextField(
@@ -229,6 +575,7 @@ class _SchoolRegistrationScreenState extends State<SchoolRegistrationScreen>
                   // Official Email Field
                   _buildTextField(
                     controller: _emailController,
+                    readOnly: _googleMode,
                     label: "Official School Email",
                     icon: Icons.email,
                     inputType: TextInputType.emailAddress,
@@ -258,95 +605,101 @@ class _SchoolRegistrationScreenState extends State<SchoolRegistrationScreen>
                   ),
                   const SizedBox(height: 20),
 
-                  // Password Field
-                  TextFormField(
-                    controller: _passwordController,
-                    obscureText: _isObscure1,
-                    onChanged: _checkPasswordStrength,
-                    style: TextStyle(color: textColor),
-                    decoration: InputDecoration(
-                      prefixIcon: Icon(Icons.lock, color: hintColor),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _isObscure1 ? Icons.visibility : Icons.visibility_off,
-                          color: hintColor,
+                  // Password Field (not needed for Google)
+                  if (!_googleMode) ...[
+                    TextFormField(
+                      controller: _passwordController,
+                      obscureText: _isObscure1,
+                      onChanged: _checkPasswordStrength,
+                      style: TextStyle(color: textColor),
+                      decoration: InputDecoration(
+                        prefixIcon: Icon(Icons.lock, color: hintColor),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _isObscure1
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                            color: hintColor,
+                          ),
+                          onPressed: () =>
+                              setState(() => _isObscure1 = !_isObscure1),
                         ),
-                        onPressed: () =>
-                            setState(() => _isObscure1 = !_isObscure1),
-                      ),
-                      labelText: "Admin Password",
-                      labelStyle: TextStyle(color: hintColor),
-                      filled: true,
-                      fillColor: fieldColor,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: BorderSide(color: primaryColor, width: 2),
-                      ),
-                    ),
-                    validator: (val) => val == null || val.length < 6
-                        ? 'Password must be at least 6 characters'
-                        : null,
-                  ),
-                  if (_passwordStrength.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0, left: 12.0),
-                      child: Text(
-                        _passwordStrength,
-                        style: TextStyle(
-                          color: _strengthColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
+                        labelText: "Admin Password",
+                        labelStyle: TextStyle(color: hintColor),
+                        filled: true,
+                        fillColor: fieldColor,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide(color: primaryColor, width: 2),
                         ),
                       ),
+                      validator: (val) => val == null || val.length < 6
+                          ? 'Password must be at least 6 characters'
+                          : null,
                     ),
-                  const SizedBox(height: 20),
+                    if (_passwordStrength.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0, left: 12.0),
+                        child: Text(
+                          _passwordStrength,
+                          style: TextStyle(
+                            color: _strengthColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 20),
 
-                  // Confirm Password Field
-                  TextFormField(
-                    controller: _confirmPasswordController,
-                    obscureText: _isObscure2,
-                    onChanged: _checkPasswordMatch,
-                    style: TextStyle(color: textColor),
-                    decoration: InputDecoration(
-                      prefixIcon: Icon(Icons.lock_clock, color: hintColor),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _isObscure2 ? Icons.visibility : Icons.visibility_off,
-                          color: hintColor,
+                    // Confirm Password Field
+                    TextFormField(
+                      controller: _confirmPasswordController,
+                      obscureText: _isObscure2,
+                      onChanged: _checkPasswordMatch,
+                      style: TextStyle(color: textColor),
+                      decoration: InputDecoration(
+                        prefixIcon: Icon(Icons.lock_clock, color: hintColor),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _isObscure2
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                            color: hintColor,
+                          ),
+                          onPressed: () =>
+                              setState(() => _isObscure2 = !_isObscure2),
                         ),
-                        onPressed: () =>
-                            setState(() => _isObscure2 = !_isObscure2),
-                      ),
-                      labelText: "Confirm Password",
-                      labelStyle: TextStyle(color: hintColor),
-                      filled: true,
-                      fillColor: fieldColor,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: BorderSide(color: primaryColor, width: 2),
-                      ),
-                    ),
-                  ),
-                  if (_matchStatus.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0, left: 12.0),
-                      child: Text(
-                        _matchStatus,
-                        style: TextStyle(
-                          color: _matchColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
+                        labelText: "Confirm Password",
+                        labelStyle: TextStyle(color: hintColor),
+                        filled: true,
+                        fillColor: fieldColor,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide(color: primaryColor, width: 2),
                         ),
                       ),
                     ),
+                    if (_matchStatus.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0, left: 12.0),
+                        child: Text(
+                          _matchStatus,
+                          style: TextStyle(
+                            color: _matchColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                  ],
                   const SizedBox(height: 30),
 
                   // Agreement Checkboxes
@@ -438,7 +791,11 @@ class _SchoolRegistrationScreenState extends State<SchoolRegistrationScreen>
                         ),
                         elevation: 5,
                       ),
-                      onPressed: _isLoading ? null : _handleRegistration,
+                      onPressed: _isLoading
+                          ? null
+                          : (_googleMode
+                                ? _handleGoogleRegistration
+                                : _handleRegistration),
                       child: _isLoading
                           ? const SizedBox(
                               height: 24,
@@ -474,10 +831,12 @@ class _SchoolRegistrationScreenState extends State<SchoolRegistrationScreen>
     required Color primaryColor,
     required Color textColor,
     TextInputType inputType = TextInputType.text,
+    bool readOnly = false,
     String? Function(String?)? validator,
   }) {
     return TextFormField(
       controller: controller,
+      readOnly: readOnly,
       keyboardType: inputType,
       style: TextStyle(color: textColor),
       decoration: InputDecoration(

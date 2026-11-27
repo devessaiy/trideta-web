@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -532,6 +533,19 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
       setState(() => _isLoading = false);
 
       if (profile == null) {
+        // Web: coming back from "Register with Google" -> continue on the
+        // registration screen instead of signing the user out.
+        if (kIsWeb && Uri.base.queryParameters['intent'] == 'register') {
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const SchoolRegistrationScreen(),
+              ),
+            );
+          }
+          return;
+        }
         final googleEmail = user.email ?? '';
         await _authService.signOutSession();
         if (_signedInViaGoogle) {

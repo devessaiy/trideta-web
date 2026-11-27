@@ -38,14 +38,16 @@ class AuthService {
   // or an error message. After success the caller MUST run the normal
   // routing check (_checkAndNavigate), which signs the user straight back
   // out if no Trideta profile exists for this Google email.
-  Future<String?> signInWithGoogle() async {
+  Future<String?> signInWithGoogle({bool forRegistration = false}) async {
     try {
       if (kIsWeb) {
         // Web uses Supabase's redirect flow; the app resumes with a session
         // and the login screen's existing session-resume path routes it.
         await _supabase.auth.signInWithOAuth(
           OAuthProvider.google,
-          redirectTo: Uri.base.origin,
+          redirectTo: forRegistration
+              ? '${Uri.base.origin}/?intent=register'
+              : Uri.base.origin,
         );
         return googleCancelled; // page navigates away; nothing more to do
       }
@@ -76,6 +78,63 @@ class AuthService {
       return "Google Sign-In Error: ${e.message}";
     } catch (e) {
       return "Google Sign-In Error: $e";
+    }
+  }
+
+  // 1c. HELPERS FOR "REGISTER WITH GOOGLE"
+  String? get currentEmail => _supabase.auth.currentUser?.email;
+
+  /// True when the signed-in user already has a Trideta profile.
+  /// If we cannot tell, we answer true so we never offer to create a second account.
+  Future<bool> currentUserHasProfile() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return false;
+    try {
+      final p = await _supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', user.id)
+          .maybeSingle();
+      return p != null;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Creates a NEW school for the Google user who is signed in right now.
+  /// The email always comes from the verified Google session, never from the form.
+  /// (register_school itself also refuses anyone who already has a profile.)
+  Future<String?> registerSchoolWithGoogle({
+    required String schoolName,
+    required String phone,
+    String? address,
+  }) async {
+    try {
+      final user = _supabase.auth.currentUser;
+      final email = user?.email;
+      if (user == null || email == null || email.isEmpty) {
+        return "Please sign in with Google first.";
+      }
+      final meta = user.userMetadata ?? {};
+      final ownerName = (meta['full_name'] ?? meta['name'] ?? 'Admin')
+          .toString();
+
+      await _supabase.rpc(
+        'register_school',
+        params: {
+          'new_school_name': schoolName,
+          'new_acronym': _generateAcronym(schoolName),
+          'new_address': address ?? "",
+          'new_full_name': ownerName,
+          'new_email': email,
+          'new_phone': phone,
+        },
+      );
+      return null;
+    } on PostgrestException catch (dbError) {
+      return "Database Error: ${dbError.message} (Code: ${dbError.code})";
+    } catch (e) {
+      return "Unexpected Error: $e";
     }
   }
 

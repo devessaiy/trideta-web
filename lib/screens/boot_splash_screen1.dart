@@ -223,7 +223,7 @@ class _BootSplashScreenState extends State<BootSplashScreen>
                     ),
                     child: ClipOval(
                       child: Image.asset(
-                        'assets/icon/app_icon.png',
+                        'assets/icon/trideta_icon.png',
                         fit: BoxFit.cover,
                       ),
                     ),

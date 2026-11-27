@@ -43,7 +43,7 @@ class DocsStorage {
     return {
       'Authorization': 'Bearer $token',
       'apikey': _client.rest.headers['apikey']!,
-      if (contentType != null) 'Content-Type': contentType,
+      'Content-Type': ?contentType,
     };
   }
 
@@ -107,8 +107,8 @@ class DocsStorage {
         'table': table,
         'doc_id': docId,
         'school_id': schoolId,
-        if (className != null) 'class_name': className,
-        if (subjectName != null) 'subject_name': subjectName,
+        'class_name': ?className,
+        'subject_name': ?subjectName,
       },
     );
     final http.Response res;

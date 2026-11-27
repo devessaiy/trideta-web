@@ -103,7 +103,7 @@ class _BootSplashScreenState extends State<BootSplashScreen>
     // Use the colour saved on this phone first: no waiting on the internet.
     final cachedColorInt = prefs.getInt('app_primary_color');
     final bool useCachedColor = session != null && cachedColorInt != null;
-    if (useCachedColor) finalColor = Color(cachedColorInt!);
+    if (useCachedColor) finalColor = Color(cachedColorInt);
 
     if (session != null && !useCachedColor) {
       try {

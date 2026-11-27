@@ -814,7 +814,7 @@ class _LoginScreenState extends State<LoginScreen> with AuthErrorHandler {
           duration: const Duration(milliseconds: 250),
           layoutBuilder: (current, previous) => Stack(
             fit: StackFit.expand,
-            children: [...previous, if (current != null) current],
+            children: [...previous, ?current],
           ),
           child: KeyedSubtree(
             key: ValueKey<bool>(_showWelcome),

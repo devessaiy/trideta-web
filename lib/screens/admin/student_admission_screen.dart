@@ -82,6 +82,42 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
 
   Timer? _debounce;
   bool _isExistingParentFound = false;
+  static const String _staffEmailMessage =
+      "This email belongs to a school staff account on Trideta (an admin, teacher or bursar).\n\nPlease register this parent with their phone number instead.";
+
+  // Server-side check across ALL schools. Returns only true/false (never which
+  // school). Fails open here on purpose: create-parent-account enforces the
+  // same rule on the server, so a network hiccup can never block a real admission.
+  String _lastStaffWarnedEmail = '';
+
+  // Turns an edge-function failure into the clean message the server sent
+  // (shown in the app's own popup) instead of a raw exception dump.
+  String _friendlyFunctionError(Object e, String fallbackPrefix) {
+    if (e is FunctionException) {
+      final d = e.details;
+      if (d is Map &&
+          d['error'] is String &&
+          (d['error'] as String).isNotEmpty) {
+        return d['error'] as String;
+      }
+      if (d is String && d.isNotEmpty) return d;
+    }
+    return "$fallbackPrefix: $e";
+  }
+
+  Future<bool> _isStaffEmail(String email) async {
+    try {
+      final res = await _supabase.rpc(
+        'check_staff_email',
+        params: {'p_email': email},
+      );
+      return res == true;
+    } catch (e) {
+      debugPrint("Staff email check error: $e");
+      return false;
+    }
+  }
+
   bool _pwdHasMinLength = false;
   bool _pwdHasNumber = false;
   bool _pwdMatch = false;
@@ -112,10 +148,10 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
       final profile = await readThrough(
         'a851cdd3|profiles|${user.id}',
         () async => await _supabase
-          .from('profiles')
-          .select('school_id')
-          .eq('id', user.id)
-          .single(),
+            .from('profiles')
+            .select('school_id')
+            .eq('id', user.id)
+            .single(),
         fresh: const Duration(minutes: 10),
       );
       final sId = profile['school_id'];
@@ -124,10 +160,10 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
       final school = await readThrough(
         '4befc1ae|schools|$sId',
         () async => await _supabase
-          .from('schools')
-          .select('name, current_session, current_term')
-          .eq('id', sId)
-          .single(),
+            .from('schools')
+            .select('name, current_session, current_term')
+            .eq('id', sId)
+            .single(),
       );
       final classesData = await readThrough(
         'c1a55e5a|classes|$sId',
@@ -256,6 +292,13 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
           });
         } else {
           setState(() => _isExistingParentFound = false);
+          if (!_usePhoneAsLogin) {
+            final blocked = await _isStaffEmail(exactLoginId);
+            if (mounted && blocked && _lastStaffWarnedEmail != exactLoginId) {
+              _lastStaffWarnedEmail = exactLoginId;
+              showAuthErrorDialog(_staffEmailMessage);
+            }
+          }
         }
       }
     } catch (e) {
@@ -565,7 +608,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
               accountAlreadyCreated = true;
             } else {
               setState(() => _isLoading = false);
-              showAuthErrorDialog("Auth Link Error: $e");
+              showAuthErrorDialog(_friendlyFunctionError(e, "Auth Link Error"));
               return;
             }
           }
@@ -575,6 +618,11 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
               : exactLoginId;
         }
       } else {
+        if (!_usePhoneAsLogin && await _isStaffEmail(exactLoginId)) {
+          setState(() => _isLoading = false);
+          showAuthErrorDialog(_staffEmailMessage);
+          return;
+        }
         try {
           await _supabase.functions.invoke(
             'create-parent-account',
@@ -599,7 +647,7 @@ class _StudentAdmissionScreenState extends State<StudentAdmissionScreen>
             return;
           }
           setState(() => _isLoading = false);
-          showAuthErrorDialog("Auth Creation Error: $e");
+          showAuthErrorDialog(_friendlyFunctionError(e, "Auth Creation Error"));
           return;
         }
       }
